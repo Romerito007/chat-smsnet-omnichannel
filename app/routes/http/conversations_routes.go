@@ -35,6 +35,11 @@ func registerConversationRoutes(r chi.Router, c *container.Container) {
 			// Lifecycle.
 			cv.With(middleware.RequirePermission(authz.ConversationClose)).Post("/{id}/close", ctl.Close)
 			cv.With(middleware.RequirePermission(authz.ConversationClose)).Post("/{id}/reopen", ctl.Reopen)
+
+			// Typing + read receipts (realtime). Require visibility (read).
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/{id}/typing/start", ctl.TypingStart)
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/{id}/typing/stop", ctl.TypingStop)
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/{id}/read", ctl.Read)
 		})
 	})
 }

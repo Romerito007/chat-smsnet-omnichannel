@@ -145,6 +145,33 @@ func (c *Controller) Reopen(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, dto.NewConversationResponse(conv))
 }
 
+// TypingStart handles POST /v1/conversations/{id}/typing/start.
+func (c *Controller) TypingStart(w http.ResponseWriter, r *http.Request) {
+	if err := c.svc.SetTyping(r.Context(), chi.URLParam(r, "id"), true); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// TypingStop handles POST /v1/conversations/{id}/typing/stop.
+func (c *Controller) TypingStop(w http.ResponseWriter, r *http.Request) {
+	if err := c.svc.SetTyping(r.Context(), chi.URLParam(r, "id"), false); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Read handles POST /v1/conversations/{id}/read.
+func (c *Controller) Read(w http.ResponseWriter, r *http.Request) {
+	if err := c.svc.MarkRead(r.Context(), chi.URLParam(r, "id")); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ListMessages handles GET /v1/conversations/{id}/messages.
 func (c *Controller) ListMessages(w http.ResponseWriter, r *http.Request) {
 	page := middleware.PageFromRequest(r)

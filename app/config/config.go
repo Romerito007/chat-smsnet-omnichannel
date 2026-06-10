@@ -30,12 +30,13 @@ type Config struct {
 	LogLevel string
 	RunRole  Role
 
-	HTTP  HTTPConfig
-	Mongo MongoConfig
-	Redis RedisConfig
-	Asynq AsynqConfig
-	Otel  OtelConfig
-	Auth  AuthConfig
+	HTTP     HTTPConfig
+	Mongo    MongoConfig
+	Redis    RedisConfig
+	Asynq    AsynqConfig
+	Otel     OtelConfig
+	Auth     AuthConfig
+	Realtime RealtimeConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -83,6 +84,12 @@ type AsynqConfig struct {
 type OtelConfig struct {
 	Enabled     bool
 	ServiceName string
+}
+
+// RealtimeConfig holds the WebSocket settings.
+type RealtimeConfig struct {
+	// MaxConnPerUser bounds simultaneous WS connections per user (0 = unlimited).
+	MaxConnPerUser int
 }
 
 // SeedConfig holds the idempotent first-run seed identity.
@@ -140,6 +147,9 @@ func Load() (Config, error) {
 			AccessTTL:  getDuration("AUTH_ACCESS_TTL", 15*time.Minute),
 			RefreshTTL: getDuration("AUTH_REFRESH_TTL", 720*time.Hour),
 			BcryptCost: getInt("AUTH_BCRYPT_COST", 12),
+		},
+		Realtime: RealtimeConfig{
+			MaxConnPerUser: getInt("WS_MAX_CONN_PER_USER", 10),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

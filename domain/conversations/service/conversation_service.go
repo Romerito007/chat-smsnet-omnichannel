@@ -314,6 +314,33 @@ func (s *Service) ListMessages(ctx context.Context, conversationID string, page 
 	return s.messages.ListByConversation(ctx, conversationID, page.Normalize())
 }
 
+// SetTyping publishes a typing.started/stopped event to the conversation room.
+// Typing is ephemeral (not persisted); it only requires the actor to see the
+// conversation.
+func (s *Service) SetTyping(ctx context.Context, conversationID string, on bool) error {
+	conv, ac, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	event := contracts.RealtimeTypingStopped
+	if on {
+		event = contracts.RealtimeTypingStarted
+	}
+	return s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID), event,
+		contracts.TypingPayload{ConversationID: conv.ID, UserID: ac.UserID})
+}
+
+// MarkRead records that the actor read the conversation and publishes a
+// message.read event to the conversation room.
+func (s *Service) MarkRead(ctx context.Context, conversationID string) error {
+	conv, ac, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	return s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID), contracts.RealtimeMessageRead,
+		contracts.ReadPayload{ConversationID: conv.ID, UserID: ac.UserID, ReadAt: s.clock.Now()})
+}
+
 // ── internals ────────────────────────────────────────────────────────────────
 
 // persistMessage stores a message, bumps conversation activity, records the

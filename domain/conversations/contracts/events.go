@@ -10,7 +10,23 @@ import (
 const (
 	RealtimeMessageCreated      = "message.created"
 	RealtimeConversationUpdated = "conversation.updated"
+	RealtimeTypingStarted       = "typing.started"
+	RealtimeTypingStopped       = "typing.stopped"
+	RealtimeMessageRead         = "message.read"
 )
+
+// TypingPayload is the payload of typing.started/stopped events.
+type TypingPayload struct {
+	ConversationID string `json:"conversation_id"`
+	UserID         string `json:"user_id"`
+}
+
+// ReadPayload is the payload of the message.read event.
+type ReadPayload struct {
+	ConversationID string    `json:"conversation_id"`
+	UserID         string    `json:"user_id"`
+	ReadAt         time.Time `json:"read_at"`
+}
 
 // ConversationPayload is the realtime/event representation of a conversation.
 type ConversationPayload struct {
