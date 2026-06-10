@@ -12,6 +12,7 @@ import (
 	autocontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automation/contracts"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
+	whcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/webhooks/contracts"
 	infraasynq "github.com/romerito007/chat-smsnet-omnichannel/infra/asynq"
 )
 
@@ -75,4 +76,18 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 	}
 	mux.HandleFunc(infraasynq.TaskChannelDeliver, deliver)
 	mux.HandleFunc(infraasynq.TaskChannelRetry, deliver)
+
+	// webhook.deliver / webhook.retry: deliver an outbound webhook with HMAC
+	// signing, driving retry/backoff and dead-lettering.
+	webhooks := factories.WebhookDeliveryService(c)
+	deliverWebhook := func(ctx context.Context, t *asynq.Task) error {
+		var p whcontracts.DeliverTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		ctx = shared.WithTenant(ctx, p.TenantID)
+		return webhooks.Deliver(ctx, p.DeliveryID)
+	}
+	mux.HandleFunc(infraasynq.TaskWebhookDeliver, deliverWebhook)
+	mux.HandleFunc(infraasynq.TaskWebhookRetry, deliverWebhook)
 }

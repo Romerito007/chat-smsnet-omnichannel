@@ -20,6 +20,7 @@ func ConversationService(c *container.Container) *convservice.Service {
 		clock,
 	)
 	svc.SetOutboundDispatcher(OutboundService(c))
+	svc.SetWebhookEmitter(WebhookDispatcher(c))
 	return svc
 }
 

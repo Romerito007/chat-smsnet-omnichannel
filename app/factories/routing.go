@@ -14,7 +14,7 @@ import (
 
 // RoutingService builds the routing service.
 func RoutingService(c *container.Container) *routingservice.Service {
-	return routingservice.New(
+	svc := routingservice.New(
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		convrepo.NewEventRepository(c.Mongo.DB),
 		presencestore.NewStore(c.Redis),
@@ -26,6 +26,8 @@ func RoutingService(c *container.Container) *routingservice.Service {
 		c.Events,
 		clock,
 	)
+	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	return svc
 }
 
 // RoutingController builds the routing controller.

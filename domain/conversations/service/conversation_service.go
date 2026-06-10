@@ -25,12 +25,21 @@ type Service struct {
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	outbound      contracts.OutboundDispatcher
+	webhooks      shared.WebhookEmitter
 }
 
 // SetOutboundDispatcher wires the channels delivery dispatcher. Optional: when
 // unset, outbound messages are persisted (pending) but not delivered.
 func (s *Service) SetOutboundDispatcher(d contracts.OutboundDispatcher) {
 	s.outbound = d
+}
+
+// SetWebhookEmitter wires the outbound webhook emitter. Optional: when unset,
+// business events are not forwarded to webhook subscriptions.
+func (s *Service) SetWebhookEmitter(e shared.WebhookEmitter) {
+	if e != nil {
+		s.webhooks = e
+	}
 }
 
 // New builds the service.
@@ -55,6 +64,7 @@ func New(
 		sectors:       sectors,
 		publisher:     publisher,
 		clock:         clock,
+		webhooks:      shared.NoopWebhookEmitter{},
 	}
 }
 
@@ -125,6 +135,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 
 	s.recordEvent(ctx, conv, entity.EventConversationCreated, nil)
 	s.publishConversation(ctx, conv)
+	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationCreated, contracts.NewConversationPayload(conv))
 	return conv, nil
 }
 
@@ -292,6 +303,7 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 		"note":            cmd.Note,
 	})
 	s.publishConversation(ctx, conv)
+	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
 	return conv, nil
 }
 
@@ -379,6 +391,11 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
 		contracts.RealtimeMessageCreated, contracts.NewMessagePayload(msg))
 	s.publishConversation(ctx, conv)
+
+	// Outbound webhook: only real messages, not internal notes.
+	if eventType == entity.EventMessageCreated {
+		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, contracts.NewMessagePayload(msg))
+	}
 	return msg, nil
 }
 

@@ -32,6 +32,15 @@ type Service struct {
 	publisher       shared.EventPublisher
 	clock           shared.Clock
 	callbackBaseURL string
+	webhooks        shared.WebhookEmitter
+}
+
+// SetWebhookEmitter wires the outbound webhook emitter. Optional: when unset,
+// automation completion/failure events are not forwarded to webhooks.
+func (s *Service) SetWebhookEmitter(e shared.WebhookEmitter) {
+	if e != nil {
+		s.webhooks = e
+	}
 }
 
 // New builds the automation service.
@@ -60,6 +69,7 @@ func New(
 		messages: messages, events: events, router: router, outbound: outbound,
 		flow: flow, timeouts: timeouts, publisher: publisher, clock: clock,
 		callbackBaseURL: strings.TrimRight(callbackBaseURL, "/"),
+		webhooks:        shared.NoopWebhookEmitter{},
 	}
 }
 
@@ -124,9 +134,7 @@ func (s *Service) StartConversationAutomation(ctx context.Context, conversationI
 			s.escalate(ctx, conv, "automation decision failed")
 			return nil
 		}
-		run.Status = entity.RunCompleted
-		run.UpdatedAt = s.clock.Now()
-		return s.runs.Update(ctx, run)
+		return s.completeRun(ctx, run)
 	}
 
 	run.Status = entity.RunWaitingCallback
@@ -188,9 +196,7 @@ func (s *Service) HandleCallback(ctx context.Context, tenantID string, rawBody [
 			return nil
 		}
 	}
-	run.Status = entity.RunCompleted
-	run.UpdatedAt = s.clock.Now()
-	return s.runs.Update(ctx, run)
+	return s.completeRun(ctx, run)
 }
 
 // HandleTimeout marks a still-waiting run as timed out and escalates to a human.
@@ -381,6 +387,36 @@ func (s *Service) markRunFailed(ctx context.Context, run *entity.AutomationRun, 
 	run.Error = errMsg
 	run.UpdatedAt = s.clock.Now()
 	_ = s.runs.Update(ctx, run)
+	s.webhooks.Emit(ctx, run.TenantID, webhookAutomationFailed, runPayload(run))
+}
+
+// completeRun marks a run completed and emits the automation.completed webhook.
+func (s *Service) completeRun(ctx context.Context, run *entity.AutomationRun) error {
+	run.Status = entity.RunCompleted
+	run.UpdatedAt = s.clock.Now()
+	if err := s.runs.Update(ctx, run); err != nil {
+		return err
+	}
+	s.webhooks.Emit(ctx, run.TenantID, webhookAutomationCompleted, runPayload(run))
+	return nil
+}
+
+// Webhook event names emitted by automation (kept local to avoid importing the
+// webhooks domain; values match the canonical webhook event names).
+const (
+	webhookAutomationCompleted = "automation.completed"
+	webhookAutomationFailed    = "automation.failed"
+)
+
+// runPayload is the compact webhook body for an automation run outcome.
+func runPayload(run *entity.AutomationRun) map[string]any {
+	return map[string]any{
+		"run_id":          run.ID,
+		"conversation_id": run.ConversationID,
+		"external_run_id": run.ExternalRunID,
+		"status":          string(run.Status),
+		"error":           run.Error,
+	}
 }
 
 func (s *Service) lastInboundText(ctx context.Context, conversationID, messageID string) string {

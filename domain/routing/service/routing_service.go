@@ -37,6 +37,15 @@ type Service struct {
 	locker        shared.Locker
 	publisher     shared.EventPublisher
 	clock         shared.Clock
+	webhooks      shared.WebhookEmitter
+}
+
+// SetWebhookEmitter wires the outbound webhook emitter. Optional: when unset,
+// assignment/transfer events are not forwarded to webhook subscriptions.
+func (s *Service) SetWebhookEmitter(e shared.WebhookEmitter) {
+	if e != nil {
+		s.webhooks = e
+	}
 }
 
 // New builds the routing service.
@@ -72,6 +81,7 @@ func New(
 		locker:        locker,
 		publisher:     publisher,
 		clock:         clock,
+		webhooks:      shared.NoopWebhookEmitter{},
 	}
 }
 
@@ -169,6 +179,7 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 			"to_agent":    conv.AssignedTo,
 		})
 		s.publishTransferred(ctx, conv, fromSector)
+		s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationTransferred, convcontracts.NewConversationPayload(conv))
 		return conv, nil
 	})
 }
@@ -381,6 +392,7 @@ func (s *Service) applyAssignment(ctx context.Context, conv *conventity.Conversa
 
 	s.recordEvent(ctx, conv, conventity.EventConversationAssigned, map[string]any{"agent_id": agentID})
 	s.publishAssigned(ctx, conv, agentID)
+	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationAssigned, convcontracts.NewConversationPayload(conv))
 	return conv, nil
 }
 

@@ -25,7 +25,7 @@ func AutomationIntegrationService(c *container.Container) *automationservice.Int
 
 // AutomationService builds the automation run service.
 func AutomationService(c *container.Container) *automationservice.Service {
-	return automationservice.New(
+	svc := automationservice.New(
 		automationrepo.NewIntegrationRepository(c.Mongo.DB, c.Cipher),
 		automationRunRepo(c),
 		convrepo.NewConversationRepository(c.Mongo.DB),
@@ -39,6 +39,8 @@ func AutomationService(c *container.Container) *automationservice.Service {
 		clock,
 		c.Config.Automation.CallbackBaseURL,
 	)
+	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	return svc
 }
 
 // AutomationController builds the automation controller.
