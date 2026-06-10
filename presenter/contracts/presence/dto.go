@@ -1,0 +1,47 @@
+// Package presence holds the request/response DTOs for the presence endpoints.
+package presence
+
+import (
+	"time"
+
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/presence/entity"
+)
+
+// SetStatusRequest is the body of POST /v1/agents/presence/status. UserID is
+// optional: empty means the caller's own presence; a different value requires
+// the user.manage permission.
+type SetStatusRequest struct {
+	UserID string `json:"user_id"`
+	Status string `json:"status"`
+}
+
+// PresenceResponse is the public representation of an agent's presence.
+type PresenceResponse struct {
+	TenantID           string    `json:"tenant_id"`
+	UserID             string    `json:"user_id"`
+	Status             string    `json:"status"`
+	CurrentLoad        int       `json:"current_load"`
+	MaxConcurrentChats int       `json:"max_concurrent_chats"`
+	LastSeenAt         time.Time `json:"last_seen_at"`
+}
+
+// NewPresenceResponse maps a presence entity to its DTO.
+func NewPresenceResponse(p *entity.AgentPresence) PresenceResponse {
+	return PresenceResponse{
+		TenantID:           p.TenantID,
+		UserID:             p.UserID,
+		Status:             string(p.Status),
+		CurrentLoad:        p.CurrentLoad,
+		MaxConcurrentChats: p.MaxConcurrentChats,
+		LastSeenAt:         p.LastSeenAt,
+	}
+}
+
+// NewPresenceResponses maps a slice of presence records.
+func NewPresenceResponses(items []*entity.AgentPresence) []PresenceResponse {
+	out := make([]PresenceResponse, len(items))
+	for i, p := range items {
+		out[i] = NewPresenceResponse(p)
+	}
+	return out
+}

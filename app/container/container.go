@@ -29,6 +29,7 @@ type Container struct {
 
 	AsynqClient *infraasynq.Client
 	Realtime    *realtime.Manager
+	Events      shared.EventPublisher
 
 	// Security primitives shared by the auth and iam wiring.
 	Hasher iam.PasswordHasher
@@ -52,13 +53,15 @@ func New(ctx context.Context, cfg config.Config) (*Container, error) {
 		return nil, fmt.Errorf("connect redis: %w", err)
 	}
 
+	rtManager := realtime.NewManager(redisClient)
 	c := &Container{
 		Config:      cfg,
 		Logger:      logger,
 		Mongo:       mongoClient,
 		Redis:       redisClient,
 		AsynqClient: infraasynq.NewClient(cfg.Redis),
-		Realtime:    realtime.NewManager(redisClient),
+		Realtime:    rtManager,
+		Events:      realtime.NewEventPublisher(rtManager),
 		Hasher:      security.NewBcryptHasher(cfg.Auth.BcryptCost),
 		Tokens: security.NewJWTManager(
 			cfg.Auth.JWTSecret,
