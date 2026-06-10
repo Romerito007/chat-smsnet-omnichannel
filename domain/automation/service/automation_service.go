@@ -33,6 +33,7 @@ type Service struct {
 	clock           shared.Clock
 	callbackBaseURL string
 	webhooks        shared.WebhookEmitter
+	businessHours   shared.BusinessHoursChecker
 }
 
 // SetWebhookEmitter wires the outbound webhook emitter. Optional: when unset,
@@ -40,6 +41,16 @@ type Service struct {
 func (s *Service) SetWebhookEmitter(e shared.WebhookEmitter) {
 	if e != nil {
 		s.webhooks = e
+	}
+}
+
+// SetBusinessHoursChecker wires the business-hours checker. When set, the flow
+// input carries whether the conversation's sector is within business hours so
+// the external flow can route off-hours conversations (we never send an
+// automatic message here — that is the flow's job).
+func (s *Service) SetBusinessHoursChecker(b shared.BusinessHoursChecker) {
+	if b != nil {
+		s.businessHours = b
 	}
 }
 
@@ -70,6 +81,7 @@ func New(
 		flow: flow, timeouts: timeouts, publisher: publisher, clock: clock,
 		callbackBaseURL: strings.TrimRight(callbackBaseURL, "/"),
 		webhooks:        shared.NoopWebhookEmitter{},
+		businessHours:   shared.NoopBusinessHoursChecker{},
 	}
 }
 
@@ -118,6 +130,13 @@ func (s *Service) StartConversationAutomation(ctx context.Context, conversationI
 		Channel:        conv.Channel,
 		Text:           s.lastInboundText(ctx, conv.ID, messageID),
 		CallbackURL:    s.callbackBaseURL + "/v1/automation/callbacks/" + tenantID,
+	}
+	// Let the external flow route off-hours conversations: pass whether the
+	// sector is within business hours. We never send an automatic message here.
+	if conv.SectorID != "" {
+		if within, herr := s.businessHours.IsWithinBusinessHours(ctx, conv.SectorID, now); herr == nil {
+			input.Metadata = map[string]any{"within_business_hours": within}
+		}
 	}
 
 	result, err := s.flow.Start(ctx, integration, input)

@@ -40,6 +40,7 @@ func AutomationService(c *container.Container) *automationservice.Service {
 		c.Config.Automation.CallbackBaseURL,
 	)
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	svc.SetBusinessHoursChecker(BusinessHoursService(c))
 	return svc
 }
 
