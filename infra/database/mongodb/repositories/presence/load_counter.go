@@ -36,7 +36,7 @@ func (c *LoadCounter) CountOpenAssigned(ctx context.Context, userID string) (int
 	}
 	n, err := c.coll.CountDocuments(ctx, bson.M{
 		"tenant_id":   tenantID,
-		"assignee_id": userID,
+		"assigned_to": userID,
 		"status":      bson.M{"$in": openStatuses},
 	})
 	if err != nil {

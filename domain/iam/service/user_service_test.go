@@ -106,6 +106,23 @@ func (r *fakeUserRepo) List(ctx context.Context, page shared.PageRequest) ([]*en
 	return out, nil
 }
 
+func (r *fakeUserRepo) ListBySector(ctx context.Context, sectorID string) ([]*entity.User, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	var out []*entity.User
+	for _, u := range r.users {
+		if u.TenantID != tenant {
+			continue
+		}
+		for _, s := range u.SectorIDs {
+			if s == sectorID {
+				cp := *u
+				out = append(out, &cp)
+			}
+		}
+	}
+	return out, nil
+}
+
 func tenantCtx(tenant string) context.Context {
 	return shared.WithTenant(context.Background(), tenant)
 }

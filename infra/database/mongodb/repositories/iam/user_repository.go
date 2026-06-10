@@ -133,6 +133,33 @@ func (r *UserRepository) List(ctx context.Context, page shared.PageRequest) ([]*
 	return out, mongodb.MapError(c.Err())
 }
 
+// ListBySector returns active users in the given sector within the tenant.
+func (r *UserRepository) ListBySector(ctx context.Context, sectorID string) ([]*entity.User, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	filter := bson.M{
+		"tenant_id":  tenantID,
+		"sector_ids": sectorID,
+		"status":     string(entity.StatusActive),
+	}
+	c, err := r.coll.Find(ctx, filter, options.Find().SetLimit(1000))
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer c.Close(ctx)
+	var out []*entity.User
+	for c.Next(ctx) {
+		var m models.User
+		if err := c.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, userToEntity(&m))
+	}
+	return out, mongodb.MapError(c.Err())
+}
+
 func userToModel(u *entity.User) models.User {
 	m := models.User{
 		Name:               u.Name,

@@ -8,11 +8,13 @@ import (
 
 // Realtime event names emitted by the conversations service.
 const (
-	RealtimeMessageCreated      = "message.created"
-	RealtimeConversationUpdated = "conversation.updated"
-	RealtimeTypingStarted       = "typing.started"
-	RealtimeTypingStopped       = "typing.stopped"
-	RealtimeMessageRead         = "message.read"
+	RealtimeMessageCreated          = "message.created"
+	RealtimeConversationUpdated     = "conversation.updated"
+	RealtimeConversationAssigned    = "conversation.assigned"
+	RealtimeConversationTransferred = "conversation.transferred"
+	RealtimeTypingStarted           = "typing.started"
+	RealtimeTypingStopped           = "typing.stopped"
+	RealtimeMessageRead             = "message.read"
 )
 
 // TypingPayload is the payload of typing.started/stopped events.

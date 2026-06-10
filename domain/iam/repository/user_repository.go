@@ -20,4 +20,7 @@ type UserRepository interface {
 	// yet; the matched record carries the authoritative tenant.
 	FindByEmailAnyTenant(ctx context.Context, email string) (*entity.User, error)
 	List(ctx context.Context, page shared.PageRequest) ([]*entity.User, error)
+	// ListBySector returns the active users who belong to the given sector
+	// (within the tenant). Used by routing to find eligible agents.
+	ListBySector(ctx context.Context, sectorID string) ([]*entity.User, error)
 }

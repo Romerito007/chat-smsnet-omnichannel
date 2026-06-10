@@ -4,12 +4,15 @@ import "time"
 
 // Event types recorded on a conversation timeline.
 const (
-	EventConversationCreated  = "conversation.created"
-	EventMessageCreated       = "message.created"
-	EventInternalNoteAdded    = "internal_note.added"
-	EventConversationUpdated  = "conversation.updated"
-	EventConversationClosed   = "conversation.closed"
-	EventConversationReopened = "conversation.reopened"
+	EventConversationCreated     = "conversation.created"
+	EventMessageCreated          = "message.created"
+	EventInternalNoteAdded       = "internal_note.added"
+	EventConversationUpdated     = "conversation.updated"
+	EventConversationClosed      = "conversation.closed"
+	EventConversationReopened    = "conversation.reopened"
+	EventConversationAssigned    = "conversation.assigned"
+	EventConversationTransferred = "conversation.transferred"
+	EventConversationEnqueued    = "conversation.enqueued"
 )
 
 // ActorType identifies who triggered a conversation event.
