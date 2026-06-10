@@ -93,7 +93,7 @@ Cada domínio segue o molde `contracts/ + entity/ + repository/ + service/`:
 10. Handlers Asynq — registre em `registerHandlers` (`bootstrap_workers.go`).
 11. Wiring — `app/factories/` + `app/container/`.
 
-Veja `docs/ARCHITECTURE.md` para detalhes.
+Veja `docs/architecture.md` (e os demais documentos em `docs/`) para detalhes.
 
 ## Comandos úteis
 
