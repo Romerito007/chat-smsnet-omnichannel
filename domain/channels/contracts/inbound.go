@@ -27,11 +27,3 @@ type InboundResult struct {
 	Status         string `json:"status"`
 	Idempotent     bool   `json:"idempotent"`
 }
-
-// CreateIntegration is the input to register a channel integration.
-type CreateIntegration struct {
-	Channel           string
-	Name              string
-	AutomationEnabled bool
-	DefaultQueueID    string
-}

@@ -9,20 +9,28 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
 
-// registerChannelRoutes mounts channel integration management (authenticated,
-// channel.manage) and the public, signature-authenticated inbound endpoint.
+// registerChannelRoutes mounts channel connection management (authenticated,
+// channel.manage) and the public, signature-authenticated inbound endpoints.
 func registerChannelRoutes(r chi.Router, c *container.Container) {
-	ctl := factories.ChannelController(c)
+	ctl := factories.ConnectionController(c)
 	inbound := factories.InboundController(c)
 
-	// Integration management.
+	// Connection management (CRUD + test).
 	r.Group(func(p chi.Router) {
 		p.Use(middleware.AuthContext(c.Tokens))
 		p.Use(middleware.RequirePermission(authz.ChannelManage))
-		p.Get("/channels", ctl.List)
-		p.Post("/channels", ctl.Create)
+
+		p.Route("/channels", func(ch chi.Router) {
+			ch.Get("/", ctl.List)
+			ch.Post("/", ctl.Create)
+			ch.Get("/{id}", ctl.Get)
+			ch.Patch("/{id}", ctl.Update)
+			ch.Delete("/{id}", ctl.Delete)
+			ch.Post("/{id}/test", ctl.Test)
+		})
 	})
 
-	// Inbound: public endpoint, authenticated by integration signature/secret.
-	r.Post("/inbound/channel/{channel}/messages", inbound.Handle)
+	// Public inbound endpoints, authenticated by the channel signature/token.
+	r.Post("/inbound/channel/{channel}/messages", inbound.HandleMessage)
+	r.Post("/inbound/channel/{channel}/delivery-receipts", inbound.HandleDeliveryReceipts)
 }

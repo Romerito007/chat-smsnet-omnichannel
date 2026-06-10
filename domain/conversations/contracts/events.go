@@ -15,7 +15,19 @@ const (
 	RealtimeTypingStarted           = "typing.started"
 	RealtimeTypingStopped           = "typing.stopped"
 	RealtimeMessageRead             = "message.read"
+	RealtimeMessageSent             = "message.sent"
+	RealtimeMessageDelivered        = "message.delivered"
+	RealtimeMessageFailed           = "message.failed"
 )
+
+// MessageStatusPayload is the payload for message.sent/delivered/read/failed
+// delivery-status events.
+type MessageStatusPayload struct {
+	MessageID      string `json:"message_id"`
+	ConversationID string `json:"conversation_id"`
+	DeliveryStatus string `json:"delivery_status"`
+	Error          string `json:"error,omitempty"`
+}
 
 // TypingPayload is the payload of typing.started/stopped events.
 type TypingPayload struct {

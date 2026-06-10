@@ -2,24 +2,32 @@ package factories
 
 import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	channelservice "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/service"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
 	infraautomation "github.com/romerito007/chat-smsnet-omnichannel/infra/automation"
+	infrachannels "github.com/romerito007/chat-smsnet-omnichannel/infra/channels"
 	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/channels"
 	contactrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/contacts"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
-	queuerepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/queues"
 	channelctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/channels"
 )
+
+// channelRegistry is the shared adapter registry (stateless).
+func channelRegistry() chcontracts.AdapterRegistry { return infrachannels.NewRegistry() }
 
 // ContactService builds the contact service.
 func ContactService(c *container.Container) *contactservice.Service {
 	return contactservice.New(contactrepo.New(c.Mongo.DB), clock)
 }
 
-// ChannelService builds the channel integration service.
-func ChannelService(c *container.Container) *channelservice.ChannelService {
-	return channelservice.NewChannelService(channelrepo.NewIntegrationRepository(c.Mongo.DB), clock)
+// ConnectionService builds the channel connection service.
+func ConnectionService(c *container.Container) *channelservice.ConnectionService {
+	return channelservice.NewConnectionService(
+		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
+		channelRegistry(),
+		clock,
+	)
 }
 
 // InboundService builds the inbound orchestration service.
@@ -29,7 +37,6 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		convrepo.NewMessageRepository(c.Mongo.DB),
 		convrepo.NewEventRepository(c.Mongo.DB),
-		queuerepo.New(c.Mongo.DB),
 		channelrepo.NewInboundRepository(c.Mongo.DB),
 		infraautomation.NewDispatcher(c.AsynqClient),
 		c.Locker,
@@ -38,12 +45,27 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 	)
 }
 
-// ChannelController builds the integration management controller.
-func ChannelController(c *container.Container) *channelctl.Controller {
-	return channelctl.NewController(ChannelService(c))
+// OutboundService builds the outbound delivery service.
+func OutboundService(c *container.Container) *channelservice.OutboundService {
+	return channelservice.NewOutboundService(
+		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
+		channelrepo.NewOutboundDeliveryRepository(c.Mongo.DB),
+		convrepo.NewConversationRepository(c.Mongo.DB),
+		convrepo.NewMessageRepository(c.Mongo.DB),
+		contactrepo.New(c.Mongo.DB),
+		channelRegistry(),
+		infrachannels.NewDeliveryEnqueuer(c.AsynqClient),
+		c.Events,
+		clock,
+	)
 }
 
-// InboundController builds the public inbound controller.
+// ConnectionController builds the connection management controller.
+func ConnectionController(c *container.Container) *channelctl.ConnectionController {
+	return channelctl.NewConnectionController(ConnectionService(c))
+}
+
+// InboundController builds the public inbound controller (messages + receipts).
 func InboundController(c *container.Container) *channelctl.InboundController {
-	return channelctl.NewInboundController(ChannelService(c), InboundService(c))
+	return channelctl.NewInboundController(ConnectionService(c), InboundService(c), OutboundService(c))
 }

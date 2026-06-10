@@ -24,6 +24,13 @@ type Service struct {
 	sectors       sectorrepo.SectorRepository
 	publisher     shared.EventPublisher
 	clock         shared.Clock
+	outbound      contracts.OutboundDispatcher
+}
+
+// SetOutboundDispatcher wires the channels delivery dispatcher. Optional: when
+// unset, outbound messages are persisted (pending) but not delivered.
+func (s *Service) SetOutboundDispatcher(d contracts.OutboundDispatcher) {
+	s.outbound = d
 }
 
 // New builds the service.
@@ -218,7 +225,16 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 		CreatedAt:      now,
 		DeliveryStatus: entity.DeliveryPending,
 	}
-	return s.persistMessage(ctx, conv, msg, entity.EventMessageCreated)
+	saved, err := s.persistMessage(ctx, conv, msg, entity.EventMessageCreated)
+	if err != nil {
+		return nil, err
+	}
+	// Hand off to the channels domain for delivery (best-effort: a channel
+	// failure must not fail the agent's send).
+	if s.outbound != nil {
+		s.outbound.Dispatch(ctx, conv, saved)
+	}
+	return saved, nil
 }
 
 // AddInternalNote adds an internal note that is never delivered to the customer.

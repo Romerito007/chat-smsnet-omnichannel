@@ -8,9 +8,10 @@ import (
 	convctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/conversations"
 )
 
-// ConversationService builds the conversations service.
+// ConversationService builds the conversations service, wired to the channels
+// outbound dispatcher so agent messages are delivered to the customer's channel.
 func ConversationService(c *container.Container) *convservice.Service {
-	return convservice.New(
+	svc := convservice.New(
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		convrepo.NewMessageRepository(c.Mongo.DB),
 		convrepo.NewEventRepository(c.Mongo.DB),
@@ -18,6 +19,8 @@ func ConversationService(c *container.Container) *convservice.Service {
 		c.Events,
 		clock,
 	)
+	svc.SetOutboundDispatcher(OutboundService(c))
+	return svc
 }
 
 // ConversationController builds the conversations controller.

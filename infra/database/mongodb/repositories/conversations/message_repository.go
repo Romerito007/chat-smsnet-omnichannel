@@ -40,13 +40,14 @@ func (r *MessageRepository) Update(ctx context.Context, m *entity.Message) error
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": m.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
-			"text":            m.Text,
-			"delivery_status": string(m.DeliveryStatus),
-			"delivery_error":  m.DeliveryError,
-			"delivered_at":    m.DeliveredAt,
-			"read_at":         m.ReadAt,
-			"edited_at":       m.EditedAt,
-			"deleted_at":      m.DeletedAt,
+			"text":                m.Text,
+			"delivery_status":     string(m.DeliveryStatus),
+			"delivery_error":      m.DeliveryError,
+			"external_message_id": m.ExternalMessageID,
+			"delivered_at":        m.DeliveredAt,
+			"read_at":             m.ReadAt,
+			"edited_at":           m.EditedAt,
+			"deleted_at":          m.DeletedAt,
 		}},
 	)
 	if err != nil {

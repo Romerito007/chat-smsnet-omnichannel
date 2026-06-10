@@ -8,7 +8,9 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	infraasynq "github.com/romerito007/chat-smsnet-omnichannel/infra/asynq"
 )
 
@@ -49,4 +51,18 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		)
 		return nil
 	})
+
+	// channel.deliver / channel.retry: send an outbound message to the channel.
+	outbound := factories.OutboundService(c)
+	deliver := func(ctx context.Context, t *asynq.Task) error {
+		var p chcontracts.DeliverTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		// The job carries its tenant; downstream repos are tenant-scoped.
+		ctx = shared.WithTenant(ctx, p.TenantID)
+		return outbound.Deliver(ctx, p.DeliveryID)
+	}
+	mux.HandleFunc(infraasynq.TaskChannelDeliver, deliver)
+	mux.HandleFunc(infraasynq.TaskChannelRetry, deliver)
 }

@@ -37,6 +37,7 @@ type Config struct {
 	Otel     OtelConfig
 	Auth     AuthConfig
 	Realtime RealtimeConfig
+	Channels ChannelsConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -90,6 +91,13 @@ type OtelConfig struct {
 type RealtimeConfig struct {
 	// MaxConnPerUser bounds simultaneous WS connections per user (0 = unlimited).
 	MaxConnPerUser int
+}
+
+// ChannelsConfig holds the channels domain settings.
+type ChannelsConfig struct {
+	// EncryptionKey encrypts channel credentials at rest. Set a strong value in
+	// production.
+	EncryptionKey string
 }
 
 // SeedConfig holds the idempotent first-run seed identity.
@@ -150,6 +158,9 @@ func Load() (Config, error) {
 		},
 		Realtime: RealtimeConfig{
 			MaxConnPerUser: getInt("WS_MAX_CONN_PER_USER", 10),
+		},
+		Channels: ChannelsConfig{
+			EncryptionKey: getString("CHANNELS_ENCRYPTION_KEY", "dev-channel-encryption-key"),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

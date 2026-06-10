@@ -14,7 +14,6 @@ import (
 	convcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/repository"
-	queuerepo "github.com/romerito007/chat-smsnet-omnichannel/domain/queues/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
@@ -30,7 +29,6 @@ type InboundService struct {
 	conversations convrepo.ConversationRepository
 	messages      convrepo.MessageRepository
 	events        convrepo.EventRepository
-	queues        queuerepo.QueueRepository
 	inbound       chrepo.InboundRepository
 	dispatcher    chcontracts.AutomationDispatcher
 	locker        shared.Locker
@@ -44,7 +42,6 @@ func NewInboundService(
 	conversations convrepo.ConversationRepository,
 	messages convrepo.MessageRepository,
 	events convrepo.EventRepository,
-	queues queuerepo.QueueRepository,
 	inbound chrepo.InboundRepository,
 	dispatcher chcontracts.AutomationDispatcher,
 	locker shared.Locker,
@@ -62,18 +59,19 @@ func NewInboundService(
 	}
 	return &InboundService{
 		contacts: contacts, conversations: conversations, messages: messages,
-		events: events, queues: queues, inbound: inbound, dispatcher: dispatcher,
+		events: events, inbound: inbound, dispatcher: dispatcher,
 		locker: locker, publisher: publisher, clock: clock,
 	}
 }
 
 // Handle processes one inbound message. The context must be tenant-scoped (set
-// from the authenticated integration).
-func (s *InboundService) Handle(ctx context.Context, integration *chentity.Integration, msg chcontracts.InboundMessage) (chcontracts.InboundResult, error) {
+// from the authenticated connection).
+func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConnection, msg chcontracts.InboundMessage) (chcontracts.InboundResult, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return chcontracts.InboundResult{}, err
 	}
+	channel := string(conn.Type)
 
 	externalMsgID := strings.TrimSpace(msg.ExternalMessageID)
 	if externalMsgID == "" {
@@ -91,7 +89,7 @@ func (s *InboundService) Handle(ctx context.Context, integration *chentity.Integ
 	}
 
 	// Serialize processing of the same external message across nodes.
-	key := "inbound:lock:" + tenantID + ":" + integration.Channel + ":" + externalMsgID
+	key := "inbound:lock:" + tenantID + ":" + channel + ":" + externalMsgID
 	release, acquired, err := s.locker.Acquire(ctx, key, inboundLockTTL)
 	if err != nil {
 		return chcontracts.InboundResult{}, apperror.Internal("could not acquire inbound lock").Wrap(err)
@@ -102,14 +100,14 @@ func (s *InboundService) Handle(ctx context.Context, integration *chentity.Integ
 	defer release()
 
 	// Idempotency: a previously processed external id short-circuits.
-	if existing, err := s.inbound.FindByExternalID(ctx, integration.Channel, externalMsgID); err == nil {
+	if existing, err := s.inbound.FindByExternalID(ctx, channel, externalMsgID); err == nil {
 		return s.idempotentResult(ctx, existing), nil
 	} else if apperror.From(err).Code != apperror.CodeNotFound {
 		return chcontracts.InboundResult{}, err
 	}
 
 	contact, err := s.contacts.UpsertFromInbound(ctx, contactcontracts.UpsertFromInbound{
-		Channel:    integration.Channel,
+		Channel:    channel,
 		ExternalID: externalContact,
 		Name:       msg.ContactName,
 		Phone:      msg.ContactPhone,
@@ -119,7 +117,7 @@ func (s *InboundService) Handle(ctx context.Context, integration *chentity.Integ
 		return chcontracts.InboundResult{}, err
 	}
 
-	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, integration.Channel)
+	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel)
 	if err != nil {
 		return chcontracts.InboundResult{}, err
 	}
@@ -131,7 +129,7 @@ func (s *InboundService) Handle(ctx context.Context, integration *chentity.Integ
 
 	// New conversations are routed: automation first, else enqueue.
 	if isNew {
-		if err := s.routeNew(ctx, integration, conv, message.ID); err != nil {
+		if err := s.routeNew(ctx, conn, conv, message.ID); err != nil {
 			return chcontracts.InboundResult{}, err
 		}
 	}
@@ -140,7 +138,7 @@ func (s *InboundService) Handle(ctx context.Context, integration *chentity.Integ
 	rec := &chentity.InboundRecord{
 		ID:                shared.NewID(),
 		TenantID:          tenantID,
-		Channel:           integration.Channel,
+		Channel:           channel,
 		ExternalMessageID: externalMsgID,
 		ConversationID:    conv.ID,
 		MessageID:         message.ID,
@@ -243,20 +241,20 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 }
 
 // routeNew applies the initial routing of a brand-new conversation: automation
-// (slow work deferred to Asynq) when enabled, otherwise enqueue.
-func (s *InboundService) routeNew(ctx context.Context, integration *chentity.Integration, conv *conventity.Conversation, messageID string) error {
-	if integration.AutomationEnabled {
+// (slow work deferred to Asynq) when enabled, otherwise enqueue into the
+// connection's default sector.
+func (s *InboundService) routeNew(ctx context.Context, conn *chentity.ChannelConnection, conv *conventity.Conversation, messageID string) error {
+	if conn.AutomationEnabled {
 		conv.Status = conventity.StatusAutomation
 		conv.UpdatedAt = s.clock.Now()
 		if err := s.conversations.Update(ctx, conv); err != nil {
 			return err
 		}
 		s.recordEvent(ctx, conv, conventity.EventConversationUpdated, map[string]any{"automation": true})
-		// Slow / non-critical: invoke the external flow out of band.
 		if s.dispatcher != nil {
 			_ = s.dispatcher.Dispatch(chcontracts.AutomationInvoke{
 				TenantID:       conv.TenantID,
-				IntegrationID:  integration.ID,
+				IntegrationID:  conn.ID,
 				ConversationID: conv.ID,
 				MessageID:      messageID,
 			})
@@ -265,22 +263,14 @@ func (s *InboundService) routeNew(ctx context.Context, integration *chentity.Int
 		return nil
 	}
 
-	// No automation: enqueue. Derive sector from the default queue when set.
-	if integration.DefaultQueueID != "" {
-		if q, err := s.queues.FindByID(ctx, integration.DefaultQueueID); err == nil {
-			conv.QueueID = q.ID
-			conv.SectorID = q.SectorID
-		}
-	}
+	// No automation: enqueue into the connection's default sector.
+	conv.SectorID = conn.DefaultSectorID
 	conv.Status = conventity.StatusQueued
 	conv.UpdatedAt = s.clock.Now()
 	if err := s.conversations.Update(ctx, conv); err != nil {
 		return err
 	}
-	s.recordEvent(ctx, conv, conventity.EventConversationEnqueued, map[string]any{
-		"queue_id":  conv.QueueID,
-		"sector_id": conv.SectorID,
-	})
+	s.recordEvent(ctx, conv, conventity.EventConversationEnqueued, map[string]any{"sector_id": conv.SectorID})
 	s.publishConversation(ctx, conv)
 	return nil
 }

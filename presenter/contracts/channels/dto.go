@@ -1,5 +1,5 @@
-// Package channels holds the request/response DTOs for the channel integration
-// management endpoints and the inbound endpoint.
+// Package channels holds the request/response DTOs for channel connection
+// management, the inbound endpoint and delivery receipts.
 package channels
 
 import (
@@ -10,69 +10,109 @@ import (
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 )
 
-// ── integration management ───────────────────────────────────────────────────
+// ── connection management ────────────────────────────────────────────────────
 
-// CreateIntegrationRequest is the body of POST /v1/channels.
-type CreateIntegrationRequest struct {
-	Channel           string `json:"channel"`
+// CreateConnectionRequest is the body of POST /v1/channels.
+type CreateConnectionRequest struct {
+	Type              string `json:"type"`
 	Name              string `json:"name"`
+	BaseURL           string `json:"base_url"`
+	AuthType          string `json:"auth_type"`
+	Secret            string `json:"secret"`
+	DefaultSectorID   string `json:"default_sector_id"`
 	AutomationEnabled bool   `json:"automation_enabled"`
-	DefaultQueueID    string `json:"default_queue_id"`
 }
 
 // ToCommand maps to the service command.
-func (r CreateIntegrationRequest) ToCommand() chcontracts.CreateIntegration {
-	return chcontracts.CreateIntegration{
-		Channel:           r.Channel,
+func (r CreateConnectionRequest) ToCommand() chcontracts.CreateConnection {
+	return chcontracts.CreateConnection{
+		Type:              chentity.Type(r.Type),
 		Name:              r.Name,
+		BaseURL:           r.BaseURL,
+		AuthType:          chentity.AuthType(r.AuthType),
+		Secret:            r.Secret,
+		DefaultSectorID:   r.DefaultSectorID,
 		AutomationEnabled: r.AutomationEnabled,
-		DefaultQueueID:    r.DefaultQueueID,
 	}
 }
 
-// IntegrationResponse is the public representation of an integration. The secret
-// is only included on creation (so the provider can be configured) and omitted
-// elsewhere.
-type IntegrationResponse struct {
-	ID                string    `json:"id"`
-	TenantID          string    `json:"tenant_id"`
-	Channel           string    `json:"channel"`
-	Name              string    `json:"name,omitempty"`
-	IntegrationKey    string    `json:"integration_key"`
-	Secret            string    `json:"secret,omitempty"`
-	Enabled           bool      `json:"enabled"`
-	AutomationEnabled bool      `json:"automation_enabled"`
-	DefaultQueueID    string    `json:"default_queue_id,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+// UpdateConnectionRequest is the body of PATCH /v1/channels/{id}.
+type UpdateConnectionRequest struct {
+	Name              *string `json:"name"`
+	Status            *string `json:"status"`
+	BaseURL           *string `json:"base_url"`
+	AuthType          *string `json:"auth_type"`
+	Secret            *string `json:"secret"`
+	DefaultSectorID   *string `json:"default_sector_id"`
+	Enabled           *bool   `json:"enabled"`
+	AutomationEnabled *bool   `json:"automation_enabled"`
 }
 
-// NewIntegrationResponse maps an integration; includeSecret controls secret
-// exposure.
-func NewIntegrationResponse(i *chentity.Integration, includeSecret bool) IntegrationResponse {
-	resp := IntegrationResponse{
-		ID:                i.ID,
-		TenantID:          i.TenantID,
-		Channel:           i.Channel,
-		Name:              i.Name,
-		IntegrationKey:    i.IntegrationKey,
-		Enabled:           i.Enabled,
-		AutomationEnabled: i.AutomationEnabled,
-		DefaultQueueID:    i.DefaultQueueID,
-		CreatedAt:         i.CreatedAt,
-		UpdatedAt:         i.UpdatedAt,
+// ToCommand maps to the service command.
+func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
+	cmd := chcontracts.UpdateConnection{
+		Name:              r.Name,
+		BaseURL:           r.BaseURL,
+		Secret:            r.Secret,
+		DefaultSectorID:   r.DefaultSectorID,
+		Enabled:           r.Enabled,
+		AutomationEnabled: r.AutomationEnabled,
 	}
-	if includeSecret {
-		resp.Secret = i.Secret
+	if r.Status != nil {
+		st := chentity.Status(*r.Status)
+		cmd.Status = &st
 	}
-	return resp
+	if r.AuthType != nil {
+		at := chentity.AuthType(*r.AuthType)
+		cmd.AuthType = &at
+	}
+	return cmd
 }
 
-// NewIntegrationResponses maps a slice (without secrets).
-func NewIntegrationResponses(items []*chentity.Integration) []IntegrationResponse {
-	out := make([]IntegrationResponse, len(items))
-	for i, it := range items {
-		out[i] = NewIntegrationResponse(it, false)
+// ConnectionResponse is the public representation of a connection. The secret is
+// never returned (only whether one is set).
+type ConnectionResponse struct {
+	ID                 string    `json:"id"`
+	TenantID           string    `json:"tenant_id"`
+	Type               string    `json:"type"`
+	Name               string    `json:"name,omitempty"`
+	Status             string    `json:"status"`
+	BaseURL            string    `json:"base_url,omitempty"`
+	AuthType           string    `json:"auth_type,omitempty"`
+	HasSecret          bool      `json:"has_secret"`
+	WebhookVerifyToken string    `json:"webhook_verify_token"`
+	DefaultSectorID    string    `json:"default_sector_id,omitempty"`
+	Enabled            bool      `json:"enabled"`
+	AutomationEnabled  bool      `json:"automation_enabled"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// NewConnectionResponse maps a connection, masking the secret.
+func NewConnectionResponse(c *chentity.ChannelConnection) ConnectionResponse {
+	return ConnectionResponse{
+		ID:                 c.ID,
+		TenantID:           c.TenantID,
+		Type:               string(c.Type),
+		Name:               c.Name,
+		Status:             string(c.Status),
+		BaseURL:            c.BaseURL,
+		AuthType:           string(c.AuthType),
+		HasSecret:          c.Secret != "",
+		WebhookVerifyToken: c.WebhookVerifyToken,
+		DefaultSectorID:    c.DefaultSectorID,
+		Enabled:            c.Enabled,
+		AutomationEnabled:  c.AutomationEnabled,
+		CreatedAt:          c.CreatedAt,
+		UpdatedAt:          c.UpdatedAt,
+	}
+}
+
+// NewConnectionResponses maps a slice.
+func NewConnectionResponses(items []*chentity.ChannelConnection) []ConnectionResponse {
+	out := make([]ConnectionResponse, len(items))
+	for i, c := range items {
+		out[i] = NewConnectionResponse(c)
 	}
 	return out
 }
@@ -89,23 +129,32 @@ type AttachmentItem struct {
 }
 
 // InboundRequest is the body of POST /v1/inbound/channel/{channel}/messages.
+// IntegrationKey carries the connection's webhook verify token.
 type InboundRequest struct {
-	TenantKey         string           `json:"tenant_key"`
-	IntegrationKey    string           `json:"integration_key"`
-	ExternalMessageID string           `json:"external_message_id"`
-	ExternalContactID string           `json:"external_contact_id"`
-	ContactName       string           `json:"contact_name"`
-	ContactPhone      string           `json:"contact_phone"`
-	ContactDocument   string           `json:"contact_document"`
-	Channel           string           `json:"channel"`
-	Text              string           `json:"text"`
-	Attachments       []AttachmentItem `json:"attachments"`
-	Metadata          map[string]any   `json:"metadata"`
-	Timestamp         int64            `json:"timestamp"`
+	TenantKey          string           `json:"tenant_key"`
+	IntegrationKey     string           `json:"integration_key"`
+	WebhookVerifyToken string           `json:"webhook_verify_token"`
+	ExternalMessageID  string           `json:"external_message_id"`
+	ExternalContactID  string           `json:"external_contact_id"`
+	ContactName        string           `json:"contact_name"`
+	ContactPhone       string           `json:"contact_phone"`
+	ContactDocument    string           `json:"contact_document"`
+	Channel            string           `json:"channel"`
+	Text               string           `json:"text"`
+	Attachments        []AttachmentItem `json:"attachments"`
+	Metadata           map[string]any   `json:"metadata"`
+	Timestamp          int64            `json:"timestamp"`
 }
 
-// ToMessage maps the request to the domain inbound message, using the path
-// channel as authoritative.
+// Token returns the webhook verify token from the body (either field).
+func (r InboundRequest) Token() string {
+	if r.WebhookVerifyToken != "" {
+		return r.WebhookVerifyToken
+	}
+	return r.IntegrationKey
+}
+
+// ToMessage maps the request to the domain inbound message.
 func (r InboundRequest) ToMessage(channel string) chcontracts.InboundMessage {
 	atts := make([]conventity.Attachment, len(r.Attachments))
 	for i, a := range r.Attachments {

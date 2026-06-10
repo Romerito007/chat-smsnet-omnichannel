@@ -15,6 +15,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/realtime"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/redis"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/secrets"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/security"
 )
 
@@ -35,6 +36,7 @@ type Container struct {
 	// Security primitives shared by the auth and iam wiring.
 	Hasher iam.PasswordHasher
 	Tokens domainauth.TokenManager
+	Cipher *secrets.Cipher
 }
 
 // New builds the container, connecting to the infrastructure required by the
@@ -54,6 +56,12 @@ func New(ctx context.Context, cfg config.Config) (*Container, error) {
 		return nil, fmt.Errorf("connect redis: %w", err)
 	}
 
+	cipher, err := secrets.NewCipher(cfg.Channels.EncryptionKey)
+	if err != nil {
+		_ = mongoClient.Disconnect(context.Background())
+		return nil, fmt.Errorf("init cipher: %w", err)
+	}
+
 	rtManager := realtime.NewManager(redisClient)
 	c := &Container{
 		Config:      cfg,
@@ -71,6 +79,7 @@ func New(ctx context.Context, cfg config.Config) (*Container, error) {
 			cfg.Auth.AccessTTL,
 			cfg.Auth.RefreshTTL,
 		),
+		Cipher: cipher,
 	}
 	return c, nil
 }

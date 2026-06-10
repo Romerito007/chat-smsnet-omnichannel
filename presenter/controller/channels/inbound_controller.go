@@ -8,34 +8,39 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
+	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	channelservice "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/service"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/channels"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
 
-// maxInboundBody bounds the inbound payload size.
 const maxInboundBody = 1 << 20 // 1 MiB
 
-// InboundController serves the public, signature-authenticated inbound endpoint.
+// InboundController serves the public, signature-authenticated inbound endpoints
+// (messages and delivery receipts).
 type InboundController struct {
-	channels *channelservice.ChannelService
-	inbound  *channelservice.InboundService
+	connections *channelservice.ConnectionService
+	inbound     *channelservice.InboundService
+	outbound    *channelservice.OutboundService
 }
 
 // NewInboundController builds the controller.
-func NewInboundController(channels *channelservice.ChannelService, inbound *channelservice.InboundService) *InboundController {
-	return &InboundController{channels: channels, inbound: inbound}
+func NewInboundController(connections *channelservice.ConnectionService, inbound *channelservice.InboundService, outbound *channelservice.OutboundService) *InboundController {
+	return &InboundController{connections: connections, inbound: inbound, outbound: outbound}
 }
 
-// Handle processes POST /v1/inbound/channel/{channel}/messages.
-//
-// The request is authenticated by the integration signature (HMAC over the raw
-// body) or the exact secret header; the tenant is derived from the matched
-// integration, never from the payload. Processing is fast and idempotent.
-func (c *InboundController) Handle(w http.ResponseWriter, r *http.Request) {
-	channel := chi.URLParam(r, "channel")
+// verifyHeaders extracts the signature/secret headers an adapter checks.
+func verifyHeaders(r *http.Request) map[string]string {
+	return map[string]string{
+		"X-Signature":          r.Header.Get("X-Signature"),
+		"X-Integration-Secret": r.Header.Get("X-Integration-Secret"),
+	}
+}
 
+// HandleMessage processes POST /v1/inbound/channel/{channel}/messages.
+func (c *InboundController) HandleMessage(w http.ResponseWriter, r *http.Request) {
+	channel := chi.URLParam(r, "channel")
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboundBody))
 	if err != nil {
 		middleware.WriteError(w, r, apperror.Validation("unreadable request body"))
@@ -47,25 +52,45 @@ func (c *InboundController) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	integration, err := c.channels.Authenticate(
-		r.Context(),
-		req.IntegrationKey,
-		channel,
-		string(body),
-		r.Header.Get("X-Signature"),
-		r.Header.Get("X-Integration-Secret"),
-	)
+	token := req.Token()
+	if token == "" {
+		token = r.Header.Get("X-Webhook-Token")
+	}
+	conn, err := c.connections.ResolveInbound(r.Context(), token, chentity.Type(channel), body, verifyHeaders(r))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
 
-	// Tenant comes from the verified integration.
-	ctx := shared.WithTenant(r.Context(), integration.TenantID)
-	result, err := c.inbound.Handle(ctx, integration, req.ToMessage(channel))
+	ctx := shared.WithTenant(r.Context(), conn.TenantID)
+	result, err := c.inbound.Handle(ctx, conn, req.ToMessage(channel))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, result)
+}
+
+// HandleDeliveryReceipts processes POST /v1/inbound/channel/{channel}/delivery-receipts.
+func (c *InboundController) HandleDeliveryReceipts(w http.ResponseWriter, r *http.Request) {
+	channel := chi.URLParam(r, "channel")
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboundBody))
+	if err != nil {
+		middleware.WriteError(w, r, apperror.Validation("unreadable request body"))
+		return
+	}
+
+	conn, err := c.connections.ResolveInbound(r.Context(), r.Header.Get("X-Webhook-Token"), chentity.Type(channel), body, verifyHeaders(r))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+
+	ctx := shared.WithTenant(r.Context(), conn.TenantID)
+	applied, err := c.outbound.ProcessReceipts(ctx, conn, body)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{"applied": applied})
 }
