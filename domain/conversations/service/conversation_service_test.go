@@ -45,6 +45,17 @@ func (r *fakeConvRepo) FindByID(ctx context.Context, id string) (*entity.Convers
 	}
 	return nil, apperror.NotFound("not found")
 }
+func (r *fakeConvRepo) FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*entity.Conversation, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	for _, c := range r.items {
+		if c.TenantID == tenant && c.ContactID == contactID && c.Channel == channel && !c.Status.IsClosed() {
+			cp := *c
+			return &cp, nil
+		}
+	}
+	return nil, apperror.NotFound("not found")
+}
+
 func (r *fakeConvRepo) List(ctx context.Context, f contracts.ListFilter, vis contracts.Visibility, _ shared.PageRequest) ([]*entity.Conversation, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	var out []*entity.Conversation

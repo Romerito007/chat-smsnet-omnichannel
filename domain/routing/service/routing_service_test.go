@@ -59,6 +59,19 @@ func (r *fakeConvRepo) FindByID(ctx context.Context, id string) (*conventity.Con
 	}
 	return nil, apperror.NotFound("not found")
 }
+func (r *fakeConvRepo) FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*conventity.Conversation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	tenant, _ := shared.TenantFrom(ctx)
+	for _, c := range r.items {
+		if c.TenantID == tenant && c.ContactID == contactID && c.Channel == channel && !c.Status.IsClosed() {
+			cp := *c
+			return &cp, nil
+		}
+	}
+	return nil, apperror.NotFound("not found")
+}
+
 func (r *fakeConvRepo) List(ctx context.Context, f convcontracts.ListFilter, _ convcontracts.Visibility, _ shared.PageRequest) ([]*conventity.Conversation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

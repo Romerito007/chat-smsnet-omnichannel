@@ -16,6 +16,10 @@ type ConversationRepository interface {
 	Create(ctx context.Context, c *entity.Conversation) error
 	Update(ctx context.Context, c *entity.Conversation) error
 	FindByID(ctx context.Context, id string) (*entity.Conversation, error)
+	// FindOpenByContactChannel returns the most recent non-closed conversation
+	// for a contact on a channel, or a not_found AppError. Used by inbound to
+	// reuse an open conversation instead of creating a new one.
+	FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*entity.Conversation, error)
 	// List returns conversations matching the filter and visibility, ordered by
 	// updated_at desc (keyset). Over-fetches by one for has_more detection.
 	List(ctx context.Context, filter contracts.ListFilter, vis contracts.Visibility, page shared.PageRequest) ([]*entity.Conversation, error)

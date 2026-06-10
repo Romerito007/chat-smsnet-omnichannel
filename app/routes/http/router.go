@@ -42,6 +42,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerPresenceRoutes(v1, c)
 		registerConversationRoutes(v1, c)
 		registerRoutingRoutes(v1, c)
+		registerChannelRoutes(v1, c)
 	})
 
 	return r

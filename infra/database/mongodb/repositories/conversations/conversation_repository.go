@@ -76,6 +76,30 @@ func (r *ConversationRepository) FindByID(ctx context.Context, id string) (*enti
 	return convToEntity(&m), nil
 }
 
+// closedStatuses are the terminal conversation states excluded from "open".
+var closedStatuses = bson.A{
+	string(entity.StatusResolved), string(entity.StatusClosed), string(entity.StatusArchived),
+}
+
+func (r *ConversationRepository) FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*entity.Conversation, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	filter := bson.M{
+		"tenant_id":  tenantID,
+		"contact_id": contactID,
+		"channel":    channel,
+		"status":     bson.M{"$nin": closedStatuses},
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})
+	var m models.Conversation
+	if err := r.coll.FindOne(ctx, filter, opts).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return convToEntity(&m), nil
+}
+
 func (r *ConversationRepository) List(ctx context.Context, filter contracts.ListFilter, vis contracts.Visibility, page shared.PageRequest) ([]*entity.Conversation, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
