@@ -35,9 +35,19 @@ type Config struct {
 	Redis RedisConfig
 	Asynq AsynqConfig
 	Otel  OtelConfig
+	Auth  AuthConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
+}
+
+// AuthConfig holds the JWT and password settings.
+type AuthConfig struct {
+	JWTSecret  string
+	Issuer     string
+	AccessTTL  time.Duration
+	RefreshTTL time.Duration
+	BcryptCost int
 }
 
 // HTTPConfig holds the HTTP/WS server settings.
@@ -77,9 +87,10 @@ type OtelConfig struct {
 
 // SeedConfig holds the idempotent first-run seed identity.
 type SeedConfig struct {
-	TenantName string
-	OwnerEmail string
-	OwnerName  string
+	TenantName    string
+	OwnerEmail    string
+	OwnerName     string
+	OwnerPassword string
 }
 
 // Load reads configuration from the environment. If an .env file exists it is
@@ -123,10 +134,18 @@ func Load() (Config, error) {
 			Enabled:     getBool("OTEL_ENABLED", false),
 			ServiceName: getString("OTEL_SERVICE_NAME", "chat-backend"),
 		},
+		Auth: AuthConfig{
+			JWTSecret:  getString("AUTH_JWT_SECRET", "dev-secret-change-me"),
+			Issuer:     getString("AUTH_ISSUER", "chat-backend"),
+			AccessTTL:  getDuration("AUTH_ACCESS_TTL", 15*time.Minute),
+			RefreshTTL: getDuration("AUTH_REFRESH_TTL", 720*time.Hour),
+			BcryptCost: getInt("AUTH_BCRYPT_COST", 12),
+		},
 		Seed: SeedConfig{
-			TenantName: getString("SEED_TENANT_NAME", "Default Tenant"),
-			OwnerEmail: getString("SEED_OWNER_EMAIL", "owner@example.com"),
-			OwnerName:  getString("SEED_OWNER_NAME", "Owner"),
+			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),
+			OwnerEmail:    getString("SEED_OWNER_EMAIL", "owner@example.com"),
+			OwnerName:     getString("SEED_OWNER_NAME", "Owner"),
+			OwnerPassword: getString("SEED_OWNER_PASSWORD", "change-me-now"),
 		},
 	}
 
@@ -147,6 +166,9 @@ func (c Config) validate() error {
 	}
 	if c.Mongo.URI == "" {
 		return fmt.Errorf("MONGO_URI is required")
+	}
+	if c.AppEnv == "production" && c.Auth.JWTSecret == "dev-secret-change-me" {
+		return fmt.Errorf("AUTH_JWT_SECRET must be set in production")
 	}
 	return nil
 }

@@ -8,11 +8,14 @@ import (
 	"fmt"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/config"
+	domainauth "github.com/romerito007/chat-smsnet-omnichannel/domain/auth"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/iam"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	infraasynq "github.com/romerito007/chat-smsnet-omnichannel/infra/asynq"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/realtime"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/redis"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/security"
 )
 
 // Container holds process-wide singletons. Not every field is populated for
@@ -26,6 +29,10 @@ type Container struct {
 
 	AsynqClient *infraasynq.Client
 	Realtime    *realtime.Manager
+
+	// Security primitives shared by the auth and iam wiring.
+	Hasher iam.PasswordHasher
+	Tokens domainauth.TokenManager
 }
 
 // New builds the container, connecting to the infrastructure required by the
@@ -52,6 +59,13 @@ func New(ctx context.Context, cfg config.Config) (*Container, error) {
 		Redis:       redisClient,
 		AsynqClient: infraasynq.NewClient(cfg.Redis),
 		Realtime:    realtime.NewManager(redisClient),
+		Hasher:      security.NewBcryptHasher(cfg.Auth.BcryptCost),
+		Tokens: security.NewJWTManager(
+			cfg.Auth.JWTSecret,
+			cfg.Auth.Issuer,
+			cfg.Auth.AccessTTL,
+			cfg.Auth.RefreshTTL,
+		),
 	}
 	return c, nil
 }

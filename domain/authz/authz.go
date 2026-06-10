@@ -1,33 +1,55 @@
-// Package authz holds the permission vocabulary and the authorization decision
-// contract. Concrete role/permission storage lives in its own domain; this
-// package only defines the primitives the rest of the system checks against.
+// Package authz holds the permission vocabulary, the resolved authorization
+// state (AuthContext) and the default role definitions used to seed a tenant.
+// It depends only on the standard library so it sits at the bottom of the graph.
 package authz
 
-import (
-	"context"
-
-	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
-)
-
-// Permission is a fine-grained capability, e.g. "conversation:read".
-type Permission string
-
-// Role groups a set of permissions. These are the seeded defaults referenced by
-// bootstrap_seeds.
+// DefaultRole names the roles created when a tenant is seeded.
 const (
-	RoleOwner Role = "owner"
-	RoleAdmin Role = "admin"
-	RoleAgent Role = "agent"
+	DefaultRoleOwner = "owner"
+	DefaultRoleAdmin = "admin"
+	DefaultRoleAgent = "agent"
 )
 
-// Role is a named bundle of permissions.
-type Role string
+// DefaultRoleDefinition describes a seeded role: its permissions and sector
+// scope. Owner receives the full catalog; admin a broad subset; agent the
+// day-to-day attendance permissions restricted to its own sectors.
+type DefaultRoleDefinition struct {
+	Name        string
+	Permissions []Permission
+	SectorScope SectorScope
+}
 
-// Authorizer decides whether an actor may perform an action. The default
-// implementation is permissive enough to compile and run; real policy is layered
-// on top via domain/policy and the authz domain repository.
-type Authorizer interface {
-	// Authorize returns nil when the actor holds the permission, or a forbidden
-	// AppError otherwise.
-	Authorize(ctx context.Context, actor shared.Actor, perm Permission) error
+// DefaultRoles returns the idempotent role seed for a tenant.
+func DefaultRoles() []DefaultRoleDefinition {
+	return []DefaultRoleDefinition{
+		{
+			Name:        DefaultRoleOwner,
+			Permissions: AllPermissions(),
+			SectorScope: ScopeAll,
+		},
+		{
+			Name: DefaultRoleAdmin,
+			Permissions: []Permission{
+				ConversationRead, ConversationAssign, ConversationTransfer, ConversationClose,
+				MessageSend, MessageInternalNote,
+				ContactRead, ContactViewConnectionStatus,
+				SectorManage, QueueManage, UserManage,
+				AutomationManage, CopilotUse, CopilotConfigure,
+				IntegrationRead, IntegrationConfigure,
+				ChannelManage, WebhookManage,
+				ReportView, ReportExport, AuditView,
+			},
+			SectorScope: ScopeAll,
+		},
+		{
+			Name: DefaultRoleAgent,
+			Permissions: []Permission{
+				ConversationRead, ConversationAssign, ConversationClose,
+				MessageSend, MessageInternalNote,
+				ContactRead,
+				CopilotUse,
+			},
+			SectorScope: ScopeOwn,
+		},
+	}
 }
