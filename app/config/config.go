@@ -43,9 +43,18 @@ type Config struct {
 	Monitoring    MonitoringConfig
 	Copilot       CopilotConfig
 	Notifications NotificationsConfig
+	CSAT          CSATConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
+}
+
+// CSATConfig holds the CSAT settings.
+type CSATConfig struct {
+	// ExpireAfterSeconds bounds how long a sent survey waits for an answer.
+	ExpireAfterSeconds int
+	// PublicBaseURL is the base for the public answer link sent to customers.
+	PublicBaseURL string
 }
 
 // NotificationsConfig holds the notifications settings.
@@ -218,6 +227,10 @@ func Load() (Config, error) {
 		Notifications: NotificationsConfig{
 			EmailFrom:  getString("NOTIFICATIONS_EMAIL_FROM", "no-reply@example.com"),
 			AppBaseURL: getString("APP_BASE_URL", "http://localhost:3000"),
+		},
+		CSAT: CSATConfig{
+			ExpireAfterSeconds: getInt("CSAT_EXPIRE_AFTER_SECONDS", 72*3600),
+			PublicBaseURL:      getString("CSAT_PUBLIC_BASE_URL", getString("APP_BASE_URL", "http://localhost:3000")),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

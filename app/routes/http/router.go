@@ -52,6 +52,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerBusinessHoursRoutes(v1, c)
 		registerSLARoutes(v1, c)
 		registerNotificationRoutes(v1, c)
+		registerCSATRoutes(v1, c)
 
 		// Shared on-demand external queries (providerhub + monitoring) under a
 		// single /conversations/{id}/external subrouter.

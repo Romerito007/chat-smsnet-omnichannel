@@ -8,9 +8,10 @@ import (
 	convctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/conversations"
 )
 
-// ConversationService builds the conversations service, wired to the channels
-// outbound dispatcher so agent messages are delivered to the customer's channel.
-func ConversationService(c *container.Container) *convservice.Service {
+// conversationServiceBase builds the conversations service with every wiring
+// EXCEPT the CSAT trigger. CSAT's channel sender reuses this base (it only needs
+// SendSystemMessage), which breaks the conversations<->csat construction cycle.
+func conversationServiceBase(c *container.Container) *convservice.Service {
 	svc := convservice.New(
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		convrepo.NewMessageRepository(c.Mongo.DB),
@@ -25,6 +26,14 @@ func ConversationService(c *container.Container) *convservice.Service {
 	svc.SetCloseReasonPolicy(ConversationToolsCloseReasonService(c))
 	svc.SetSLAHook(SLAService(c))
 	svc.SetNotifier(NotificationEnqueuer(c))
+	return svc
+}
+
+// ConversationService builds the full conversations service, including the CSAT
+// close trigger so closing an eligible conversation starts a satisfaction survey.
+func ConversationService(c *container.Container) *convservice.Service {
+	svc := conversationServiceBase(c)
+	svc.SetCSATTrigger(CSATService(c))
 	return svc
 }
 

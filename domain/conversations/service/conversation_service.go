@@ -30,6 +30,7 @@ type Service struct {
 	closeReasons  contracts.CloseReasonPolicy
 	sla           contracts.SLAHook
 	notifier      shared.Notifier
+	csat          contracts.CSATTrigger
 }
 
 // SetNotifier wires the user notifier. Optional: when unset, mentions do not
@@ -37,6 +38,14 @@ type Service struct {
 func (s *Service) SetNotifier(n shared.Notifier) {
 	if n != nil {
 		s.notifier = n
+	}
+}
+
+// SetCSATTrigger wires the CSAT close trigger. Optional: when unset, closing a
+// conversation does not start a survey.
+func (s *Service) SetCSATTrigger(t contracts.CSATTrigger) {
+	if t != nil {
+		s.csat = t
 	}
 }
 
@@ -99,6 +108,7 @@ func New(
 		webhooks:      shared.NoopWebhookEmitter{},
 		sla:           contracts.NoopSLAHook{},
 		notifier:      shared.NoopNotifier{},
+		csat:          contracts.NoopCSATTrigger{},
 	}
 }
 
@@ -371,7 +381,45 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 	s.publishConversation(ctx, conv)
 	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
 	s.sla.OnResolved(ctx, conv, now)
+	s.csat.OnConversationClosed(ctx, conv)
 	return conv, nil
+}
+
+// SendSystemMessage sends a system-authored outbound message to a conversation's
+// channel, bypassing the closed-conversation guard (used e.g. to deliver a CSAT
+// survey after the conversation is closed). It is tenant-scoped from ctx and does
+// not enforce agent visibility — callers are trusted system actors.
+func (s *Service) SendSystemMessage(ctx context.Context, conversationID, text string) (*entity.Message, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	conv, err := s.conversations.FindByID(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, apperror.Validation("message text is required")
+	}
+	now := s.clock.Now()
+	msg := &entity.Message{
+		ID:             shared.NewID(),
+		TenantID:       conv.TenantID,
+		ConversationID: conv.ID,
+		SenderType:     entity.SenderSystem,
+		Direction:      entity.DirectionOutbound,
+		MessageType:    entity.MessageText,
+		Text:           text,
+		CreatedAt:      now,
+		DeliveryStatus: entity.DeliveryPending,
+	}
+	saved, err := s.persistMessage(ctx, conv, msg, entity.EventMessageCreated)
+	if err != nil {
+		return nil, err
+	}
+	if s.outbound != nil {
+		s.outbound.Dispatch(ctx, conv, saved)
+	}
+	return saved, nil
 }
 
 // ApplyTags adds and/or removes tags on a conversation. Added tags are validated

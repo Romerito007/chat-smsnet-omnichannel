@@ -46,3 +46,15 @@ type NoopSLAHook struct{}
 func (NoopSLAHook) OnConversationCreated(context.Context, *entity.Conversation)      {}
 func (NoopSLAHook) OnFirstResponse(context.Context, *entity.Conversation, time.Time) {}
 func (NoopSLAHook) OnResolved(context.Context, *entity.Conversation, time.Time)      {}
+
+// CSATTrigger is notified when a conversation is closed, so the CSAT domain can
+// enqueue a satisfaction survey when the conversation is eligible. Best-effort:
+// a CSAT failure must never break the close. Implemented by the csat domain.
+type CSATTrigger interface {
+	OnConversationClosed(ctx context.Context, conv *entity.Conversation)
+}
+
+// NoopCSATTrigger ignores closes. The default when no CSAT domain is wired.
+type NoopCSATTrigger struct{}
+
+func (NoopCSATTrigger) OnConversationClosed(context.Context, *entity.Conversation) {}

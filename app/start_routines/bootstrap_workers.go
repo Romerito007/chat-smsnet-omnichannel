@@ -12,6 +12,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
 	autocontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automation/contracts"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
+	ccontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/contracts"
 	ncontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/notifications/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	whcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/webhooks/contracts"
@@ -119,5 +120,25 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		}
 		ctx = authz.WithAuthContext(shared.WithTenant(ctx, p.TenantID), authz.SystemActor(p.TenantID))
 		return notifications.SendEmail(ctx, p)
+	})
+
+	// csat.send: deliver the survey question to the conversation's channel.
+	// csat.expire: mark an unanswered survey expired. Both run as system actors.
+	csat := factories.CSATService(c)
+	mux.HandleFunc(infraasynq.TaskCSATSend, func(ctx context.Context, t *asynq.Task) error {
+		var p ccontracts.SendTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		ctx = authz.WithAuthContext(shared.WithTenant(ctx, p.TenantID), authz.SystemActor(p.TenantID))
+		return csat.Send(ctx, p)
+	})
+	mux.HandleFunc(infraasynq.TaskCSATExpire, func(ctx context.Context, t *asynq.Task) error {
+		var p ccontracts.ExpireTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		ctx = authz.WithAuthContext(shared.WithTenant(ctx, p.TenantID), authz.SystemActor(p.TenantID))
+		return csat.Expire(ctx, p)
 	})
 }
