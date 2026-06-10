@@ -228,3 +228,52 @@ func TestStatus_InvalidTimezoneFallsBackToUTC(t *testing.T) {
 		t.Errorf("expected UTC fallback and open at 13:00 UTC, got tz=%s open=%v", st.Timezone, st.Open)
 	}
 }
+
+// ── business-clock arithmetic (used by SLA for "horário útil") ───────────────
+
+func TestAddBusinessDuration_WalksOpenTime(t *testing.T) {
+	svc := newSvc(weekdaysDoc("UTC")) // mon-fri 09:00-18:00 UTC
+	// Monday 17:00 + 2 business hours → 1h Mon (17-18) + 1h Tue (09-10) = Tue 10:00.
+	from := mustUTC(t, "2025-01-06T17:00:00Z")
+	due, err := svc.AddBusinessDuration(ctxT(), "s1", from, 2*time.Hour)
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	want := mustUTC(t, "2025-01-07T10:00:00Z")
+	if !due.Equal(want) {
+		t.Errorf("due = %s, want %s", due.UTC().Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}
+
+func TestAddBusinessDuration_SkipsWeekendAndHoliday(t *testing.T) {
+	// Friday 17:00 + 2h → 1h Fri, then skip Sat/Sun, 1h Mon 09-10 = Mon 10:00.
+	svc := newSvc(weekdaysDoc("UTC"))
+	from := mustUTC(t, "2025-01-10T17:00:00Z") // 2025-01-10 is a Friday
+	due, _ := svc.AddBusinessDuration(ctxT(), "s1", from, 2*time.Hour)
+	want := mustUTC(t, "2025-01-13T10:00:00Z") // Monday
+	if !due.Equal(want) {
+		t.Errorf("due = %s, want %s", due.UTC().Format(time.RFC3339), want.Format(time.RFC3339))
+	}
+}
+
+func TestBusinessDurationBetween_CountsOpenTimeOnly(t *testing.T) {
+	svc := newSvc(weekdaysDoc("UTC"))
+	// Mon 17:00 → Tue 10:00 spans 17h wall, but only 2h business (1h Mon + 1h Tue).
+	d, err := svc.BusinessDurationBetween(ctxT(), "s1",
+		mustUTC(t, "2025-01-06T17:00:00Z"), mustUTC(t, "2025-01-07T10:00:00Z"))
+	if err != nil {
+		t.Fatalf("between: %v", err)
+	}
+	if d != 2*time.Hour {
+		t.Errorf("business duration = %s, want 2h", d)
+	}
+}
+
+func TestAddBusinessDuration_Unconfigured_IsWallClock(t *testing.T) {
+	svc := newSvc(nil) // no business hours → 24/7
+	from := mustUTC(t, "2025-01-04T03:00:00Z")
+	due, _ := svc.AddBusinessDuration(ctxT(), "s1", from, 90*time.Minute)
+	if !due.Equal(from.Add(90 * time.Minute)) {
+		t.Errorf("unconfigured should be wall-clock add, got %s", due)
+	}
+}

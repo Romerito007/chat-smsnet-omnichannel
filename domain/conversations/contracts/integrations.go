@@ -1,6 +1,11 @@
 package contracts
 
-import "context"
+import (
+	"context"
+	"time"
+
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
+)
 
 // TagCatalog validates that tag ids belong to the tenant and are usable. It is
 // implemented by the conversationtools domain and wired into the conversations
@@ -19,3 +24,25 @@ type CloseReasonPolicy interface {
 	// unknown reason should return a not_found error.
 	RequiresNote(ctx context.Context, reasonID string) (bool, error)
 }
+
+// SLAHook lets the SLA domain observe a conversation's lifecycle so it can
+// create/advance SLA tracking. It is implemented by the sla domain and wired
+// into the conversations service. Every method is best-effort and side-effect
+// only: an SLA failure must never break the conversation operation.
+type SLAHook interface {
+	// OnConversationCreated selects an applicable policy and starts tracking.
+	OnConversationCreated(ctx context.Context, conv *entity.Conversation)
+	// OnFirstResponse records the first agent response time (idempotent: only the
+	// first call per conversation has effect).
+	OnFirstResponse(ctx context.Context, conv *entity.Conversation, at time.Time)
+	// OnResolved records the resolution time and finalizes the tracking.
+	OnResolved(ctx context.Context, conv *entity.Conversation, at time.Time)
+}
+
+// NoopSLAHook ignores every lifecycle event. The default when no SLA domain is
+// wired.
+type NoopSLAHook struct{}
+
+func (NoopSLAHook) OnConversationCreated(context.Context, *entity.Conversation)      {}
+func (NoopSLAHook) OnFirstResponse(context.Context, *entity.Conversation, time.Time) {}
+func (NoopSLAHook) OnResolved(context.Context, *entity.Conversation, time.Time)      {}

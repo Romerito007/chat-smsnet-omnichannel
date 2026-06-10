@@ -90,4 +90,11 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 	}
 	mux.HandleFunc(infraasynq.TaskWebhookDeliver, deliverWebhook)
 	mux.HandleFunc(infraasynq.TaskWebhookRetry, deliverWebhook)
+
+	// sla.check: scheduled, multi-tenant. Evaluates running SLA trackings across
+	// all tenants, firing warnings/breaches (realtime + sla.breached webhook).
+	sla := factories.SLAService(c)
+	mux.HandleFunc(infraasynq.TaskSLACheck, func(ctx context.Context, _ *asynq.Task) error {
+		return sla.RunCheck(ctx)
+	})
 }

@@ -23,6 +23,7 @@ func ConversationService(c *container.Container) *convservice.Service {
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
 	svc.SetTagCatalog(ConversationToolsTagService(c))
 	svc.SetCloseReasonPolicy(ConversationToolsCloseReasonService(c))
+	svc.SetSLAHook(SLAService(c))
 	return svc
 }
 

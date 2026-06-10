@@ -28,6 +28,15 @@ type Service struct {
 	webhooks      shared.WebhookEmitter
 	tags          contracts.TagCatalog
 	closeReasons  contracts.CloseReasonPolicy
+	sla           contracts.SLAHook
+}
+
+// SetSLAHook wires the SLA lifecycle hook. Optional: when unset, no SLA tracking
+// is created or advanced.
+func (s *Service) SetSLAHook(h contracts.SLAHook) {
+	if h != nil {
+		s.sla = h
+	}
 }
 
 // SetOutboundDispatcher wires the channels delivery dispatcher. Optional: when
@@ -79,6 +88,7 @@ func New(
 		publisher:     publisher,
 		clock:         clock,
 		webhooks:      shared.NoopWebhookEmitter{},
+		sla:           contracts.NoopSLAHook{},
 	}
 }
 
@@ -150,6 +160,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 	s.recordEvent(ctx, conv, entity.EventConversationCreated, nil)
 	s.publishConversation(ctx, conv)
 	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationCreated, contracts.NewConversationPayload(conv))
+	s.sla.OnConversationCreated(ctx, conv)
 	return conv, nil
 }
 
@@ -259,6 +270,8 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 	if s.outbound != nil {
 		s.outbound.Dispatch(ctx, conv, saved)
 	}
+	// SLA: an agent's outbound message is the first response (idempotent).
+	s.sla.OnFirstResponse(ctx, conv, saved.CreatedAt)
 	return saved, nil
 }
 
@@ -331,6 +344,7 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 	})
 	s.publishConversation(ctx, conv)
 	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
+	s.sla.OnResolved(ctx, conv, now)
 	return conv, nil
 }
 
