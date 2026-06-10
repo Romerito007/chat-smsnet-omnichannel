@@ -30,14 +30,15 @@ type Config struct {
 	LogLevel string
 	RunRole  Role
 
-	HTTP     HTTPConfig
-	Mongo    MongoConfig
-	Redis    RedisConfig
-	Asynq    AsynqConfig
-	Otel     OtelConfig
-	Auth     AuthConfig
-	Realtime RealtimeConfig
-	Channels ChannelsConfig
+	HTTP       HTTPConfig
+	Mongo      MongoConfig
+	Redis      RedisConfig
+	Asynq      AsynqConfig
+	Otel       OtelConfig
+	Auth       AuthConfig
+	Realtime   RealtimeConfig
+	Channels   ChannelsConfig
+	Automation AutomationConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -98,6 +99,12 @@ type ChannelsConfig struct {
 	// EncryptionKey encrypts channel credentials at rest. Set a strong value in
 	// production.
 	EncryptionKey string
+}
+
+// AutomationConfig holds the automation domain settings.
+type AutomationConfig struct {
+	// CallbackBaseURL is the public base URL the external flow uses to call back.
+	CallbackBaseURL string
 }
 
 // SeedConfig holds the idempotent first-run seed identity.
@@ -161,6 +168,9 @@ func Load() (Config, error) {
 		},
 		Channels: ChannelsConfig{
 			EncryptionKey: getString("CHANNELS_ENCRYPTION_KEY", "dev-channel-encryption-key"),
+		},
+		Automation: AutomationConfig{
+			CallbackBaseURL: getString("AUTOMATION_CALLBACK_BASE_URL", "http://localhost:8080"),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

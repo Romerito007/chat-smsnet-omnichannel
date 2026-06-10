@@ -13,6 +13,8 @@ const (
 	EventConversationAssigned    = "conversation.assigned"
 	EventConversationTransferred = "conversation.transferred"
 	EventConversationEnqueued    = "conversation.enqueued"
+	EventAutomationDecision      = "automation.decision"
+	EventAutomationEscalated     = "automation.escalated"
 )
 
 // ActorType identifies who triggered a conversation event.

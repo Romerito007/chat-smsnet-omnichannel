@@ -9,6 +9,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
+	autocontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automation/contracts"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	infraasynq "github.com/romerito007/chat-smsnet-omnichannel/infra/asynq"
@@ -39,17 +40,26 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 	// automation.invoke: slow, non-critical invocation of the external flow.
 	// The flow itself is external; this handler is the integration seam where the
 	// outbound call + callback handling will live. For now it logs.
+	automation := factories.AutomationService(c)
+
+	// automation.invoke: start the external flow for a new conversation.
 	mux.HandleFunc(infraasynq.TaskAutomationInvoke, func(ctx context.Context, t *asynq.Task) error {
 		var p chcontracts.AutomationInvoke
 		if err := json.Unmarshal(t.Payload(), &p); err != nil {
 			return err
 		}
-		c.Logger.Info("automation.invoke",
-			"tenant_id", p.TenantID,
-			"conversation_id", p.ConversationID,
-			"integration_id", p.IntegrationID,
-		)
-		return nil
+		ctx = shared.WithTenant(ctx, p.TenantID)
+		return automation.StartConversationAutomation(ctx, p.ConversationID, p.MessageID)
+	})
+
+	// automation.timeout: escalate a run still waiting for its callback.
+	mux.HandleFunc(infraasynq.TaskAutomationTimeout, func(ctx context.Context, t *asynq.Task) error {
+		var p autocontracts.TimeoutTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		ctx = shared.WithTenant(ctx, p.TenantID)
+		return automation.HandleTimeout(ctx, p.RunID)
 	})
 
 	// channel.deliver / channel.retry: send an outbound message to the channel.

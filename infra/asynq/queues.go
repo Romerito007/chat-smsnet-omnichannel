@@ -35,7 +35,8 @@ const (
 
 	TaskAttachmentProcess = "attachment.process"
 
-	TaskAutomationInvoke = "automation.invoke"
+	TaskAutomationInvoke  = "automation.invoke"
+	TaskAutomationTimeout = "automation.timeout"
 
 	// Scheduler tasks.
 	TaskChatCloseInactive = "chat.close_inactive_conversations"

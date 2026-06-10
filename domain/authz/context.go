@@ -47,6 +47,13 @@ func NewAuthContext(tenantID, userID string, perms []Permission, sectorIDs []str
 	}
 }
 
+// SystemActor returns an all-scope AuthContext for trusted internal/system
+// operations (e.g. automation applying a flow decision). It is never created
+// from external input.
+func SystemActor(tenantID string) AuthContext {
+	return NewAuthContext(tenantID, "system", AllPermissions(), nil, ScopeAll)
+}
+
 // Has reports whether the context holds the given permission.
 func (a AuthContext) Has(p Permission) bool {
 	_, ok := a.Permissions[p]
