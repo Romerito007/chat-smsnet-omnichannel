@@ -47,7 +47,7 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 
 // OutboundService builds the outbound delivery service.
 func OutboundService(c *container.Container) *channelservice.OutboundService {
-	return channelservice.NewOutboundService(
+	svc := channelservice.NewOutboundService(
 		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
 		channelrepo.NewOutboundDeliveryRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),
@@ -58,6 +58,8 @@ func OutboundService(c *container.Container) *channelservice.OutboundService {
 		c.Events,
 		clock,
 	)
+	svc.SetNotifier(NotificationEnqueuer(c))
+	return svc
 }
 
 // ConnectionController builds the connection management controller.

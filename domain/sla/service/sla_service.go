@@ -28,7 +28,16 @@ type Service struct {
 	bizClock      shared.BusinessClock
 	publisher     shared.EventPublisher
 	webhooks      shared.WebhookEmitter
+	notifier      shared.Notifier
 	clock         shared.Clock
+}
+
+// SetNotifier wires the user notifier. Optional: when unset, the assigned agent
+// is not notified of SLA warnings/breaches.
+func (s *Service) SetNotifier(n shared.Notifier) {
+	if n != nil {
+		s.notifier = n
+	}
 }
 
 // NewService builds the service.
@@ -55,7 +64,8 @@ func NewService(
 	}
 	return &Service{
 		policies: policies, tracking: tracking, conversations: conversations,
-		bizClock: bizClock, publisher: publisher, webhooks: webhooks, clock: clock,
+		bizClock: bizClock, publisher: publisher, webhooks: webhooks,
+		notifier: shared.NoopNotifier{}, clock: clock,
 	}
 }
 
@@ -225,6 +235,17 @@ func (s *Service) fire(ctx context.Context, t *entity.SLATracking, conv *convent
 	_ = s.publisher.Publish(ctx, shared.TopicTenant(t.TenantID), event, payload)
 	if breach {
 		s.webhooks.Emit(ctx, t.TenantID, contracts.RealtimeSLABreached, payload)
+	}
+	// Notify the assigned agent (in-app + maybe email per their preference).
+	if conv.AssignedTo != "" {
+		ntype, title := "sla.at_risk", "A conversation is at risk of breaching SLA"
+		if breach {
+			ntype, title = "sla.breached", "A conversation breached its SLA"
+		}
+		s.notifier.Notify(ctx, shared.NotifyInput{
+			TenantID: t.TenantID, UserID: conv.AssignedTo,
+			Type: ntype, Title: title, Link: "/conversations/" + t.ConversationID,
+		})
 	}
 }
 

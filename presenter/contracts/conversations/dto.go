@@ -97,7 +97,8 @@ func (r SendMessageRequest) ToCommand() contracts.SendMessage {
 
 // InternalNoteRequest is the body of POST /v1/conversations/{id}/internal-notes.
 type InternalNoteRequest struct {
-	Text string `json:"text"`
+	Text           string   `json:"text"`
+	MentionUserIDs []string `json:"mention_user_ids"`
 }
 
 // CloseRequest is the body of POST /v1/conversations/{id}/close.

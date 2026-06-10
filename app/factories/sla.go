@@ -17,7 +17,7 @@ func SLAPolicyService(c *container.Container) *slaservice.PolicyService {
 // SLAHook). Due dates are computed in business time via the businesshours
 // service; breaches publish realtime + the sla.breached webhook.
 func SLAService(c *container.Container) *slaservice.Service {
-	return slaservice.NewService(
+	svc := slaservice.NewService(
 		slarepo.NewPolicyRepository(c.Mongo.DB),
 		slarepo.NewTrackingRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),
@@ -26,6 +26,8 @@ func SLAService(c *container.Container) *slaservice.Service {
 		WebhookDispatcher(c),
 		clock,
 	)
+	svc.SetNotifier(NotificationEnqueuer(c))
+	return svc
 }
 
 // SLAController builds the SLA controller.

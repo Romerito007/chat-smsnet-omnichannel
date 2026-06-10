@@ -24,6 +24,7 @@ func ConversationService(c *container.Container) *convservice.Service {
 	svc.SetTagCatalog(ConversationToolsTagService(c))
 	svc.SetCloseReasonPolicy(ConversationToolsCloseReasonService(c))
 	svc.SetSLAHook(SLAService(c))
+	svc.SetNotifier(NotificationEnqueuer(c))
 	return svc
 }
 

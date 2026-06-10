@@ -35,6 +35,8 @@ type SendMessage struct {
 // AddInternalNote is the input to add an internal note (never delivered).
 type AddInternalNote struct {
 	Text string
+	// MentionUserIDs are users @-mentioned in the note; each is notified.
+	MentionUserIDs []string
 }
 
 // CloseConversation is the input to close a conversation.

@@ -109,7 +109,7 @@ func (c *Controller) AddInternalNote(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	msg, err := c.svc.AddInternalNote(r.Context(), chi.URLParam(r, "id"), domaincontracts.AddInternalNote{Text: req.Text})
+	msg, err := c.svc.AddInternalNote(r.Context(), chi.URLParam(r, "id"), domaincontracts.AddInternalNote{Text: req.Text, MentionUserIDs: req.MentionUserIDs})
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return

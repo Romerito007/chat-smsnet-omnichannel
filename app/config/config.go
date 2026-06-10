@@ -30,21 +30,30 @@ type Config struct {
 	LogLevel string
 	RunRole  Role
 
-	HTTP        HTTPConfig
-	Mongo       MongoConfig
-	Redis       RedisConfig
-	Asynq       AsynqConfig
-	Otel        OtelConfig
-	Auth        AuthConfig
-	Realtime    RealtimeConfig
-	Channels    ChannelsConfig
-	Automation  AutomationConfig
-	ProviderHub ProviderHubConfig
-	Monitoring  MonitoringConfig
-	Copilot     CopilotConfig
+	HTTP          HTTPConfig
+	Mongo         MongoConfig
+	Redis         RedisConfig
+	Asynq         AsynqConfig
+	Otel          OtelConfig
+	Auth          AuthConfig
+	Realtime      RealtimeConfig
+	Channels      ChannelsConfig
+	Automation    AutomationConfig
+	ProviderHub   ProviderHubConfig
+	Monitoring    MonitoringConfig
+	Copilot       CopilotConfig
+	Notifications NotificationsConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
+}
+
+// NotificationsConfig holds the notifications settings.
+type NotificationsConfig struct {
+	// EmailFrom is the From address for notification emails.
+	EmailFrom string
+	// AppBaseURL is the base for deep links embedded in notifications.
+	AppBaseURL string
 }
 
 // AuthConfig holds the JWT and password settings.
@@ -205,6 +214,10 @@ func Load() (Config, error) {
 			OpenAIKey:    getString("COPILOT_OPENAI_API_KEY", ""),
 			GeminiKey:    getString("COPILOT_GEMINI_API_KEY", ""),
 			AnthropicKey: getString("COPILOT_ANTHROPIC_API_KEY", ""),
+		},
+		Notifications: NotificationsConfig{
+			EmailFrom:  getString("NOTIFICATIONS_EMAIL_FROM", "no-reply@example.com"),
+			AppBaseURL: getString("APP_BASE_URL", "http://localhost:3000"),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

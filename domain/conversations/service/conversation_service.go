@@ -29,6 +29,15 @@ type Service struct {
 	tags          contracts.TagCatalog
 	closeReasons  contracts.CloseReasonPolicy
 	sla           contracts.SLAHook
+	notifier      shared.Notifier
+}
+
+// SetNotifier wires the user notifier. Optional: when unset, mentions do not
+// notify.
+func (s *Service) SetNotifier(n shared.Notifier) {
+	if n != nil {
+		s.notifier = n
+	}
 }
 
 // SetSLAHook wires the SLA lifecycle hook. Optional: when unset, no SLA tracking
@@ -89,6 +98,7 @@ func New(
 		clock:         clock,
 		webhooks:      shared.NoopWebhookEmitter{},
 		sla:           contracts.NoopSLAHook{},
+		notifier:      shared.NoopNotifier{},
 	}
 }
 
@@ -298,7 +308,23 @@ func (s *Service) AddInternalNote(ctx context.Context, conversationID string, cm
 		CreatedAt:      now,
 		DeliveryStatus: entity.DeliveryNone,
 	}
-	return s.persistMessage(ctx, conv, msg, entity.EventInternalNoteAdded)
+	saved, err := s.persistMessage(ctx, conv, msg, entity.EventInternalNoteAdded)
+	if err != nil {
+		return nil, err
+	}
+	// Notify @-mentioned users (never the author).
+	for _, uid := range cmd.MentionUserIDs {
+		if uid == "" || uid == ac.UserID {
+			continue
+		}
+		s.notifier.Notify(ctx, shared.NotifyInput{
+			TenantID: conv.TenantID, UserID: uid,
+			Type:  "mention.internal_note",
+			Title: "You were mentioned in an internal note",
+			Link:  "/conversations/" + conv.ID,
+		})
+	}
+	return saved, nil
 }
 
 // Close closes a conversation, optionally recording a close reason and note.

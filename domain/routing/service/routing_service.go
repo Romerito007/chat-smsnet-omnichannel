@@ -38,6 +38,7 @@ type Service struct {
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	webhooks      shared.WebhookEmitter
+	notifier      shared.Notifier
 }
 
 // SetWebhookEmitter wires the outbound webhook emitter. Optional: when unset,
@@ -45,6 +46,14 @@ type Service struct {
 func (s *Service) SetWebhookEmitter(e shared.WebhookEmitter) {
 	if e != nil {
 		s.webhooks = e
+	}
+}
+
+// SetNotifier wires the user notifier. Optional: when unset, agents are not
+// notified of assignments/transfers.
+func (s *Service) SetNotifier(n shared.Notifier) {
+	if n != nil {
+		s.notifier = n
 	}
 }
 
@@ -82,6 +91,7 @@ func New(
 		publisher:     publisher,
 		clock:         clock,
 		webhooks:      shared.NoopWebhookEmitter{},
+		notifier:      shared.NoopNotifier{},
 	}
 }
 
@@ -180,6 +190,14 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 		})
 		s.publishTransferred(ctx, conv, fromSector)
 		s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationTransferred, convcontracts.NewConversationPayload(conv))
+		if conv.AssignedTo != "" {
+			s.notifier.Notify(ctx, shared.NotifyInput{
+				TenantID: conv.TenantID, UserID: conv.AssignedTo,
+				Type:  "conversation.transferred_to_you",
+				Title: "A conversation was transferred to you",
+				Link:  "/conversations/" + conv.ID,
+			})
+		}
 		return conv, nil
 	})
 }
@@ -393,6 +411,12 @@ func (s *Service) applyAssignment(ctx context.Context, conv *conventity.Conversa
 	s.recordEvent(ctx, conv, conventity.EventConversationAssigned, map[string]any{"agent_id": agentID})
 	s.publishAssigned(ctx, conv, agentID)
 	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationAssigned, convcontracts.NewConversationPayload(conv))
+	s.notifier.Notify(ctx, shared.NotifyInput{
+		TenantID: conv.TenantID, UserID: agentID,
+		Type:  "conversation.assigned_to_you",
+		Title: "A conversation was assigned to you",
+		Link:  "/conversations/" + conv.ID,
+	})
 	return conv, nil
 }
 

@@ -27,6 +27,7 @@ func RoutingService(c *container.Container) *routingservice.Service {
 		clock,
 	)
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	svc.SetNotifier(NotificationEnqueuer(c))
 	return svc
 }
 

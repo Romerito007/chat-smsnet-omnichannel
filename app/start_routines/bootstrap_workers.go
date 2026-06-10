@@ -9,8 +9,10 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
 	autocontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automation/contracts"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
+	ncontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/notifications/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	whcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/webhooks/contracts"
 	infraasynq "github.com/romerito007/chat-smsnet-omnichannel/infra/asynq"
@@ -96,5 +98,26 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 	sla := factories.SLAService(c)
 	mux.HandleFunc(infraasynq.TaskSLACheck, func(ctx context.Context, _ *asynq.Task) error {
 		return sla.RunCheck(ctx)
+	})
+
+	// notification.send: create the in-app notification + realtime, and enqueue an
+	// email when the recipient's preference allows. notification.email: send the
+	// privacy-safe email (subject + link only).
+	notifications := factories.NotificationService(c)
+	mux.HandleFunc(infraasynq.TaskNotificationSend, func(ctx context.Context, t *asynq.Task) error {
+		var p ncontracts.SendTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		ctx = shared.WithTenant(ctx, p.TenantID)
+		return notifications.Send(ctx, p)
+	})
+	mux.HandleFunc(infraasynq.TaskNotificationEmail, func(ctx context.Context, t *asynq.Task) error {
+		var p ncontracts.EmailTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		ctx = authz.WithAuthContext(shared.WithTenant(ctx, p.TenantID), authz.SystemActor(p.TenantID))
+		return notifications.SendEmail(ctx, p)
 	})
 }

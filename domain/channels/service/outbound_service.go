@@ -31,6 +31,15 @@ type OutboundService struct {
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	maxAttempts   int
+	notifier      shared.Notifier
+}
+
+// SetNotifier wires the user notifier. Optional: when unset, channel delivery
+// failures are not notified.
+func (s *OutboundService) SetNotifier(n shared.Notifier) {
+	if n != nil {
+		s.notifier = n
+	}
 }
 
 // NewOutboundService builds the service.
@@ -55,6 +64,7 @@ func NewOutboundService(
 		connections: connections, deliveries: deliveries, conversations: conversations,
 		messages: messages, contacts: contacts, registry: registry, enqueuer: enqueuer,
 		publisher: publisher, clock: clock, maxAttempts: defaultMaxAttempts,
+		notifier: shared.NoopNotifier{},
 	}
 }
 
@@ -184,6 +194,15 @@ func (s *OutboundService) fail(ctx context.Context, delivery *chentity.OutboundD
 		return err
 	}
 	s.publishStatus(ctx, conv, message, convcontracts.RealtimeMessageFailed, errMsg)
+	// Notify the assigned agent that the channel could not deliver.
+	if conv.AssignedTo != "" {
+		s.notifier.Notify(ctx, shared.NotifyInput{
+			TenantID: conv.TenantID, UserID: conv.AssignedTo,
+			Type:  "channel.connection_error",
+			Title: "A message could not be delivered to the channel",
+			Link:  "/conversations/" + conv.ID,
+		})
+	}
 	return nil
 }
 
