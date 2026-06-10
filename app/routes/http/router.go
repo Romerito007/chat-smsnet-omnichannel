@@ -17,19 +17,24 @@ import (
 func NewRouter(c *container.Container) *chi.Mux {
 	r := chi.NewRouter()
 
-	// Global middleware chain (outermost first).
+	// Global middleware chain (outermost first). Recover is outermost so it
+	// catches panics anywhere; Telemetry wraps the rest so spans/metrics cover
+	// the full request; RequestID provides correlation for logs and the error
+	// envelope.
 	r.Use(middleware.Recover(c.Logger))
+	r.Use(middleware.Telemetry("http.server"))
 	r.Use(middleware.RequestID(c.Logger))
 	r.Use(middleware.CORS(c.Config.HTTP.AllowedOrigins))
 
 	// Health endpoints live outside /api and outside tenant/rate-limit scope.
-	health := factories.HealthController(c)
+	health := factories.HealthHandler(c)
 	r.Get("/healthz", health.Live)
 	r.Get("/readyz", health.Ready)
 
 	// Tenant-scoped, rate-limited API surface.
 	r.Route("/api", func(api chi.Router) {
 		api.Use(middleware.TenantContext)
+		api.Use(middleware.AuthStub)
 		api.Use(middleware.RateLimit(c.Redis, policy.DefaultAPIRateLimit))
 		api.Use(middleware.Idempotency(c.Redis))
 

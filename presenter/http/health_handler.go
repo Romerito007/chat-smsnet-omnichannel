@@ -9,24 +9,24 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
 
-// HealthController serves liveness and readiness probes.
-type HealthController struct {
+// HealthHandler serves liveness and readiness probes.
+type HealthHandler struct {
 	checker *health.Checker
 }
 
-// NewHealthController builds the controller.
-func NewHealthController(checker *health.Checker) *HealthController {
-	return &HealthController{checker: checker}
+// NewHealthHandler builds the handler.
+func NewHealthHandler(checker *health.Checker) *HealthHandler {
+	return &HealthHandler{checker: checker}
 }
 
 // Live is a cheap liveness probe: the process is up and serving.
-func (c *HealthController) Live(w http.ResponseWriter, r *http.Request) {
+func (h *HealthHandler) Live(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // Ready probes dependencies and returns 503 when any is unavailable.
-func (c *HealthController) Ready(w http.ResponseWriter, r *http.Request) {
-	report := c.checker.Check(r.Context())
+func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
+	report := h.checker.Check(r.Context())
 	status := http.StatusOK
 	if report.Status != health.StatusOK {
 		status = http.StatusServiceUnavailable

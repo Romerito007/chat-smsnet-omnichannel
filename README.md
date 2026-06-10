@@ -33,6 +33,8 @@ os routines do papel.
 - **Envelope de erro padrão** — `domain/apperror` + `presenter/middleware/response.go`.
 - **Idempotency-Key** em POST — `presenter/middleware/idempotency.go` (Redis, TTL).
 - **request_id + duração** em todo request — `presenter/middleware/request_id.go`.
+- **OpenTelemetry** (traces + métricas) — `app/providers/observability.go` +
+  middleware `presenter/middleware/telemetry.go` (gated por `OTEL_ENABLED`).
 - **Rate limit** por tenant/IP — `presenter/middleware/ratelimit.go` (Redis).
 - **Seed inicial idempotente** (tenant + owner + papéis + permissões) —
   `app/start_routines/bootstrap_seeds.go`.
@@ -58,8 +60,12 @@ registrados em `app/start_routines/bootstrap_workers.go`; jobs periódicos em
 ```bash
 cp .env.example .env
 make docker-up        # sobe mongodb + redis
+make seed             # cria tenant + owner + papéis (idempotente)
 make run              # RUN_ROLE=all por padrão
 ```
+
+O seed também roda automaticamente no boot dos papéis `api`/`all`; `make seed`
+(equivalente a `chat-backend seed`) é o atalho para rodá-lo isoladamente.
 
 Endpoints de saúde:
 

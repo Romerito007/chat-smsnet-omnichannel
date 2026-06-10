@@ -16,6 +16,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/config"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	"github.com/romerito007/chat-smsnet-omnichannel/app/providers"
 	httproutes "github.com/romerito007/chat-smsnet-omnichannel/app/routes/http"
 	wsroutes "github.com/romerito007/chat-smsnet-omnichannel/app/routes/websocket"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/server"
@@ -27,6 +28,13 @@ import (
 func Start(ctx context.Context, cfg config.Config) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Telemetry first, so every subsequent component is instrumented.
+	obs, err := providers.SetupObservability(ctx, cfg.Otel)
+	if err != nil {
+		return fmt.Errorf("setup observability: %w", err)
+	}
+	defer func() { _ = obs.Shutdown(context.Background()) }()
 
 	c, err := container.New(ctx, cfg)
 	if err != nil {
@@ -80,6 +88,29 @@ func Start(ctx context.Context, cfg config.Config) error {
 	if err := g.Wait(); err != nil && err != context.Canceled {
 		return err
 	}
+	return nil
+}
+
+// Seed runs the first-boot schema work (mongo check, indexes, seed) once and
+// exits. It backs the `chat-backend seed` command (`make seed`) and is fully
+// idempotent: re-running creates nothing new.
+func Seed(ctx context.Context, cfg config.Config) error {
+	c, err := container.New(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("build container: %w", err)
+	}
+	defer c.Close(context.Background())
+
+	if err := bootstrapMongo(ctx, c); err != nil {
+		return err
+	}
+	if err := bootstrapIndexes(ctx, c); err != nil {
+		return err
+	}
+	if err := bootstrapSeeds(ctx, c); err != nil {
+		return err
+	}
+	c.Logger.Info("seed completed")
 	return nil
 }
 

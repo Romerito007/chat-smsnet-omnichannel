@@ -1,4 +1,4 @@
-.PHONY: build run tidy test vet fmt lint docker-up docker-down
+.PHONY: build run seed tidy test vet fmt lint docker-up docker-down
 
 BINARY := bin/chat-backend
 
@@ -7,6 +7,11 @@ build:
 
 run:
 	go run .
+
+# Idempotent: creates tenant + owner + default roles/permissions on first run,
+# no-op afterwards. Requires mongodb + redis up (make docker-up).
+seed:
+	go run . seed
 
 tidy:
 	go mod tidy

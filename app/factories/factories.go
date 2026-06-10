@@ -10,8 +10,8 @@ import (
 	presenterhttp "github.com/romerito007/chat-smsnet-omnichannel/presenter/http"
 )
 
-// HealthController builds the health controller from the container.
-func HealthController(c *container.Container) *presenterhttp.HealthController {
+// HealthHandler builds the health handler from the container.
+func HealthHandler(c *container.Container) *presenterhttp.HealthHandler {
 	checker := health.NewChecker(c.Mongo, c.Redis)
-	return presenterhttp.NewHealthController(checker)
+	return presenterhttp.NewHealthHandler(checker)
 }
