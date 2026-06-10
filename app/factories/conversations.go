@@ -21,6 +21,8 @@ func ConversationService(c *container.Container) *convservice.Service {
 	)
 	svc.SetOutboundDispatcher(OutboundService(c))
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	svc.SetTagCatalog(ConversationToolsTagService(c))
+	svc.SetCloseReasonPolicy(ConversationToolsCloseReasonService(c))
 	return svc
 }
 

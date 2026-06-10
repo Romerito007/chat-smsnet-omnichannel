@@ -26,12 +26,26 @@ type Service struct {
 	clock         shared.Clock
 	outbound      contracts.OutboundDispatcher
 	webhooks      shared.WebhookEmitter
+	tags          contracts.TagCatalog
+	closeReasons  contracts.CloseReasonPolicy
 }
 
 // SetOutboundDispatcher wires the channels delivery dispatcher. Optional: when
 // unset, outbound messages are persisted (pending) but not delivered.
 func (s *Service) SetOutboundDispatcher(d contracts.OutboundDispatcher) {
 	s.outbound = d
+}
+
+// SetTagCatalog wires the conversationtools tag catalog used to validate tag ids
+// on apply. Optional: when unset, tag ids are accepted as-is.
+func (s *Service) SetTagCatalog(t contracts.TagCatalog) {
+	s.tags = t
+}
+
+// SetCloseReasonPolicy wires the conversationtools close-reason policy used to
+// enforce requires_note on Close. Optional: when unset, no note is required.
+func (s *Service) SetCloseReasonPolicy(p contracts.CloseReasonPolicy) {
+	s.closeReasons = p
 }
 
 // SetWebhookEmitter wires the outbound webhook emitter. Optional: when unset,
@@ -284,6 +298,19 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 		return nil, apperror.Conflict("conversation is already closed")
 	}
 
+	// Enforce the close-reason policy: a reason that requires a note cannot be
+	// used to close without one.
+	if cmd.CloseReasonID != "" && s.closeReasons != nil {
+		requiresNote, rerr := s.closeReasons.RequiresNote(ctx, cmd.CloseReasonID)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if requiresNote && strings.TrimSpace(cmd.Note) == "" {
+			return nil, apperror.Validation("this close reason requires a note").
+				WithDetails(map[string]any{"note": "is required for this close reason"})
+		}
+	}
+
 	now := s.clock.Now()
 	conv.Status = entity.StatusClosed
 	conv.ClosedAt = &now
@@ -305,6 +332,88 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 	s.publishConversation(ctx, conv)
 	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
 	return conv, nil
+}
+
+// ApplyTags adds and/or removes tags on a conversation. Added tags are validated
+// against the tenant's tag catalog (when wired). It records a conversation.tagged
+// timeline event and publishes realtime conversation.tagged + conversation.updated.
+func (s *Service) ApplyTags(ctx context.Context, conversationID string, add, remove []string) (*entity.Conversation, error) {
+	conv, _, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	add = dedupe(add)
+	remove = dedupe(remove)
+	if len(add) == 0 && len(remove) == 0 {
+		return nil, apperror.Validation("provide at least one tag to add or remove")
+	}
+	if len(add) > 0 && s.tags != nil {
+		if err := s.tags.ValidateTags(ctx, add); err != nil {
+			return nil, err
+		}
+	}
+
+	conv.Tags = applyTagChanges(conv.Tags, add, remove)
+	conv.UpdatedAt = s.clock.Now()
+	if err := s.conversations.Update(ctx, conv); err != nil {
+		return nil, err
+	}
+
+	s.recordEvent(ctx, conv, entity.EventConversationTagged, map[string]any{"added": add, "removed": remove})
+	payload := contracts.NewConversationPayload(conv)
+	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID), contracts.RealtimeConversationTagged, payload)
+	s.publishConversation(ctx, conv)
+	return conv, nil
+}
+
+// applyTagChanges returns current with add merged in and remove taken out,
+// preserving order and de-duplicating.
+func applyTagChanges(current, add, remove []string) []string {
+	removeSet := make(map[string]struct{}, len(remove))
+	for _, r := range remove {
+		removeSet[r] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(current)+len(add))
+	out := make([]string, 0, len(current)+len(add))
+	keep := func(t string) {
+		if t == "" {
+			return
+		}
+		if _, drop := removeSet[t]; drop {
+			return
+		}
+		if _, dup := seen[t]; dup {
+			return
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	for _, t := range current {
+		keep(t)
+	}
+	for _, t := range add {
+		keep(t)
+	}
+	return out
+}
+
+func dedupe(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 // Reopen reopens a closed/resolved/archived conversation.

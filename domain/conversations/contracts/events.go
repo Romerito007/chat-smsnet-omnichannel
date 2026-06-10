@@ -12,6 +12,7 @@ const (
 	RealtimeConversationUpdated     = "conversation.updated"
 	RealtimeConversationAssigned    = "conversation.assigned"
 	RealtimeConversationTransferred = "conversation.transferred"
+	RealtimeConversationTagged      = "conversation.tagged"
 	RealtimeTypingStarted           = "typing.started"
 	RealtimeTypingStopped           = "typing.stopped"
 	RealtimeMessageRead             = "message.read"

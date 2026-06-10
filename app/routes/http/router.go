@@ -48,6 +48,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerMonitoringRoutes(v1, c)
 		registerWebhookRoutes(v1, c)
 		registerCopilotRoutes(v1, c)
+		registerConversationToolsRoutes(v1, c)
 
 		// Shared on-demand external queries (providerhub + monitoring) under a
 		// single /conversations/{id}/external subrouter.

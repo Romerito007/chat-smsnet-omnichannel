@@ -13,6 +13,7 @@ const (
 	EventConversationAssigned    = "conversation.assigned"
 	EventConversationTransferred = "conversation.transferred"
 	EventConversationEnqueued    = "conversation.enqueued"
+	EventConversationTagged      = "conversation.tagged"
 	EventAutomationDecision      = "automation.decision"
 	EventAutomationEscalated     = "automation.escalated"
 )
