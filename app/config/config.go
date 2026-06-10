@@ -41,6 +41,7 @@ type Config struct {
 	Automation  AutomationConfig
 	ProviderHub ProviderHubConfig
 	Monitoring  MonitoringConfig
+	Copilot     CopilotConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -121,6 +122,14 @@ type MonitoringConfig struct {
 	RatePerMinute int
 }
 
+// CopilotConfig holds the copilot provider API keys. The MVP uses the echo mock
+// (no key needed); a hosted provider is activated only when its key is set.
+type CopilotConfig struct {
+	OpenAIKey    string
+	GeminiKey    string
+	AnthropicKey string
+}
+
 // SeedConfig holds the idempotent first-run seed identity.
 type SeedConfig struct {
 	TenantName    string
@@ -191,6 +200,11 @@ func Load() (Config, error) {
 		},
 		Monitoring: MonitoringConfig{
 			RatePerMinute: getInt("MONITORING_RATE_PER_MINUTE", 60),
+		},
+		Copilot: CopilotConfig{
+			OpenAIKey:    getString("COPILOT_OPENAI_API_KEY", ""),
+			GeminiKey:    getString("COPILOT_GEMINI_API_KEY", ""),
+			AnthropicKey: getString("COPILOT_ANTHROPIC_API_KEY", ""),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),
