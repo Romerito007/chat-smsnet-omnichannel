@@ -40,6 +40,7 @@ type Config struct {
 	Channels    ChannelsConfig
 	Automation  AutomationConfig
 	ProviderHub ProviderHubConfig
+	Monitoring  MonitoringConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -114,6 +115,12 @@ type ProviderHubConfig struct {
 	RatePerMinute int
 }
 
+// MonitoringConfig holds the monitoring settings.
+type MonitoringConfig struct {
+	// RatePerMinute caps outbound monitoring queries per tenant per minute.
+	RatePerMinute int
+}
+
 // SeedConfig holds the idempotent first-run seed identity.
 type SeedConfig struct {
 	TenantName    string
@@ -181,6 +188,9 @@ func Load() (Config, error) {
 		},
 		ProviderHub: ProviderHubConfig{
 			RatePerMinute: getInt("PROVIDERHUB_RATE_PER_MINUTE", 60),
+		},
+		Monitoring: MonitoringConfig{
+			RatePerMinute: getInt("MONITORING_RATE_PER_MINUTE", 60),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

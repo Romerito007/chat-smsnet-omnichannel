@@ -45,6 +45,11 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerChannelRoutes(v1, c)
 		registerAutomationRoutes(v1, c)
 		registerProviderHubRoutes(v1, c)
+		registerMonitoringRoutes(v1, c)
+
+		// Shared on-demand external queries (providerhub + monitoring) under a
+		// single /conversations/{id}/external subrouter.
+		registerExternalRoutes(v1, c)
 	})
 
 	return r
