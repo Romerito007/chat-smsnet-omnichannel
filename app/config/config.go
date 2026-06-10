@@ -30,15 +30,16 @@ type Config struct {
 	LogLevel string
 	RunRole  Role
 
-	HTTP       HTTPConfig
-	Mongo      MongoConfig
-	Redis      RedisConfig
-	Asynq      AsynqConfig
-	Otel       OtelConfig
-	Auth       AuthConfig
-	Realtime   RealtimeConfig
-	Channels   ChannelsConfig
-	Automation AutomationConfig
+	HTTP        HTTPConfig
+	Mongo       MongoConfig
+	Redis       RedisConfig
+	Asynq       AsynqConfig
+	Otel        OtelConfig
+	Auth        AuthConfig
+	Realtime    RealtimeConfig
+	Channels    ChannelsConfig
+	Automation  AutomationConfig
+	ProviderHub ProviderHubConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -107,6 +108,12 @@ type AutomationConfig struct {
 	CallbackBaseURL string
 }
 
+// ProviderHubConfig holds the providerhub settings.
+type ProviderHubConfig struct {
+	// RatePerMinute caps outbound provider queries per tenant per minute.
+	RatePerMinute int
+}
+
 // SeedConfig holds the idempotent first-run seed identity.
 type SeedConfig struct {
 	TenantName    string
@@ -171,6 +178,9 @@ func Load() (Config, error) {
 		},
 		Automation: AutomationConfig{
 			CallbackBaseURL: getString("AUTOMATION_CALLBACK_BASE_URL", "http://localhost:8080"),
+		},
+		ProviderHub: ProviderHubConfig{
+			RatePerMinute: getInt("PROVIDERHUB_RATE_PER_MINUTE", 60),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

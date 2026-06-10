@@ -44,6 +44,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerRoutingRoutes(v1, c)
 		registerChannelRoutes(v1, c)
 		registerAutomationRoutes(v1, c)
+		registerProviderHubRoutes(v1, c)
 	})
 
 	return r
