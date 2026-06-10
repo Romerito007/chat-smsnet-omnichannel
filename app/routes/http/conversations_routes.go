@@ -1,0 +1,40 @@
+package http
+
+import (
+	"github.com/go-chi/chi/v5"
+
+	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
+)
+
+// registerConversationRoutes mounts the conversations endpoints. All require
+// authentication; each action is gated on its specific permission, and the
+// service additionally enforces per-agent visibility (own sectors / assigned).
+func registerConversationRoutes(r chi.Router, c *container.Container) {
+	ctl := factories.ConversationController(c)
+
+	r.Group(func(p chi.Router) {
+		p.Use(middleware.AuthContext(c.Tokens))
+
+		p.Route("/conversations", func(cv chi.Router) {
+			// Read.
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/", ctl.List)
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}", ctl.Get)
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}/messages", ctl.ListMessages)
+
+			// Create + manage.
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/", ctl.Create)
+			cv.With(middleware.RequirePermission(authz.ConversationAssign)).Patch("/{id}", ctl.Update)
+
+			// Messaging.
+			cv.With(middleware.RequirePermission(authz.MessageSend)).Post("/{id}/messages", ctl.SendMessage)
+			cv.With(middleware.RequirePermission(authz.MessageInternalNote)).Post("/{id}/internal-notes", ctl.AddInternalNote)
+
+			// Lifecycle.
+			cv.With(middleware.RequirePermission(authz.ConversationClose)).Post("/{id}/close", ctl.Close)
+			cv.With(middleware.RequirePermission(authz.ConversationClose)).Post("/{id}/reopen", ctl.Reopen)
+		})
+	})
+}

@@ -45,21 +45,29 @@ func IsDuplicate(err error) bool {
 }
 
 // KeysetSort is the canonical sort for keyset pagination: newest first, with the
-// id as a deterministic tiebreaker.
-func KeysetSort() bson.D {
-	return bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}}
+// id as a deterministic tiebreaker, ordered by created_at.
+func KeysetSort() bson.D { return KeysetSortField("created_at") }
+
+// KeysetSortField sorts by the given time field (desc) then _id (desc).
+func KeysetSortField(field string) bson.D {
+	return bson.D{{Key: field, Value: -1}, {Key: "_id", Value: -1}}
 }
 
-// ApplyKeyset returns a filter that combines base with the keyset cursor
-// condition (created_at, _id) < cursor. An empty cursor returns base unchanged.
+// ApplyKeyset combines base with the keyset cursor condition on created_at.
 func ApplyKeyset(base bson.M, cur shared.Cursor) bson.M {
+	return ApplyKeysetField(base, cur, "created_at")
+}
+
+// ApplyKeysetField combines base with a keyset cursor condition on the given
+// time field: (field, _id) < cursor. An empty cursor returns base unchanged.
+func ApplyKeysetField(base bson.M, cur shared.Cursor, field string) bson.M {
 	if cur.ID == "" {
 		return base
 	}
 	from := time.UnixMilli(cur.CreatedAt).UTC()
 	keyset := bson.M{"$or": bson.A{
-		bson.M{"created_at": bson.M{"$lt": from}},
-		bson.M{"created_at": from, "_id": bson.M{"$lt": cur.ID}},
+		bson.M{field: bson.M{"$lt": from}},
+		bson.M{field: from, "_id": bson.M{"$lt": cur.ID}},
 	}}
 	return bson.M{"$and": bson.A{base, keyset}}
 }

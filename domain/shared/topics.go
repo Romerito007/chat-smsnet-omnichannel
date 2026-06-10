@@ -12,3 +12,13 @@ func TopicPresence(tenantID TenantID) string {
 func TopicUser(tenantID TenantID, userID ID) string {
 	return "t:" + tenantID + ":user:" + userID
 }
+
+// TopicConversation is the per-conversation topic (messages, status changes).
+func TopicConversation(tenantID TenantID, conversationID ID) string {
+	return "t:" + tenantID + ":conversation:" + conversationID
+}
+
+// TopicInbox is the per-sector inbox topic (new/updated conversations for a team).
+func TopicInbox(tenantID TenantID, sectorID ID) string {
+	return "t:" + tenantID + ":inbox:" + sectorID
+}

@@ -40,6 +40,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerSectorRoutes(v1, c)
 		registerQueueRoutes(v1, c)
 		registerPresenceRoutes(v1, c)
+		registerConversationRoutes(v1, c)
 	})
 
 	return r
