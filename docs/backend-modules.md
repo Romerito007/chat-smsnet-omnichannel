@@ -23,23 +23,35 @@ expõe (REST / WS / jobs).
 - **Nota:** todo outro domínio referencia `tenant_id`.
 
 ### `auth`
-- **Responsabilidade:** autenticação. Login (senha), emissão/rotação de
-  **JWT** + refresh tokens, sessões, logout, recuperação de senha, API keys de
-  serviço.
-- **Entidades:** `Session`, `RefreshToken`, `Credential`, `ApiKey`,
-  `PasswordReset`.
-- **Depende de:** `iam` (usuário), `notifications` (e-mail de reset).
-- **Expõe:** REST (`/auth/login`, `/auth/refresh`, `/auth/logout`,
-  `/auth/password/*`); produz claims (tenant, user, roles) consumidas pelos
-  middlewares.
+- **Responsabilidade:** autenticação e ciclo de vida de conta. Login (senha),
+  emissão/rotação de **JWT** + refresh tokens, logout; **signup self-service**
+  (cria empresa + owner pending), **verificação de e-mail**, **convite/aceite**
+  de usuário, **esqueci/redefinir senha** e **perfil** (PATCH `/me`,
+  troca de senha). Tokens de conta são **uso único, com hash no banco e
+  expiração**.
+- **Entidades:** `RefreshToken`, `EmailVerificationToken`,
+  `PasswordResetToken`, `Invitation` (todas guardam só o hash do token).
+- **Depende de:** `iam` (usuários/papéis), `tenant` (signup cria o tenant),
+  `infra/email` (envio real via SMTP).
+- **Expõe (público):** `POST /auth/login`, `/auth/refresh`, `/auth/signup`,
+  `/auth/verify-email`, `/auth/resend-verification`, `/auth/forgot-password`
+  (resposta neutra), `/auth/reset-password`, `/auth/accept-invite`.
+  **Autenticado:** `/auth/logout`, `GET/PATCH /me`, `/me/change-password`.
+  signup/forgot/resend têm rate limit por IP mais estrito.
+- **Segurança/auditoria:** audita `auth.signup`, `auth.verify_email`,
+  `auth.password_reset(_requested)`, `auth.password_changed`, `user.invited`,
+  `auth.invite_accepted`. Reset de senha revoga todas as sessões.
 
 ### `iam`
 - **Responsabilidade:** *Identity & Access Management*. Usuários
   (agentes/supervisores/admins), **papéis** e **permissões** (RBAC), atribuição
   de papéis, vínculo de usuário a setores/filas.
-- **Entidades:** `User`, `Role`, `Permission`, `RoleAssignment`.
+- **Entidades:** `User` (com `status` active|disabled|pending_verification e
+  `avatar_attachment_id`), `Role`, `Permission`, `RoleAssignment`.
 - **Depende de:** `tenant`.
-- **Expõe:** REST (`/users`, `/roles`); fonte de verdade do `Authorizer`.
+- **Expõe:** REST (`/users`, `/users/invite`, `/roles`); fonte de verdade do
+  `Authorizer`. O avatar do usuário reusa o fluxo de `attachments` (URL
+  assinada): o cliente sobe o arquivo e envia o `avatar_attachment_id`.
 - **Nota:** catálogo de permissões em
   [security-permissions.md](security-permissions.md).
 
@@ -208,9 +220,10 @@ expõe (REST / WS / jobs).
 - **Responsabilidade:** notificações ao operador — in-app (WS), **e-mail**,
   (push opcional). Preferências, templates, dedupe.
 - **Entidades:** `Notification`, `NotificationPreference`.
-- **Depende de:** `iam`, `infra/email`, `realtime`.
+- **Depende de:** `iam`, `infra/email` (SMTP real), `realtime`.
 - **Expõe:** REST (`/notifications`); jobs (`notification.send`,
-  `notification.email`); WS (`notification.created`).
+  `notification.email` → envio por SMTP respeitando as preferências do
+  usuário); WS (`notification.created`).
 
 ### `search`
 - **Responsabilidade:** busca de conversas, contatos e mensagens (full-text +

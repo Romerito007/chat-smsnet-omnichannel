@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Confirm your email</title></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;padding:32px;">
+        <tr><td>
+          <h1 style="margin:0 0 16px;font-size:20px;">Welcome{{if .Company}} to {{.Company}}{{end}}</h1>
+          <p style="margin:0 0 16px;font-size:14px;line-height:22px;">
+            Hi{{if .Name}} {{.Name}}{{end}}, please confirm your email address to activate your account.
+          </p>
+          <p style="margin:0 0 24px;">
+            <a href="{{.Link}}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;">Confirm email</a>
+          </p>
+          <p style="margin:0 0 8px;font-size:12px;color:#7b8794;">If the button does not work, copy and paste this link:</p>
+          <p style="margin:0;font-size:12px;word-break:break-all;"><a href="{{.Link}}" style="color:#2563eb;">{{.Link}}</a></p>
+          <p style="margin:24px 0 0;font-size:12px;color:#7b8794;">If you did not create this account, you can ignore this email.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

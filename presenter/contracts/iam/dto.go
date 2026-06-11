@@ -67,6 +67,7 @@ type UserResponse struct {
 	RoleIDs            []string  `json:"role_ids"`
 	SectorIDs          []string  `json:"sector_ids"`
 	MaxConcurrentChats int       `json:"max_concurrent_chats"`
+	AvatarAttachmentID string    `json:"avatar_attachment_id,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }
@@ -82,6 +83,7 @@ func NewUserResponse(u *entity.User) UserResponse {
 		RoleIDs:            u.RoleIDs,
 		SectorIDs:          u.SectorIDs,
 		MaxConcurrentChats: u.MaxConcurrentChats,
+		AvatarAttachmentID: u.AvatarAttachmentID,
 		CreatedAt:          u.CreatedAt,
 		UpdatedAt:          u.UpdatedAt,
 	}

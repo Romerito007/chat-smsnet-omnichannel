@@ -50,9 +50,40 @@ func TenantService(c *container.Container) *tenantservice.Service {
 	return tenantservice.New(tenantrepo.New(c.Mongo.DB), clock)
 }
 
+// AccountService builds the account-lifecycle service (signup, verification,
+// invitation, password reset).
+func AccountService(c *container.Container) *authservice.AccountService {
+	svc := authservice.NewAccountService(
+		tenantrepo.New(c.Mongo.DB),
+		iamrepo.NewUserRepository(c.Mongo.DB),
+		RoleService(c),
+		authrepo.NewRefreshTokenRepository(c.Mongo.DB),
+		authrepo.NewEmailVerificationTokenRepository(c.Mongo.DB),
+		authrepo.NewPasswordResetTokenRepository(c.Mongo.DB),
+		authrepo.NewInvitationRepository(c.Mongo.DB),
+		c.Hasher,
+		EmailSender(c),
+		clock,
+		authservice.AccountConfig{
+			AppBaseURL:      c.Config.Notifications.AppBaseURL,
+			VerificationTTL: c.Config.Auth.VerificationTTL,
+			ResetTTL:        c.Config.Auth.ResetTTL,
+			InviteTTL:       c.Config.Auth.InviteTTL,
+		},
+	)
+	svc.SetAuditor(AuditService(c))
+	return svc
+}
+
 // AuthController builds the auth controller (login/refresh/logout/me).
 func AuthController(c *container.Container) *authctl.Controller {
 	return authctl.NewController(AuthService(c), UserService(c))
+}
+
+// AccountController builds the account-lifecycle controller (signup, verify,
+// invite, reset, profile).
+func AccountController(c *container.Container) *authctl.AccountController {
+	return authctl.NewAccountController(AccountService(c), UserService(c))
 }
 
 // UserController builds the IAM user controller.

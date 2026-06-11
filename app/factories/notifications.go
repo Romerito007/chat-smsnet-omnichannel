@@ -5,7 +5,6 @@ import (
 	nservice "github.com/romerito007/chat-smsnet-omnichannel/domain/notifications/service"
 	iamrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/iam"
 	notifrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/notifications"
-	infraemail "github.com/romerito007/chat-smsnet-omnichannel/infra/email"
 	infranotif "github.com/romerito007/chat-smsnet-omnichannel/infra/notifications"
 	notifctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/notifications"
 )
@@ -25,7 +24,7 @@ func NotificationService(c *container.Container) *nservice.Service {
 		iamrepo.NewUserRepository(c.Mongo.DB),
 		c.Events,
 		NotificationEnqueuer(c),
-		infraemail.NewSender(c.Logger, c.Config.Notifications.EmailFrom),
+		EmailSender(c),
 		clock,
 	)
 }

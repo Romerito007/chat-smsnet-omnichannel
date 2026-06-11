@@ -42,6 +42,7 @@ type Config struct {
 	ProviderHub   ProviderHubConfig
 	Copilot       CopilotConfig
 	Notifications NotificationsConfig
+	Email         EmailConfig
 	CSAT          CSATConfig
 	Maintenance   MaintenanceConfig
 	Privacy       PrivacyConfig
@@ -126,14 +127,34 @@ type NotificationsConfig struct {
 	AppBaseURL string
 }
 
-// AuthConfig holds the JWT and password settings.
+// AuthConfig holds the JWT and password settings, plus the lifetimes of the
+// single-use account tokens (email verification, password reset, invitation).
 type AuthConfig struct {
-	JWTSecret  string
-	Issuer     string
-	AccessTTL  time.Duration
-	RefreshTTL time.Duration
-	BcryptCost int
+	JWTSecret       string
+	Issuer          string
+	AccessTTL       time.Duration
+	RefreshTTL      time.Duration
+	BcryptCost      int
+	VerificationTTL time.Duration
+	ResetTTL        time.Duration
+	InviteTTL       time.Duration
 }
+
+// EmailConfig holds the SMTP transport settings used to send real emails
+// (account flows + notification channel). TLSMode is one of "starttls"
+// (opportunistic on 587), "tls" (implicit TLS on 465) or "none".
+type EmailConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	TLSMode  string
+}
+
+// Configured reports whether an SMTP host is set so the sender can refuse to
+// silently drop mail.
+func (e EmailConfig) Configured() bool { return strings.TrimSpace(e.Host) != "" }
 
 // HTTPConfig holds the HTTP/WS server settings.
 type HTTPConfig struct {
@@ -253,11 +274,14 @@ func Load() (Config, error) {
 			ServiceName: getString("OTEL_SERVICE_NAME", "chat-backend"),
 		},
 		Auth: AuthConfig{
-			JWTSecret:  getString("AUTH_JWT_SECRET", "dev-secret-change-me"),
-			Issuer:     getString("AUTH_ISSUER", "chat-backend"),
-			AccessTTL:  getDuration("AUTH_ACCESS_TTL", 15*time.Minute),
-			RefreshTTL: getDuration("AUTH_REFRESH_TTL", 720*time.Hour),
-			BcryptCost: getInt("AUTH_BCRYPT_COST", 12),
+			JWTSecret:       getString("AUTH_JWT_SECRET", "dev-secret-change-me"),
+			Issuer:          getString("AUTH_ISSUER", "chat-backend"),
+			AccessTTL:       getDuration("AUTH_ACCESS_TTL", 15*time.Minute),
+			RefreshTTL:      getDuration("AUTH_REFRESH_TTL", 720*time.Hour),
+			BcryptCost:      getInt("AUTH_BCRYPT_COST", 12),
+			VerificationTTL: getDuration("AUTH_VERIFICATION_TTL", 24*time.Hour),
+			ResetTTL:        getDuration("AUTH_PASSWORD_RESET_TTL", time.Hour),
+			InviteTTL:       getDuration("AUTH_INVITE_TTL", 72*time.Hour),
 		},
 		Realtime: RealtimeConfig{
 			MaxConnPerUser: getInt("WS_MAX_CONN_PER_USER", 10),
@@ -279,6 +303,14 @@ func Load() (Config, error) {
 		Notifications: NotificationsConfig{
 			EmailFrom:  getString("NOTIFICATIONS_EMAIL_FROM", "no-reply@example.com"),
 			AppBaseURL: getString("APP_BASE_URL", "http://localhost:3000"),
+		},
+		Email: EmailConfig{
+			Host:     getString("SMTP_HOST", ""),
+			Port:     getInt("SMTP_PORT", 587),
+			Username: getString("SMTP_USERNAME", ""),
+			Password: getString("SMTP_PASSWORD", ""),
+			From:     getString("SMTP_FROM", getString("NOTIFICATIONS_EMAIL_FROM", "no-reply@example.com")),
+			TLSMode:  getString("SMTP_TLS_MODE", "starttls"),
 		},
 		CSAT: CSATConfig{
 			ExpireAfterSeconds: getInt("CSAT_EXPIRE_AFTER_SECONDS", 72*3600),

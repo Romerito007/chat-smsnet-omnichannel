@@ -18,6 +18,11 @@ type fakeTenantRepo struct {
 	tenants map[string]*entity.Tenant
 }
 
+func (r *fakeTenantRepo) Create(_ context.Context, t *entity.Tenant) error {
+	cp := *t
+	r.tenants[t.ID] = &cp
+	return nil
+}
 func (r *fakeTenantRepo) FindByID(_ context.Context, id string) (*entity.Tenant, error) {
 	if t, ok := r.tenants[id]; ok {
 		cp := *t

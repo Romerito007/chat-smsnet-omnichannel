@@ -32,4 +32,5 @@ type User struct {
 	RoleIDs            []string `bson:"role_ids"`
 	SectorIDs          []string `bson:"sector_ids"`
 	MaxConcurrentChats int      `bson:"max_concurrent_chats"`
+	AvatarAttachmentID string   `bson:"avatar_attachment_id,omitempty"`
 }

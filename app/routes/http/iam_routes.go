@@ -14,6 +14,7 @@ import (
 func registerIAMRoutes(r chi.Router, c *container.Container) {
 	users := factories.UserController(c)
 	roles := factories.RoleController(c)
+	account := factories.AccountController(c)
 
 	r.Group(func(p chi.Router) {
 		p.Use(middleware.AuthContext(c.Tokens))
@@ -22,6 +23,7 @@ func registerIAMRoutes(r chi.Router, c *container.Container) {
 		p.Route("/users", func(u chi.Router) {
 			u.Get("/", users.List)
 			u.Post("/", users.Create)
+			u.Post("/invite", account.Invite)
 			u.Get("/{id}", users.Get)
 			u.Patch("/{id}", users.Update)
 			u.Delete("/{id}", users.Delete)

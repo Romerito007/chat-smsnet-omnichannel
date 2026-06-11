@@ -161,6 +161,64 @@ func (s *UserService) Update(ctx context.Context, id string, cmd contracts.Updat
 	return user, nil
 }
 
+// UpdateProfile lets a user edit their own profile (name and avatar). The id is
+// the authenticated user's own id, resolved by the controller from the token.
+func (s *UserService) UpdateProfile(ctx context.Context, id string, cmd contracts.UpdateProfile) (*entity.User, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if cmd.Name != nil {
+		name := strings.TrimSpace(*cmd.Name)
+		if name == "" {
+			return nil, apperror.Validation("name cannot be empty")
+		}
+		user.Name = name
+	}
+	if cmd.AvatarAttachmentID != nil {
+		user.AvatarAttachmentID = strings.TrimSpace(*cmd.AvatarAttachmentID)
+	}
+	user.UpdatedAt = s.clock.Now()
+	if err := s.users.Update(ctx, user); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// ChangePassword verifies the user's current password and sets a new one. The id
+// is the authenticated user's own id.
+func (s *UserService) ChangePassword(ctx context.Context, id, current, next string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	if len(next) < minPasswordLen {
+		return apperror.Validation("new_password must be at least 8 characters")
+	}
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.hasher.Compare(user.PasswordHash, current); err != nil {
+		return apperror.Unauthorized("current password is incorrect")
+	}
+	hash, err := s.hasher.Hash(next)
+	if err != nil {
+		return apperror.Internal("could not hash password").Wrap(err)
+	}
+	user.PasswordHash = hash
+	user.UpdatedAt = s.clock.Now()
+	if err := s.users.Update(ctx, user); err != nil {
+		return err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "auth.password_changed", ResourceType: "user", ResourceID: user.ID,
+	})
+	return nil
+}
+
 // Delete removes a user.
 func (s *UserService) Delete(ctx context.Context, id string) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {

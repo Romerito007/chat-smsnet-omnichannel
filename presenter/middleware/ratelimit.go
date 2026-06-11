@@ -14,9 +14,18 @@ import (
 // RateLimit applies a fixed-window limit per (tenant, client-ip) using Redis as
 // the shared counter, so the limit holds across all API nodes.
 func RateLimit(rdb redis.Client, limit policy.RateLimit) func(http.Handler) http.Handler {
+	return RateLimitScoped(rdb, limit, "")
+}
+
+// RateLimitScoped is RateLimit with a named scope, so an extra limiter stacked on
+// a route group counts on its own Redis key instead of sharing the global one.
+func RateLimitScoped(rdb redis.Client, limit policy.RateLimit, scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := rateKey(r)
+			if scope != "" {
+				key = "ratelimit:" + scope + ":" + tenantOrAnon(r) + ":" + clientIP(r)
+			}
 
 			count, err := rdb.Incr(r.Context(), key).Result()
 			if err != nil {
@@ -38,11 +47,14 @@ func RateLimit(rdb redis.Client, limit policy.RateLimit) func(http.Handler) http
 }
 
 func rateKey(r *http.Request) string {
-	tenant, _ := shared.TenantFrom(r.Context())
-	if tenant == "" {
-		tenant = "anon"
+	return "ratelimit:" + tenantOrAnon(r) + ":" + clientIP(r)
+}
+
+func tenantOrAnon(r *http.Request) string {
+	if tenant, _ := shared.TenantFrom(r.Context()); tenant != "" {
+		return tenant
 	}
-	return "ratelimit:" + tenant + ":" + clientIP(r)
+	return "anon"
 }
 
 func clientIP(r *http.Request) string {

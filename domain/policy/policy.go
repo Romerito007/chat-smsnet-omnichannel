@@ -15,3 +15,8 @@ type RateLimit struct {
 
 // DefaultAPIRateLimit is the baseline per-actor API limit.
 var DefaultAPIRateLimit = RateLimit{Requests: 120, Window: time.Minute}
+
+// SensitiveAuthRateLimit is a tighter per-IP limit for the abuse-prone,
+// unauthenticated account endpoints (signup, forgot-password,
+// resend-verification) on top of the baseline API limit.
+var SensitiveAuthRateLimit = RateLimit{Requests: 5, Window: time.Minute}

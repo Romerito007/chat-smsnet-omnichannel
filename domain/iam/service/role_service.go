@@ -74,6 +74,35 @@ func (s *RoleService) Create(ctx context.Context, cmd contracts.CreateRole) (*en
 	return role, nil
 }
 
+// SeedDefaults idempotently creates the default roles (owner/admin/agent) for a
+// tenant and returns a name→id map. Used by self-service signup to provision a
+// brand-new tenant. The context must already be scoped to the new tenant.
+func (s *RoleService) SeedDefaults(ctx context.Context) (map[string]string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string)
+	for _, def := range authz.DefaultRoles() {
+		role, err := s.Create(ctx, contracts.CreateRole{
+			Name:        def.Name,
+			Permissions: def.Permissions,
+			SectorScope: def.SectorScope,
+		})
+		if err != nil {
+			// Tolerate an already-seeded role (idempotent re-provisioning).
+			if apperror.From(err).Code == apperror.CodeConflict {
+				if existing, ferr := s.roles.FindByName(ctx, def.Name); ferr == nil {
+					out[def.Name] = existing.ID
+					continue
+				}
+			}
+			return nil, err
+		}
+		out[def.Name] = role.ID
+	}
+	return out, nil
+}
+
 // Update applies the non-nil fields of cmd to the role.
 func (s *RoleService) Update(ctx context.Context, id string, cmd contracts.UpdateRole) (*entity.Role, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {

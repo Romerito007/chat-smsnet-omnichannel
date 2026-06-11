@@ -11,6 +11,8 @@ import (
 // TenantRepository persists tenants. Tenants are the isolation root, so lookups
 // are by id (not tenant-scoped like other repos).
 type TenantRepository interface {
+	// Create inserts a new tenant (used by self-service signup).
+	Create(ctx context.Context, t *entity.Tenant) error
 	// FindByID returns the tenant or a not_found AppError.
 	FindByID(ctx context.Context, id string) (*entity.Tenant, error)
 	// Update persists mutable fields (name, status, settings).

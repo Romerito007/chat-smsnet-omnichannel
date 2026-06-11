@@ -24,6 +24,13 @@ type UpdateUser struct {
 	MaxConcurrentChats *int
 }
 
+// UpdateProfile is the input to PATCH /v1/me: a user editing their own profile.
+// Nil pointers mean "leave unchanged".
+type UpdateProfile struct {
+	Name               *string
+	AvatarAttachmentID *string
+}
+
 // CreateRole is the input to create a role.
 type CreateRole struct {
 	Name        string

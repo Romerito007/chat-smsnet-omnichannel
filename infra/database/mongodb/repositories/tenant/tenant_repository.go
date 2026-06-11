@@ -23,6 +23,19 @@ func New(db *mongo.Database) *Repository {
 	return &Repository{coll: db.Collection("tenants")}
 }
 
+// Create inserts a new tenant (self-service signup).
+func (r *Repository) Create(ctx context.Context, t *entity.Tenant) error {
+	_, err := r.coll.InsertOne(ctx, models.Tenant{
+		ID:        t.ID,
+		Name:      t.Name,
+		Status:    string(t.Status),
+		Settings:  t.Settings,
+		CreatedAt: t.CreatedAt,
+		UpdatedAt: t.UpdatedAt,
+	})
+	return mongodb.MapError(err)
+}
+
 // FindByID returns the tenant or a not_found error.
 func (r *Repository) FindByID(ctx context.Context, id string) (*entity.Tenant, error) {
 	var m models.Tenant
