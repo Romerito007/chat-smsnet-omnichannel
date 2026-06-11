@@ -44,7 +44,18 @@ type anthropicRequest struct {
 
 type anthropicMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"` // string, or []block for tool_use / tool_result
+}
+
+type anthropicBlock struct {
+	Type string `json:"type"`
+	// tool_use
+	ID    string         `json:"id,omitempty"`
+	Name  string         `json:"name,omitempty"`
+	Input map[string]any `json:"input,omitempty"`
+	// tool_result
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	Content   string `json:"content,omitempty"`
 }
 
 type anthropicResponse struct {
@@ -67,12 +78,27 @@ func (a *Anthropic) Infer(ctx context.Context, req contracts.Request) (contracts
 		return contracts.Response{}, notConfigured(entity.ProviderAnthropic)
 	}
 	base := orDefault(req.BaseURL, a.defaultBaseURL)
+	messages := []anthropicMessage{{Role: "user", Content: renderContext(req.Context)}}
+	// Replay the tool-calling loop: assistant tool_use blocks then a user turn of
+	// tool_result blocks, per exchange.
+	for _, ex := range req.ToolHistory {
+		use := make([]anthropicBlock, 0, len(ex.Calls))
+		for _, c := range ex.Calls {
+			use = append(use, anthropicBlock{Type: "tool_use", ID: c.ID, Name: c.Name, Input: rawToMap(c.Arguments)})
+		}
+		messages = append(messages, anthropicMessage{Role: "assistant", Content: use})
+		results := make([]anthropicBlock, 0, len(ex.Results))
+		for _, res := range ex.Results {
+			results = append(results, anthropicBlock{Type: "tool_result", ToolUseID: res.ID, Content: res.Content})
+		}
+		messages = append(messages, anthropicMessage{Role: "user", Content: results})
+	}
 	payload := anthropicRequest{
 		Model:       orDefault(req.Model, a.defaultModel),
 		MaxTokens:   maxTokensOr(req.MaxTokens, 1024), // Messages API requires max_tokens
 		Temperature: req.Temperature,
 		System:      systemPrompt(req.Action),
-		Messages:    []anthropicMessage{{Role: "user", Content: renderContext(req.Context)}},
+		Messages:    messages,
 		Tools:       toAnthropicTools(req.Tools),
 	}
 
@@ -108,6 +134,17 @@ func (a *Anthropic) Infer(ctx context.Context, req contracts.Request) (contracts
 		out.Categories = classifyCategories(out.Text, req.Context.Instruction)
 	}
 	return out, nil
+}
+
+// rawToMap parses a JSON object string into a map; invalid/empty input yields an
+// empty object so the replayed tool_use block is always well-formed.
+func rawToMap(s string) map[string]any {
+	out := map[string]any{}
+	if strings.TrimSpace(s) == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(s), &out)
+	return out
 }
 
 func toAnthropicTools(tools []contracts.ToolDefinition) []anthropicTool {

@@ -191,6 +191,38 @@ expõe (REST / WS / jobs).
 - **Nota:** assíncrono quando a latência permitir; síncrono para sugestão
   interativa curta.
 
+### `mcp`
+- **Responsabilidade:** camada genérica para o copiloto e o atendente usarem
+  ferramentas de sistemas externos via **MCP (Model Context Protocol)**. Os MCP
+  do smsnet-integrations (consultas + operações) e, no futuro, o de
+  monitoramento/OLT conectam pela MESMA camada — adicionar um sistema é só
+  **registrar o servidor MCP**, sem mexer em código. Nenhum nome de ferramenta é
+  hard-coded; tudo é descoberto dinamicamente (`tools/list`).
+- **Entidades:** `ServerConnection` (por tenant: `transport=streamable_http`,
+  `base_url`, `auth_header`+token **cifrado**, `kind=read|write`, `enabled`),
+  `Tool` (descoberta, anotada write/read pelo *kind* do servidor), `Approval`
+  (ação write proposta, aguardando confirmação), `CallLog` (mínimo, **sem
+  payload sensível** — só quem/onde/tool/status/latência).
+- **Cliente:** `infra/mcp` fala Streamable HTTP (JSON-RPC 2.0): `list_tools` e
+  `call_tool`. `ToolRegistry` por tenant agrega as ferramentas dos servidores
+  habilitados.
+- **Copiloto agêntico:** o provider de IA recebe as ferramentas; **read** são
+  executadas em loop (chat→MCP→modelo até a resposta final); **write** NUNCA
+  executam automaticamente — o modelo só **PROPÕE** e o chat devolve um card de
+  confirmação. `human_approval_required` vale para TODA ferramenta write.
+- **Atendente:** `GET /v1/conversations/{id}/mcp/tools`;
+  `POST /v1/conversations/{id}/mcp/run` (read direto; write vira aprovação
+  pendente); `POST /v1/conversations/{id}/copilot/approvals/{id}` aprova/recusa
+  (aprovação dispara a execução, **auditada** com actor/ip/params mascarando
+  segredos).
+- **Config:** `GET/POST/PATCH/DELETE /v1/mcp/servers`,
+  `POST /v1/mcp/servers/{id}/test` (lista as tools do servidor).
+- **Permissões:** `copilot.use` (IA usar read), `integration.read` (atendente
+  rodar read), `integration.execute_action` (qualquer write — IA propõe, humano
+  aprova).
+- **Depende de:** `conversations` (visibilidade), `copilot` (porta `ToolBroker`),
+  `infra/mcp`, `infra/secrets`.
+
 ---
 
 ## Qualidade de serviço e engajamento

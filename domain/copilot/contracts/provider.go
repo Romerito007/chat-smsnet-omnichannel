@@ -34,6 +34,25 @@ type Request struct {
 	// call. They come from the MCP registry, not from any hard-coded tool. When
 	// empty, the provider runs a plain completion.
 	Tools []ToolDefinition
+	// ToolHistory replays the tool-calling loop so far: each exchange is one
+	// assistant turn's tool calls plus their results, fed back so the model can
+	// continue toward a final answer.
+	ToolHistory []ToolExchange
+}
+
+// ToolExchange is one round of the tool-calling loop: the calls the model made
+// and the results the chat fed back.
+type ToolExchange struct {
+	Calls   []ToolCall
+	Results []ToolResult
+}
+
+// ToolResult is the outcome of executing (or proposing) one tool call, fed back
+// to the model. Content carries no secrets.
+type ToolResult struct {
+	ID      string
+	Name    string
+	Content string
 }
 
 // Response is the provider's normalized output.

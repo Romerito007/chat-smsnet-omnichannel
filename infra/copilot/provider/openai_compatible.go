@@ -23,8 +23,21 @@ type openAICompatible struct {
 func (o *openAICompatible) Name() string { return string(o.provider) }
 
 type oaiMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content"`
+	ToolCalls  []oaiToolCallReq `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+}
+
+type oaiToolCallReq struct {
+	ID       string        `json:"id"`
+	Type     string        `json:"type"`
+	Function oaiToolCallFn `json:"function"`
+}
+
+type oaiToolCallFn struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 type oaiTool struct {
@@ -71,12 +84,25 @@ func (o *openAICompatible) Infer(ctx context.Context, req contracts.Request) (co
 		return contracts.Response{}, notConfigured(o.provider)
 	}
 	base := orDefault(req.BaseURL, o.defaultBaseURL)
+	messages := []oaiMessage{
+		{Role: "system", Content: systemPrompt(req.Action)},
+		{Role: "user", Content: renderContext(req.Context)},
+	}
+	// Replay the tool-calling loop: each exchange is an assistant turn with
+	// tool_calls followed by a tool message per result.
+	for _, ex := range req.ToolHistory {
+		calls := make([]oaiToolCallReq, 0, len(ex.Calls))
+		for _, c := range ex.Calls {
+			calls = append(calls, oaiToolCallReq{ID: c.ID, Type: "function", Function: oaiToolCallFn{Name: c.Name, Arguments: c.Arguments}})
+		}
+		messages = append(messages, oaiMessage{Role: "assistant", ToolCalls: calls})
+		for _, res := range ex.Results {
+			messages = append(messages, oaiMessage{Role: "tool", ToolCallID: res.ID, Content: res.Content})
+		}
+	}
 	payload := oaiRequest{
-		Model: orDefault(req.Model, o.defaultModel),
-		Messages: []oaiMessage{
-			{Role: "system", Content: systemPrompt(req.Action)},
-			{Role: "user", Content: renderContext(req.Context)},
-		},
+		Model:       orDefault(req.Model, o.defaultModel),
+		Messages:    messages,
 		Temperature: req.Temperature,
 		MaxTokens:   maxTokensOr(req.MaxTokens, 0),
 		Tools:       toOAITools(req.Tools),

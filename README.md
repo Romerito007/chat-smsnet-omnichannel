@@ -13,7 +13,8 @@ selecionados em runtime via `RUN_ROLE` (`all | api | ws | worker | scheduler`).
 `presence` · `conversations` (mensagens/notas/timeline) · `routing`
 (atribuição/transferência) · `channels` (inbound/outbound) · `contacts` ·
 `automation` · `providerhub` (smsnet-integrations sob demanda) ·
-`webhooks` · `copilot` (IA) · `conversationtools` (tags/respostas/motivos) ·
+`webhooks` · `copilot` (IA) · `mcp` (ferramentas externas via MCP) ·
+`conversationtools` (tags/respostas/motivos) ·
 `businesshours` · `sla` · `notifications` · `csat` · `search` · `reports` ·
 `privacy` (LGPD) · `audit` · `attachments`.
 

@@ -36,7 +36,7 @@ func CopilotService(c *container.Container) *cservice.Service {
 		nil, // financial source: unwired in MVP
 		nil, // monitoring source: unwired in MVP
 	)
-	return cservice.NewService(
+	svc := cservice.NewService(
 		CopilotConfigService(c),
 		copilotrepo.NewLogRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),
@@ -45,6 +45,10 @@ func CopilotService(c *container.Container) *cservice.Service {
 		c.Events,
 		clock,
 	)
+	// Wire the MCP tool broker so suggest_reply runs the agentic read-tool loop and
+	// proposes write actions for approval.
+	svc.SetToolBroker(MCPToolService(c))
+	return svc
 }
 
 // CopilotController builds the copilot controller.

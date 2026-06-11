@@ -57,6 +57,7 @@ chat-backend/
 │   ├── automation/                     # client do flow externo (chamadas + callbacks)
 │   ├── providerhub/                    # HTTP client da API smsnet-integrations (sob demanda)
 │   ├── copilot/provider/               # adapters de IA REAIS: openai/mistral/deepseek/perplexity, anthropic, gemini (echo só em testes)
+│   ├── mcp/                            # cliente MCP Streamable HTTP (JSON-RPC: list_tools / call_tool)
 │   ├── webhooks/                       # delivery client + assinatura HMAC
 │   ├── email/                          # smtp + templates
 │   ├── storage/                        # anexos (S3-compatible + local)

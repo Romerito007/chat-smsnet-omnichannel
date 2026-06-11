@@ -18,9 +18,14 @@ import (
 // friendlyUnavailable is the user-safe message when the provider call fails.
 const friendlyUnavailable = "the AI copilot is temporarily unavailable, please try again"
 
+// maxToolIterations bounds the agentic read-tool loop so a model cannot spin.
+const maxToolIterations = 6
+
 // Service orchestrates copilot inference: it loads the tenant config, builds a
 // policy-filtered context, calls the configured provider, logs the call and
-// publishes the realtime result.
+// publishes the realtime result. When a tool broker is wired, suggest_reply runs
+// an agentic loop: the model calls read tools (executed via MCP) and proposes
+// write tools (never executed — surfaced as approval cards).
 type Service struct {
 	config        *ConfigService
 	logs          repository.LogRepository
@@ -29,6 +34,15 @@ type Service struct {
 	resolver      contracts.ProviderResolver
 	publisher     shared.EventPublisher
 	clock         shared.Clock
+	tools         contracts.ToolBroker
+}
+
+// SetToolBroker wires the MCP tool broker enabling the agentic loop. Optional:
+// when unset, the copilot runs a plain (tool-less) completion.
+func (s *Service) SetToolBroker(b contracts.ToolBroker) {
+	if b != nil {
+		s.tools = b
+	}
 }
 
 // NewService builds the copilot service.
@@ -99,8 +113,7 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 	}
 
 	pc := s.builder.Build(ctx, cfg, conv, instruction)
-
-	resp, err := provider.Infer(ctx, contracts.Request{
+	base := contracts.Request{
 		Action:      action,
 		Model:       cfg.Model,
 		APIKey:      cfg.APIKey,
@@ -108,15 +121,25 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
 		Context:     pc,
-	})
+	}
+
+	var resp contracts.Response
+	var proposed []contracts.ProposedAction
+	if action == entity.ActionSuggestReply && s.tools != nil {
+		resp, proposed, err = s.agenticLoop(ctx, conv.ID, provider, base)
+	} else {
+		resp, err = provider.Infer(ctx, base)
+	}
 	if err != nil {
 		s.log(ctx, conv, cfg, action, "", entity.StatusError, 0, 0, summarize(err))
 		return contracts.Result{}, apperror.Integration(friendlyUnavailable)
 	}
 
 	cost := estimateCost(cfg.Provider, resp.TokensInput, resp.TokensOutput)
+	// A proposed write action always needs approval, regardless of the config flag.
+	requiresApproval := cfg.HumanApprovalRequired || len(proposed) > 0
 	status := entity.StatusSuccess
-	if cfg.HumanApprovalRequired {
+	if requiresApproval {
 		status = entity.StatusPendingApproval
 	}
 
@@ -129,12 +152,72 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 		TokensInput:      resp.TokensInput,
 		TokensOutput:     resp.TokensOutput,
 		EstimatedCost:    cost,
-		RequiresApproval: cfg.HumanApprovalRequired,
+		RequiresApproval: requiresApproval,
+		ProposedActions:  proposed,
 	}
 
 	s.log(ctx, conv, cfg, action, outputSummary(resp), status, resp.TokensInput, resp.TokensOutput, "")
 	s.publish(ctx, conv, result)
 	return result, nil
+}
+
+// agenticLoop runs the read-tool loop: the model calls read tools (executed via
+// the broker) until it produces a final answer; write tool calls are proposed as
+// approval cards and never executed. Token counts are accumulated across turns.
+func (s *Service) agenticLoop(ctx context.Context, conversationID string, provider contracts.AIProvider, base contracts.Request) (contracts.Response, []contracts.ProposedAction, error) {
+	session, err := s.tools.OpenToolSession(ctx, conversationID)
+	if err != nil || len(session.Tools()) == 0 {
+		resp, ierr := provider.Infer(ctx, base) // no tools → plain completion
+		return resp, nil, ierr
+	}
+	base.Tools = session.Tools()
+
+	var (
+		history  []contracts.ToolExchange
+		proposed []contracts.ProposedAction
+		tokIn    int
+		tokOut   int
+		last     contracts.Response
+	)
+	for i := 0; i < maxToolIterations; i++ {
+		base.ToolHistory = history
+		resp, ierr := provider.Infer(ctx, base)
+		if ierr != nil {
+			return contracts.Response{}, nil, ierr
+		}
+		tokIn += resp.TokensInput
+		tokOut += resp.TokensOutput
+		last = resp
+		if len(resp.ToolCalls) == 0 {
+			last.TokensInput, last.TokensOutput = tokIn, tokOut
+			return last, proposed, nil // final answer
+		}
+
+		results := make([]contracts.ToolResult, 0, len(resp.ToolCalls))
+		sawWrite := false
+		for _, call := range resp.ToolCalls {
+			if session.IsWrite(call.Name) {
+				if pa, perr := session.ProposeWrite(ctx, call.Name, call.Arguments); perr == nil {
+					proposed = append(proposed, pa)
+				}
+				results = append(results, contracts.ToolResult{ID: call.ID, Name: call.Name,
+					Content: "This is a write action; it has been proposed and requires explicit human approval before it can run."})
+				sawWrite = true
+				continue
+			}
+			out, rerr := session.ExecuteRead(ctx, call.Name, call.Arguments)
+			if rerr != nil {
+				out = "tool error: " + rerr.Error()
+			}
+			results = append(results, contracts.ToolResult{ID: call.ID, Name: call.Name, Content: out})
+		}
+		history = append(history, contracts.ToolExchange{Calls: resp.ToolCalls, Results: results})
+		if sawWrite {
+			break // present the proposal(s) for approval; do not auto-continue
+		}
+	}
+	last.TokensInput, last.TokensOutput = tokIn, tokOut
+	return last, proposed, nil
 }
 
 // loadVisible loads a conversation and enforces the actor's tenant + visibility.

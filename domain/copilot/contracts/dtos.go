@@ -57,4 +57,7 @@ type Result struct {
 	TokensOutput     int           `json:"tokens_output"`
 	EstimatedCost    float64       `json:"estimated_cost"`
 	RequiresApproval bool          `json:"requires_approval"`
+	// ProposedActions are write tools the model proposed during the agentic loop.
+	// They are NEVER executed automatically — each awaits explicit agent approval.
+	ProposedActions []ProposedAction `json:"proposed_actions,omitempty"`
 }
