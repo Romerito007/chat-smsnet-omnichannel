@@ -371,3 +371,77 @@ $ golangci-lint run
 ```
 
 — Fim do relatório.
+
+---
+
+## 17. Verificação manual de segurança (spot-check)
+
+> **Data:** 2026-06-11 · **Commit verificado:** `7a82d07`
+> (*audit: record AuditLog on message soft-delete*) · branch
+> `claude/admiring-knuth-2wk8xd`.
+>
+> Inspeção **direta de código** (não confiando no "OK" de seções anteriores) dos
+> três pontos de maior risco. Os três passaram. **Nenhum código foi alterado** —
+> é registro de auditoria.
+
+### 17.1 Filtro `tenant_id` em todos os repositórios — **APROVADO**
+
+Varridos os 136 métodos de leitura/escrita em
+`infra/database/mongodb/repositories/`. Todo filtro de query de domínio
+(`Find/List/Get/Count/Update/Delete`) inclui `"tenant_id"` derivado de
+`shared.RequireTenant(ctx)` / `TenantFrom(ctx)` — **nunca** de um parâmetro
+vindo do corpo/query do request. Filtros de escopo adicional (visibilidade por
+setor, `user_id` em notificações) e documentos `$set` / pipelines `$group` são
+aplicados **por cima** do `tenant_id`, sem substituí-lo.
+
+**Exceções intencionais sem `tenant_id` — NÃO "corrigir" no futuro:**
+
+| Local | Por que é legítimo |
+|---|---|
+| `repositories/auth/refresh_token_repository.go` → `FindByHash` | Lookup **pré-autenticação** por hash não-adivinhável do refresh token; ainda não há tenant no contexto. O registro encontrado carrega o `tenant_id` autoritativo. `RevokeAllForUser` filtra por tenant. |
+| `repositories/csat/response_repository.go` → `FindByToken` | O endpoint **público** de resposta da pesquisa (cliente final) só tem o token; sem contexto de tenant. O token é a credencial e o registro carrega o tenant. |
+| `repositories/channels/connection_repository.go` → `FindByWebhookVerifyToken` | **Pré-auth** de webhook de entrada do canal: o provedor externo posta sem tenant; resolve-se a conexão pelo verify token e o registro carrega o `tenant_id`. |
+| `repositories/tenant/tenant_repository.go` (todo) | É o **registro de tenants do próprio sistema** (metadados), não uma coleção multi-tenant. `ListActive` é usado pelos jobs para iterar tenants. |
+| `repositories/sla/tracking_repository.go` → `ListRunningAcrossTenants` | **Intencionalmente cross-tenant** — alimenta o job `sla.check`, que avalia trackings de todos os tenants e depois opera por tenant. Comentado no código (`intentionally NOT tenant-scoped`). |
+
+Jobs de sistema que rodam por-tenant (`maintenance.DayCounts`,
+`privacy.ApplyRetention`/`heldConversationIDs`) **mantêm** `tenant_id` no filtro —
+o "system actor" injeta o tenant no contexto antes de chamar o repositório.
+
+### 17.2 Mascaramento de segredo nos DTOs — **APROVADO**
+
+- `EncryptedSecret` / `encrypted_secret`: **zero** ocorrências em `presenter/` —
+  o segredo cifrado nunca cruza a camada de apresentação.
+- Structs de **response** verificadas (`ConnectionResponse` de channels,
+  `ConfigResponse` de providerhub/monitoring, `IntegrationResponse` de
+  automation, `SubscriptionResponse` de webhooks, `UserResponse` de iam) **não
+  têm campo de segredo** — expõem apenas `HasSecret bool`. Os campos
+  `Secret`/`Password` que existem estão em **requests** (entrada).
+- **Webhook secret**: exposto **uma única vez** na criação
+  (`CreatedResponse{ SubscriptionResponse; Secret }`) e nunca mais —
+  `SubscriptionResponse` subsequente só reporta `HasSecret`.
+- `webhook_verify_token` na `ConnectionResponse` é um **identificador público de
+  verificação** (o admin com `channel.manage` precisa copiá-lo para configurar o
+  webhook no provedor externo), não uma credencial cifrada. **Exposição
+  intencional**, não é vazamento.
+
+### 17.3 Gate `allow_*_data` do copiloto — **APROVADO**
+
+`domain/copilot/service/context_builder.go` → `Build()`: cada categoria de dado
+sensível está guardada **pelo próprio flag**, e o `if` envolve **a própria
+busca** — não há o anti-padrão "montar tudo e filtrar depois" (com o flag off, o
+provedor de dados nem é consultado):
+
+```go
+if cfg.AllowCustomerData   && b.customer   != nil { pc.Customer   = b.customer.Customer(...) }
+if cfg.AllowFinancialData  && b.financial  != nil { pc.Financial  = b.financial.Financial(...) }
+if cfg.AllowMonitoringData && b.monitoring != nil { pc.Monitoring = b.monitoring.Monitoring(...) }
+```
+
+- **Gate por categoria** (não tudo-ou-nada): `policy_test.go` cobre
+  `allow_financial_data=false` com os outros `true` → financeiro excluído; e os
+  três `false` → contexto sai só com canal + instrução + transcrição do chat.
+- **AILog**: `inputSummary()` grava apenas `action=… customer=t financial=f
+  monitoring=f` (flags), **sem dado bruto** — comentado *"without any raw data"*.
+
+— Fim do spot-check.
