@@ -5,6 +5,7 @@ package conversations
 
 import (
 	"context"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -98,6 +99,36 @@ func (r *ConversationRepository) FindOpenByContactChannel(ctx context.Context, c
 		return nil, mongodb.MapError(err)
 	}
 	return convToEntity(&m), nil
+}
+
+func (r *ConversationRepository) ListInactiveOpen(ctx context.Context, idleBefore time.Time, limit int) ([]*entity.Conversation, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	filter := bson.M{
+		"tenant_id":       tenantID,
+		"status":          bson.M{"$nin": closedStatuses},
+		"last_message_at": bson.M{"$lte": idleBefore},
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "last_message_at", Value: 1}}).SetLimit(int64(limit))
+	c, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer c.Close(ctx)
+	var out []*entity.Conversation
+	for c.Next(ctx) {
+		var m models.Conversation
+		if err := c.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, convToEntity(&m))
+	}
+	return out, mongodb.MapError(c.Err())
 }
 
 func (r *ConversationRepository) List(ctx context.Context, filter contracts.ListFilter, vis contracts.Visibility, page shared.PageRequest) ([]*entity.Conversation, error) {

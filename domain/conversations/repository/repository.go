@@ -5,6 +5,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
@@ -23,6 +24,10 @@ type ConversationRepository interface {
 	// List returns conversations matching the filter and visibility, ordered by
 	// updated_at desc (keyset). Over-fetches by one for has_more detection.
 	List(ctx context.Context, filter contracts.ListFilter, vis contracts.Visibility, page shared.PageRequest) ([]*entity.Conversation, error)
+	// ListInactiveOpen returns up to limit non-closed conversations whose last
+	// activity is at or before idleBefore (tenant-scoped). Used by the
+	// close-inactive job.
+	ListInactiveOpen(ctx context.Context, idleBefore time.Time, limit int) ([]*entity.Conversation, error)
 }
 
 // MessageRepository persists messages.

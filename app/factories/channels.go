@@ -21,13 +21,16 @@ func ContactService(c *container.Container) *contactservice.Service {
 	return contactservice.New(contactrepo.New(c.Mongo.DB), clock)
 }
 
-// ConnectionService builds the channel connection service.
+// ConnectionService builds the channel connection service, wired to the HTTP
+// health checker used by the channels.health_check job.
 func ConnectionService(c *container.Container) *channelservice.ConnectionService {
-	return channelservice.NewConnectionService(
+	svc := channelservice.NewConnectionService(
 		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
 		channelRegistry(),
 		clock,
 	)
+	svc.SetHealthChecker(infrachannels.NewHealthChecker())
+	return svc
 }
 
 // InboundService builds the inbound orchestration service.

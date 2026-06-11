@@ -111,6 +111,22 @@ func (r *NotificationRepository) MarkAllRead(ctx context.Context, userID string,
 	return int(res.ModifiedCount), nil
 }
 
+func (r *NotificationRepository) DeleteReadBefore(ctx context.Context, before time.Time) (int, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return 0, err
+	}
+	res, err := r.coll.DeleteMany(ctx, bson.M{
+		"tenant_id":  tenantID,
+		"read":       true,
+		"created_at": bson.M{"$lte": before},
+	})
+	if err != nil {
+		return 0, mongodb.MapError(err)
+	}
+	return int(res.DeletedCount), nil
+}
+
 func toModel(n *entity.Notification) models.Notification {
 	return models.Notification{
 		ID: n.ID, TenantID: n.TenantID, UserID: n.UserID, Type: string(n.Type),

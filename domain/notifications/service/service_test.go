@@ -55,6 +55,16 @@ func (r *fakeNotifRepo) MarkRead(_ context.Context, id, userID string, at time.T
 	n.ReadAt = &at
 	return nil
 }
+func (r *fakeNotifRepo) DeleteReadBefore(_ context.Context, before time.Time) (int, error) {
+	count := 0
+	for id, n := range r.items {
+		if n.Read && !n.CreatedAt.After(before) {
+			delete(r.items, id)
+			count++
+		}
+	}
+	return count, nil
+}
 func (r *fakeNotifRepo) MarkAllRead(_ context.Context, userID string, at time.Time) (int, error) {
 	count := 0
 	for _, n := range r.items {
@@ -303,5 +313,31 @@ func TestPreferences_DefaultsAndUpdate(t *testing.T) {
 	}
 	if !updated.EmailEnabled(entity.TypeAssignedToYou) {
 		t.Errorf("expected assigned_to_you email enabled after update")
+	}
+}
+
+func TestCleanup_DeletesOldReadOnly(t *testing.T) {
+	fx := newFixture()
+	old := time.Unix(1700000000, 0).UTC()
+	// read+old → deleted; read+new → kept; unread+old → kept.
+	fx.notif.items["a"] = &entity.Notification{ID: "a", TenantID: "t1", UserID: "u1", Read: true, CreatedAt: old.Add(-48 * time.Hour)}
+	fx.notif.items["b"] = &entity.Notification{ID: "b", TenantID: "t1", UserID: "u1", Read: true, CreatedAt: old}
+	fx.notif.items["c"] = &entity.Notification{ID: "c", TenantID: "t1", UserID: "u1", Read: false, CreatedAt: old.Add(-48 * time.Hour)}
+
+	n, err := fx.svc.Cleanup(tenantCtx(), old.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 deleted, got %d", n)
+	}
+	if _, ok := fx.notif.items["a"]; ok {
+		t.Errorf("old read notification should be deleted")
+	}
+	if _, ok := fx.notif.items["b"]; !ok {
+		t.Errorf("recent read notification must be kept")
+	}
+	if _, ok := fx.notif.items["c"]; !ok {
+		t.Errorf("unread notification must be kept")
 	}
 }

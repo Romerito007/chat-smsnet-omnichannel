@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
@@ -383,6 +384,38 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 	s.sla.OnResolved(ctx, conv, now)
 	s.csat.OnConversationClosed(ctx, conv)
 	return conv, nil
+}
+
+// CloseInactive closes every non-closed conversation in the current tenant whose
+// last activity is older than idleFor, recording the close event + realtime and
+// running the close side-effects (webhook, SLA resolve, CSAT). It is idempotent:
+// an already-closed conversation is not selected again. Returns the count closed.
+// Run by the chat.close_inactive_conversations job as a system actor.
+func (s *Service) CloseInactive(ctx context.Context, idleFor time.Duration) (int, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return 0, err
+	}
+	now := s.clock.Now()
+	convs, err := s.conversations.ListInactiveOpen(ctx, now.Add(-idleFor), 500)
+	if err != nil {
+		return 0, err
+	}
+	closed := 0
+	for _, conv := range convs {
+		conv.Status = entity.StatusClosed
+		conv.ClosedAt = &now
+		conv.UpdatedAt = now
+		if err := s.conversations.Update(ctx, conv); err != nil {
+			continue // best-effort; next run retries
+		}
+		s.recordEvent(ctx, conv, entity.EventConversationClosed, map[string]any{"reason": "inactivity"})
+		s.publishConversation(ctx, conv)
+		s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
+		s.sla.OnResolved(ctx, conv, now)
+		s.csat.OnConversationClosed(ctx, conv)
+		closed++
+	}
+	return closed, nil
 }
 
 // SendSystemMessage sends a system-authored outbound message to a conversation's

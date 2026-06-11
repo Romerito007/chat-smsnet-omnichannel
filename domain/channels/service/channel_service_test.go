@@ -67,7 +67,57 @@ func (r *fakeConnRepo) FindByWebhookVerifyToken(_ context.Context, token string)
 	return nil, apperror.NotFound("nf")
 }
 func (r *fakeConnRepo) List(context.Context, shared.PageRequest) ([]*chentity.ChannelConnection, error) {
-	return nil, nil
+	out := make([]*chentity.ChannelConnection, 0, len(r.byID))
+	for _, c := range r.byID {
+		cp := *c
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+// fakeHealthChecker reports the connections in `down` as unhealthy.
+type fakeHealthChecker struct{ down map[string]bool }
+
+func (f fakeHealthChecker) Check(_ context.Context, conn *chentity.ChannelConnection) error {
+	if f.down[conn.ID] {
+		return apperror.Integration("down")
+	}
+	return nil
+}
+
+func TestHealthCheck_MarksStatusIdempotently(t *testing.T) {
+	svc, repo, _ := newConnService()
+	ctx := tenantCtx()
+	// a: healthy (currently error → should flip to connected)
+	// b: down (currently connected → should flip to error)
+	// c: disabled (skipped)
+	repo.put(&chentity.ChannelConnection{ID: "a", TenantID: "t1", Type: chentity.TypeWhatsApp, Status: chentity.StatusError, Enabled: true})
+	repo.put(&chentity.ChannelConnection{ID: "b", TenantID: "t1", Type: chentity.TypeWebchat, Status: chentity.StatusConnected, Enabled: true})
+	repo.put(&chentity.ChannelConnection{ID: "c", TenantID: "t1", Type: chentity.TypeCustom, Status: chentity.StatusConnected, Enabled: false})
+	svc.SetHealthChecker(fakeHealthChecker{down: map[string]bool{"b": true}})
+
+	n, err := svc.HealthCheck(ctx)
+	if err != nil {
+		t.Fatalf("health check: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 status changes, got %d", n)
+	}
+	if repo.byID["a"].Status != chentity.StatusConnected {
+		t.Errorf("a should be connected, got %s", repo.byID["a"].Status)
+	}
+	if repo.byID["b"].Status != chentity.StatusError {
+		t.Errorf("b should be error, got %s", repo.byID["b"].Status)
+	}
+	if repo.byID["c"].Status != chentity.StatusConnected {
+		t.Errorf("disabled c must be left untouched")
+	}
+
+	// Idempotent: re-running changes nothing.
+	n2, _ := svc.HealthCheck(ctx)
+	if n2 != 0 {
+		t.Errorf("second run should change 0, got %d", n2)
+	}
 }
 
 // fakeAdapter is a configurable channel adapter.

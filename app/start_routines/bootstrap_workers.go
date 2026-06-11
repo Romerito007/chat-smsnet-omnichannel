@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -15,6 +16,7 @@ import (
 	ccontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/contracts"
 	ncontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/notifications/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
+	tenantentity "github.com/romerito007/chat-smsnet-omnichannel/domain/tenant/entity"
 	whcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/webhooks/contracts"
 	infraasynq "github.com/romerito007/chat-smsnet-omnichannel/infra/asynq"
 )
@@ -141,4 +143,121 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		ctx = authz.WithAuthContext(shared.WithTenant(ctx, p.TenantID), authz.SystemActor(p.TenantID))
 		return csat.Expire(ctx, p)
 	})
+
+	registerPeriodicHandlers(mux, c)
+}
+
+// registerPeriodicHandlers wires the scheduled, multi-tenant housekeeping jobs.
+// Each fans work out across active tenants, runs the domain service as a system
+// actor, and logs start/finish with the tenant count, item count and duration.
+// All are idempotent.
+func registerPeriodicHandlers(mux *asynq.ServeMux, c *container.Container) {
+	tenants := factories.TenantRepository(c)
+	conversations := factories.ConversationService(c)
+	notifications := factories.NotificationService(c)
+	connections := factories.ConnectionService(c)
+	maint := factories.MaintenanceService(c)
+	cfg := c.Config.Maintenance
+
+	// chat.close_inactive_conversations: close conversations idle past the limit.
+	mux.HandleFunc(infraasynq.TaskChatCloseInactive, func(ctx context.Context, _ *asynq.Task) error {
+		return eachTenant(ctx, c, tenants, "chat.close_inactive_conversations", func(tctx context.Context, t *tenantentity.Tenant) (int, error) {
+			idle := tenantDuration(t, "inactive_close_after_minutes", time.Minute, cfg.InactiveCloseAfter)
+			return conversations.CloseInactive(tctx, idle)
+		})
+	})
+
+	// notifications.cleanup: remove old read notifications.
+	mux.HandleFunc(infraasynq.TaskNotificationCleanup, func(ctx context.Context, _ *asynq.Task) error {
+		return eachTenant(ctx, c, tenants, "notifications.cleanup", func(tctx context.Context, t *tenantentity.Tenant) (int, error) {
+			retention := tenantDuration(t, "notification_retention_days", 24*time.Hour, cfg.NotificationRetention)
+			return notifications.Cleanup(tctx, time.Now().Add(-retention))
+		})
+	})
+
+	// channels.health_check: probe connections and mark connected/error.
+	mux.HandleFunc(infraasynq.TaskChannelsHealth, func(ctx context.Context, _ *asynq.Task) error {
+		return eachTenant(ctx, c, tenants, "channels.health_check", func(tctx context.Context, _ *tenantentity.Tenant) (int, error) {
+			return connections.HealthCheck(tctx)
+		})
+	})
+
+	// audit.compact: enforce audit-log retention.
+	mux.HandleFunc(infraasynq.TaskAuditCompact, func(ctx context.Context, _ *asynq.Task) error {
+		return eachTenant(ctx, c, tenants, "audit.compact", func(tctx context.Context, t *tenantentity.Tenant) (int, error) {
+			retention := tenantDuration(t, "audit_retention_days", 24*time.Hour, cfg.AuditRetention)
+			return maint.CompactAudit(tctx, retention)
+		})
+	})
+
+	// reports.snapshot: pre-aggregate per-tenant daily metrics.
+	mux.HandleFunc(infraasynq.TaskReportsSnapshot, func(ctx context.Context, _ *asynq.Task) error {
+		return eachTenant(ctx, c, tenants, "reports.snapshot", func(tctx context.Context, _ *tenantentity.Tenant) (int, error) {
+			if _, err := maint.SnapshotDay(tctx, time.Now()); err != nil {
+				return 0, err
+			}
+			return 1, nil
+		})
+	})
+}
+
+// eachTenant fans a job out across active tenants as a system actor, logging
+// start/finish with counts and duration. Per-tenant failures are logged and
+// skipped so one tenant never blocks the rest.
+func eachTenant(ctx context.Context, c *container.Container, tenants tenantRepo, job string, fn func(context.Context, *tenantentity.Tenant) (int, error)) error {
+	start := time.Now()
+	c.Logger.Info("periodic job started", "job", job)
+	list, err := tenants.ListActive(ctx)
+	if err != nil {
+		c.Logger.Error("periodic job: list tenants failed", "job", job, "error", err)
+		return err
+	}
+	total := 0
+	for _, t := range list {
+		tctx := authz.WithAuthContext(shared.WithTenant(ctx, t.ID), authz.SystemActor(t.ID))
+		n, ferr := fn(tctx, t)
+		if ferr != nil {
+			c.Logger.Error("periodic job: tenant failed", "job", job, "tenant", t.ID, "error", ferr)
+			continue
+		}
+		total += n
+	}
+	c.Logger.Info("periodic job finished", "job", job,
+		"tenants", len(list), "count", total, "duration_ms", time.Now().Sub(start).Milliseconds())
+	return nil
+}
+
+// tenantRepo is the minimal tenant-listing dependency used by the periodic jobs.
+type tenantRepo interface {
+	ListActive(ctx context.Context) ([]*tenantentity.Tenant, error)
+}
+
+// tenantDuration reads a per-tenant numeric override from settings (multiplied by
+// unit), falling back to the default.
+func tenantDuration(t *tenantentity.Tenant, key string, unit, def time.Duration) time.Duration {
+	if t != nil && t.Settings != nil {
+		if v, ok := t.Settings[key]; ok {
+			if n := toFloat(v); n > 0 {
+				return time.Duration(n * float64(unit))
+			}
+		}
+	}
+	return def
+}
+
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int32:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
 }

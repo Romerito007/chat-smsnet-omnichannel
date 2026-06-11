@@ -25,7 +25,8 @@ var scheduledJobs = []periodicJob{
 	{cronspec: "* * * * *", taskType: infraasynq.TaskSLACheck, queue: infraasynq.QueueCritical},
 	{cronspec: "0 * * * *", taskType: infraasynq.TaskReportsSnapshot, queue: infraasynq.QueueReports},
 	{cronspec: "30 3 * * *", taskType: infraasynq.TaskAuditCompact, queue: infraasynq.QueueReports},
-	{cronspec: "*/2 * * * *", taskType: infraasynq.TaskChannelsHealth, queue: infraasynq.QueueDefault},
+	{cronspec: "15 4 * * *", taskType: infraasynq.TaskNotificationCleanup, queue: infraasynq.QueueReports},
+	{cronspec: "*/5 * * * *", taskType: infraasynq.TaskChannelsHealth, queue: infraasynq.QueueDefault},
 }
 
 // runScheduler registers the periodic jobs and runs the Asynq scheduler until

@@ -21,6 +21,9 @@ type NotificationRepository interface {
 	MarkRead(ctx context.Context, id, userID string, at time.Time) error
 	// MarkAllRead marks every unread notification of the user read.
 	MarkAllRead(ctx context.Context, userID string, at time.Time) (int, error)
+	// DeleteReadBefore removes read notifications created at or before the cutoff
+	// for the tenant. Used by the notifications.cleanup job. Returns the count.
+	DeleteReadBefore(ctx context.Context, before time.Time) (int, error)
 }
 
 // PreferencesRepository persists per-user email preferences.

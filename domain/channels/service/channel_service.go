@@ -20,6 +20,7 @@ type ConnectionService struct {
 	repo     repository.ConnectionRepository
 	registry contracts.AdapterRegistry
 	clock    shared.Clock
+	health   contracts.ConnectionHealthChecker
 }
 
 // NewConnectionService builds the service.
@@ -27,7 +28,50 @@ func NewConnectionService(repo repository.ConnectionRepository, registry contrac
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &ConnectionService{repo: repo, registry: registry, clock: clock}
+	return &ConnectionService{repo: repo, registry: registry, clock: clock, health: contracts.NoopHealthChecker{}}
+}
+
+// SetHealthChecker wires the connection health checker. Optional: when unset,
+// connections are treated as healthy.
+func (s *ConnectionService) SetHealthChecker(h contracts.ConnectionHealthChecker) {
+	if h != nil {
+		s.health = h
+	}
+}
+
+// HealthCheck probes the current tenant's enabled connections and marks each
+// connected/error based on reachability. Idempotent: a connection is only updated
+// when its status changes. Returns the number of status changes. Run by the
+// channels.health_check job.
+func (s *ConnectionService) HealthCheck(ctx context.Context) (int, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return 0, err
+	}
+	conns, err := s.repo.List(ctx, shared.PageRequest{Limit: shared.MaxPageSize})
+	if err != nil {
+		return 0, err
+	}
+	changed := 0
+	now := s.clock.Now()
+	for _, conn := range conns {
+		if !conn.Enabled {
+			continue
+		}
+		newStatus := entity.StatusConnected
+		if err := s.health.Check(ctx, conn); err != nil {
+			newStatus = entity.StatusError
+		}
+		if conn.Status == newStatus {
+			continue
+		}
+		conn.Status = newStatus
+		conn.UpdatedAt = now
+		if err := s.repo.Update(ctx, conn); err != nil {
+			continue
+		}
+		changed++
+	}
+	return changed, nil
 }
 
 // Create registers a connection, generating its webhook verify token.

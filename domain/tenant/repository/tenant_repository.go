@@ -15,4 +15,7 @@ type TenantRepository interface {
 	FindByID(ctx context.Context, id string) (*entity.Tenant, error)
 	// Update persists mutable fields (name, status, settings).
 	Update(ctx context.Context, t *entity.Tenant) error
+	// ListActive returns every active tenant. Used by periodic jobs to fan work
+	// out across tenants.
+	ListActive(ctx context.Context) ([]*entity.Tenant, error)
 }

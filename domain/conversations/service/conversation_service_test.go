@@ -56,6 +56,17 @@ func (r *fakeConvRepo) FindOpenByContactChannel(ctx context.Context, contactID, 
 	return nil, apperror.NotFound("not found")
 }
 
+func (r *fakeConvRepo) ListInactiveOpen(ctx context.Context, idleBefore time.Time, _ int) ([]*entity.Conversation, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	var out []*entity.Conversation
+	for _, c := range r.items {
+		if c.TenantID == tenant && !c.Status.IsClosed() && !c.LastMessageAt.After(idleBefore) {
+			cp := *c
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
 func (r *fakeConvRepo) List(ctx context.Context, f contracts.ListFilter, vis contracts.Visibility, _ shared.PageRequest) ([]*entity.Conversation, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	var out []*entity.Conversation
@@ -332,5 +343,46 @@ func TestSendMessage_RequiresText(t *testing.T) {
 	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
 	if _, err := svc.SendMessage(ctx, conv.ID, contracts.SendMessage{}); apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("expected validation_error for empty message, got %v", err)
+	}
+}
+
+func TestCloseInactive_ClosesIdleAndIdempotent(t *testing.T) {
+	svc, cr, _, er, pub := newService(map[string]string{"s1": "t1"})
+	now := time.Unix(1700000000, 0).UTC()
+	// Seed one stale open conversation and one recently-active one.
+	cr.items["stale"] = &entity.Conversation{ID: "stale", TenantID: "t1", SectorID: "s1", Status: entity.StatusAssigned, LastMessageAt: now.Add(-2 * time.Hour)}
+	cr.items["fresh"] = &entity.Conversation{ID: "fresh", TenantID: "t1", SectorID: "s1", Status: entity.StatusAssigned, LastMessageAt: now}
+
+	n, err := svc.CloseInactive(adminCtx(), time.Hour)
+	if err != nil {
+		t.Fatalf("close inactive: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 conversation closed, got %d", n)
+	}
+	if cr.items["stale"].Status != entity.StatusClosed || cr.items["stale"].ClosedAt == nil {
+		t.Errorf("stale conversation should be closed: %+v", cr.items["stale"])
+	}
+	if cr.items["fresh"].Status == entity.StatusClosed {
+		t.Errorf("fresh conversation must not be closed")
+	}
+	// Event + realtime emitted.
+	closedEvent := false
+	for _, e := range er.items {
+		if e.Type == entity.EventConversationClosed && e.ConversationID == "stale" {
+			closedEvent = true
+		}
+	}
+	if !closedEvent {
+		t.Errorf("expected a conversation.closed timeline event")
+	}
+	if len(pub.events) == 0 {
+		t.Errorf("expected a realtime publish for the close")
+	}
+
+	// Idempotent: a second run closes nothing (already closed → not selected).
+	n2, _ := svc.CloseInactive(adminCtx(), time.Hour)
+	if n2 != 0 {
+		t.Errorf("second run should close 0, got %d", n2)
 	}
 }

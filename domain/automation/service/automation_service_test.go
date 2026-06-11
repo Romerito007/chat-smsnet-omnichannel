@@ -101,6 +101,9 @@ func (r *fakeConvRepo) FindByID(_ context.Context, id string) (*conventity.Conve
 func (r *fakeConvRepo) FindOpenByContactChannel(context.Context, string, string) (*conventity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {
+	return nil, nil
+}
 func (r *fakeConvRepo) List(context.Context, convcontracts.ListFilter, convcontracts.Visibility, shared.PageRequest) ([]*conventity.Conversation, error) {
 	return nil, nil
 }

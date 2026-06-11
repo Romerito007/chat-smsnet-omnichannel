@@ -25,6 +25,13 @@ func (r *fakeTenantRepo) FindByID(_ context.Context, id string) (*entity.Tenant,
 	}
 	return nil, apperror.NotFound("resource not found")
 }
+func (r *fakeTenantRepo) ListActive(_ context.Context) ([]*entity.Tenant, error) {
+	var out []*entity.Tenant
+	for _, t := range r.tenants {
+		out = append(out, t)
+	}
+	return out, nil
+}
 func (r *fakeTenantRepo) Update(_ context.Context, t *entity.Tenant) error {
 	if _, ok := r.tenants[t.ID]; !ok {
 		return apperror.NotFound("resource not found")

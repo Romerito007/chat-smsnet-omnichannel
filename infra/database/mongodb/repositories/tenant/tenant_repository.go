@@ -43,6 +43,24 @@ func (r *Repository) Update(ctx context.Context, t *entity.Tenant) error {
 	return mongodb.MapError(err)
 }
 
+// ListActive returns every active tenant.
+func (r *Repository) ListActive(ctx context.Context) ([]*entity.Tenant, error) {
+	c, err := r.coll.Find(ctx, bson.M{"status": string(entity.StatusActive)})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer c.Close(ctx)
+	var out []*entity.Tenant
+	for c.Next(ctx) {
+		var m models.Tenant
+		if err := c.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, toEntity(&m))
+	}
+	return out, mongodb.MapError(c.Err())
+}
+
 func toEntity(m *models.Tenant) *entity.Tenant {
 	return &entity.Tenant{
 		ID:        m.ID,

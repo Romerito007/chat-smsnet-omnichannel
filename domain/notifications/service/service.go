@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
@@ -114,6 +115,15 @@ func (s *Service) SendEmail(ctx context.Context, task contracts.EmailTask) error
 		Link:    n.Link,
 		Preview: string(n.Type),
 	})
+}
+
+// Cleanup removes read notifications created at or before the cutoff for the
+// current tenant. Idempotent. Run by the notifications.cleanup job.
+func (s *Service) Cleanup(ctx context.Context, before time.Time) (int, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return 0, err
+	}
+	return s.notifications.DeleteReadBefore(ctx, before)
 }
 
 // ── user-facing ──────────────────────────────────────────────────────────────

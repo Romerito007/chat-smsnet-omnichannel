@@ -23,8 +23,9 @@ const (
 	TaskWebhookDeliver = "webhook.deliver"
 	TaskWebhookRetry   = "webhook.retry"
 
-	TaskNotificationSend  = "notification.send"
-	TaskNotificationEmail = "notification.email"
+	TaskNotificationSend    = "notification.send"
+	TaskNotificationEmail   = "notification.email"
+	TaskNotificationCleanup = "notifications.cleanup"
 
 	TaskAISuggest   = "ai.suggest"
 	TaskAISummarize = "ai.summarize"

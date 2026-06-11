@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
@@ -94,6 +95,9 @@ func (r *fakeConvRepo) FindOpenByContactChannel(_ context.Context, contactID, ch
 		}
 	}
 	return nil, apperror.NotFound("nf")
+}
+func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {
+	return nil, nil
 }
 func (r *fakeConvRepo) List(context.Context, convcontracts.ListFilter, convcontracts.Visibility, shared.PageRequest) ([]*conventity.Conversation, error) {
 	return nil, nil

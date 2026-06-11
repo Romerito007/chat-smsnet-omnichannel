@@ -44,9 +44,24 @@ type Config struct {
 	Copilot       CopilotConfig
 	Notifications NotificationsConfig
 	CSAT          CSATConfig
+	Maintenance   MaintenanceConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
+}
+
+// MaintenanceConfig holds the default limits for the periodic jobs. Each can be
+// overridden per tenant via tenant settings.
+type MaintenanceConfig struct {
+	// InactiveCloseAfter is the idle time after which an open conversation is
+	// auto-closed (tenant override: settings.inactive_close_after_minutes).
+	InactiveCloseAfter time.Duration
+	// NotificationRetention is how long read notifications are kept
+	// (tenant override: settings.notification_retention_days).
+	NotificationRetention time.Duration
+	// AuditRetention is how long audit logs are kept
+	// (tenant override: settings.audit_retention_days).
+	AuditRetention time.Duration
 }
 
 // CSATConfig holds the CSAT settings.
@@ -231,6 +246,11 @@ func Load() (Config, error) {
 		CSAT: CSATConfig{
 			ExpireAfterSeconds: getInt("CSAT_EXPIRE_AFTER_SECONDS", 72*3600),
 			PublicBaseURL:      getString("CSAT_PUBLIC_BASE_URL", getString("APP_BASE_URL", "http://localhost:3000")),
+		},
+		Maintenance: MaintenanceConfig{
+			InactiveCloseAfter:    getDuration("MAINTENANCE_INACTIVE_CLOSE_AFTER", 24*time.Hour),
+			NotificationRetention: getDuration("MAINTENANCE_NOTIFICATION_RETENTION", 30*24*time.Hour),
+			AuditRetention:        getDuration("MAINTENANCE_AUDIT_RETENTION", 365*24*time.Hour),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),
