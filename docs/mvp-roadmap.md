@@ -61,7 +61,8 @@ padrões transversais, Asynq/Redis/Mongo bootstrap, health) já está implementa
 - `providerhub`: consulta/ação sob demanda à API **smsnet-integrations**
   (consultar cliente, planos, empresa; liberar acesso; abrir chamado) —
   sem persistir payload. `monitoring` foi removido.
-- `copilot`: adapter echo(mock) → providers reais; `ai.*` jobs + WS.
+- `copilot`: adapters de IA REAIS (openai/anthropic/gemini/mistral/deepseek/
+  perplexity), chave por tenant cifrada, gates de privacidade; echo só em testes.
 - **Entregável:** automações externas, consultas sob demanda e copiloto.
 
 ## Fase 7 — Plataforma e conformidade

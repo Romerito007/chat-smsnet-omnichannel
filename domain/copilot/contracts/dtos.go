@@ -11,6 +11,8 @@ const RealtimeSuggestionCompleted = "copilot.suggestion_completed"
 type SaveConfig struct {
 	Provider              *string
 	Model                 *string
+	APIKey                *string
+	BaseURL               *string
 	Temperature           *float64
 	MaxTokens             *int
 	AllowCustomerData     *bool

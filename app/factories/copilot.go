@@ -11,20 +11,19 @@ import (
 	copilotctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/copilot"
 )
 
-// CopilotConfigService builds the per-tenant config service.
+// CopilotConfigService builds the per-tenant config service. The cipher encrypts
+// the per-tenant provider API key at rest.
 func CopilotConfigService(c *container.Container) *cservice.ConfigService {
-	svc := cservice.NewConfigService(copilotrepo.NewConfigRepository(c.Mongo.DB), clock)
+	svc := cservice.NewConfigService(copilotrepo.NewConfigRepository(c.Mongo.DB, c.Cipher), clock)
 	svc.SetAuditor(AuditService(c))
 	return svc
 }
 
-// copilotRegistry builds the provider registry from the configured API keys.
-func copilotRegistry(c *container.Container) *provider.Registry {
-	return provider.NewRegistry(provider.Keys{
-		OpenAI:    c.Config.Copilot.OpenAIKey,
-		Gemini:    c.Config.Copilot.GeminiKey,
-		Anthropic: c.Config.Copilot.AnthropicKey,
-	})
+// copilotRegistry builds the real provider registry. Adapters are stateless: the
+// per-tenant API key/base URL travel on each request, so no env keys are wired
+// and the echo mock is excluded from production.
+func copilotRegistry(_ *container.Container) *provider.Registry {
+	return provider.NewRegistry()
 }
 
 // CopilotService builds the copilot inference service. The context builder is

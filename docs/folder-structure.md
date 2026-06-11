@@ -56,7 +56,7 @@ chat-backend/
 │   ├── channels/                       # adapters: api (genérico), whatsapp, webchat + sign/
 │   ├── automation/                     # client do flow externo (chamadas + callbacks)
 │   ├── providerhub/                    # HTTP client da API smsnet-integrations (sob demanda)
-│   ├── copilot/provider/               # adapters de IA: echo(mock), openai, gemini, anthropic
+│   ├── copilot/provider/               # adapters de IA REAIS: openai/mistral/deepseek/perplexity, anthropic, gemini (echo só em testes)
 │   ├── webhooks/                       # delivery client + assinatura HMAC
 │   ├── email/                          # smtp + templates
 │   ├── storage/                        # anexos (S3-compatible + local)

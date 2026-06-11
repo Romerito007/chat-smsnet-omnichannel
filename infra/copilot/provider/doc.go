@@ -1,6 +1,13 @@
 // Package provider holds the copilot AI adapters behind the domain's AIProvider
-// port: echo (a functional mock used in the MVP), openai, gemini and anthropic
-// (pluggable hosted backends, activated when an API key is set), and failover
-// (tries an ordered list, falling back to echo). The domain depends only on the
-// port, never on a concrete provider, so backends can be swapped per tenant.
+// port. Production ships real HTTP adapters: openai, mistral, deepseek and
+// perplexity (all OpenAI Chat Completions-compatible, sharing openAICompatible),
+// anthropic (Messages API) and gemini (generateContent). Adapters are stateless —
+// the per-tenant API key and optional base URL travel on each Request — so one
+// registry serves every tenant. They support the tool-calling loop: tool
+// definitions (from the MCP registry, never hard-coded) are forwarded and the
+// model's tool calls are surfaced for the caller to execute (read tools) or
+// propose for approval (write tools).
+//
+// The echo provider is a deterministic mock kept for tests only; it is never
+// wired into the production registry.
 package provider

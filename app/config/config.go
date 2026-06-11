@@ -216,8 +216,10 @@ type ProviderHubConfig struct {
 	RatePerMinute int
 }
 
-// CopilotConfig holds the copilot provider API keys. The MVP uses the echo mock
-// (no key needed); a hosted provider is activated only when its key is set.
+// CopilotConfig holds legacy, environment-level copilot keys. Deprecated: real
+// provider credentials are now configured PER TENANT (encrypted at rest) via the
+// copilot config endpoint, so these are unused by the provider wiring. Retained
+// only to avoid breaking existing .env files.
 type CopilotConfig struct {
 	OpenAIKey    string
 	GeminiKey    string

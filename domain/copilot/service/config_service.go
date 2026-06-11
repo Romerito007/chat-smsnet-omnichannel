@@ -17,8 +17,8 @@ import (
 // (privacy-safe): a tenant must explicitly opt in to share customer/financial/
 // monitoring data with the provider.
 const (
-	defaultProvider    = entity.ProviderEcho
-	defaultModel       = "echo-1"
+	defaultProvider    = entity.ProviderOpenAI
+	defaultModel       = "gpt-4o-mini"
 	defaultTemperature = 0.7
 	defaultMaxTokens   = 512
 )
@@ -137,6 +137,13 @@ func applySave(cfg *entity.AIConfig, cmd contracts.SaveConfig) error {
 	}
 	if cmd.Model != nil {
 		cfg.Model = strings.TrimSpace(*cmd.Model)
+	}
+	if cmd.APIKey != nil {
+		// Empty string clears the key; otherwise set the new credential.
+		cfg.APIKey = strings.TrimSpace(*cmd.APIKey)
+	}
+	if cmd.BaseURL != nil {
+		cfg.BaseURL = strings.TrimSpace(*cmd.BaseURL)
 	}
 	if cmd.Temperature != nil {
 		if *cmd.Temperature < 0 || *cmd.Temperature > 2 {

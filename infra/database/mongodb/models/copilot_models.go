@@ -7,6 +7,8 @@ type AIConfig struct {
 	Base                  `bson:",inline"`
 	Provider              string  `bson:"provider"`
 	Model                 string  `bson:"model"`
+	EncryptedAPIKey       string  `bson:"encrypted_api_key,omitempty"`
+	BaseURL               string  `bson:"base_url,omitempty"`
 	Temperature           float64 `bson:"temperature"`
 	MaxTokens             int     `bson:"max_tokens"`
 	AllowCustomerData     bool    `bson:"allow_customer_data"`

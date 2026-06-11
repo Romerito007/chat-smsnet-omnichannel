@@ -169,11 +169,23 @@ expõe (REST / WS / jobs).
   ingestão em tempo real. `liberacao`/`chamado` são auditadas.
 
 ### `copilot`
-- **Responsabilidade:** assistente de IA para o agente — **sugestão** de
-  resposta, **resumo** da conversa, **classificação** (intenção/sentimento).
-  Adapters trocáveis (echo/mock, openai, gemini, anthropic).
-- **Entidades:** `CopilotRun` (auditável), prompt templates.
-- **Depende de:** `conversations`, `infra/copilot/provider`.
+- **Responsabilidade:** assistente de IA para o agente — **suggest_reply**,
+  **summarize**, **classify**, **next_action**. Adapters REAIS por HTTP em
+  `infra/copilot/provider`: `openai`, `mistral`, `deepseek`, `perplexity`
+  (compatíveis OpenAI, derivados de `openAICompatible`), `anthropic` (Messages
+  API) e `gemini` (generateContent). Adapters stateless: a chave/`base_url` por
+  tenant viajam na requisição. O `echo` é mock **só para testes** — fora do
+  wiring de produção. Suporte ao loop de **tool calling** (ferramentas vêm do
+  registry MCP; leitura a IA chama, escrita só PROPÕE).
+- **Config por tenant (`AIConfig`):** `provider`, `model`, `temperature`,
+  `max_tokens`, `api_key` **cifrada (AES-GCM, nunca retornada — só `has_key`)**,
+  `base_url` opcional, `enabled`, gates `allow_*_data`, `human_approval_required`.
+- **Privacidade:** os gates `allow_*_data` filtram o contexto **antes** do
+  provider (dado bloqueado nunca é enviado); o `AILog` guarda só flags + tokens +
+  custo estimado + status, **sem dado bruto**. Falha do provider vira erro
+  amigável (não derruba a rota).
+- **Entidades:** `AIConfig`, `AILog` (auditável).
+- **Depende de:** `conversations`, `infra/copilot/provider`, `infra/secrets`.
 - **Expõe:** REST (`/copilot/*`); jobs (`ai.suggest`, `ai.summarize`,
   `ai.classify`); WS (`copilot.suggestion`).
 - **Nota:** assíncrono quando a latência permitir; síncrono para sugestão

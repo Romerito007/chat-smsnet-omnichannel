@@ -19,13 +19,21 @@ type AIProvider interface {
 }
 
 // Request is one inference request. The Context has already been filtered by the
-// tenant's allow_*_data policies before reaching the provider.
+// tenant's allow_*_data policies before reaching the provider. APIKey/BaseURL are
+// the per-tenant credentials resolved from the AIConfig (the key decrypted in
+// memory); a provider with no key returns a friendly "not configured" error.
 type Request struct {
 	Action      entity.Action
 	Model       string
+	APIKey      string
+	BaseURL     string
 	Temperature float64
 	MaxTokens   int
 	Context     PromptContext
+	// Tools are the (provider-agnostic) tool/function definitions the model may
+	// call. They come from the MCP registry, not from any hard-coded tool. When
+	// empty, the provider runs a plain completion.
+	Tools []ToolDefinition
 }
 
 // Response is the provider's normalized output.
@@ -34,6 +42,27 @@ type Response struct {
 	Categories   []string // populated for classify
 	TokensInput  int
 	TokensOutput int
+	// ToolCalls are the tool invocations the model requested. The caller executes
+	// read-only tools and surfaces write tools for human approval; this is the
+	// provider-side half of the tool-calling loop.
+	ToolCalls []ToolCall
+}
+
+// ToolDefinition is a provider-agnostic tool/function the model may call. Schema
+// is the JSON-Schema of the arguments. ReadOnly marks tools the AI may invoke
+// directly; non-read-only (write) tools are only proposed for human approval.
+type ToolDefinition struct {
+	Name        string
+	Description string
+	Schema      map[string]any
+	ReadOnly    bool
+}
+
+// ToolCall is a tool invocation requested by the model.
+type ToolCall struct {
+	ID        string
+	Name      string
+	Arguments string // raw JSON arguments as produced by the model
 }
 
 // PromptContext is the policy-filtered context handed to a provider. Sections

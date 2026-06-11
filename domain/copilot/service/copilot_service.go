@@ -103,6 +103,8 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 	resp, err := provider.Infer(ctx, contracts.Request{
 		Action:      action,
 		Model:       cfg.Model,
+		APIKey:      cfg.APIKey,
+		BaseURL:     cfg.BaseURL,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
 		Context:     pc,

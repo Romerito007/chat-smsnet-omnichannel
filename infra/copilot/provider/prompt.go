@@ -4,7 +4,26 @@ import (
 	"strings"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/contracts"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 )
+
+// systemPrompt returns the action-specific system instruction shared by every
+// real provider. It steers the model toward a concise, support-appropriate
+// answer; the (policy-filtered) conversation context is supplied as user content.
+func systemPrompt(action entity.Action) string {
+	switch action {
+	case entity.ActionSuggestReply:
+		return "You are a customer-support copilot. Draft a concise, friendly reply to the customer's latest message, in the same language as the customer. Output only the reply text, with no preamble."
+	case entity.ActionSummarize:
+		return "You are a customer-support copilot. Summarize the following conversation in a few clear sentences. Output only the summary."
+	case entity.ActionClassify:
+		return "You are a customer-support classifier. Classify the conversation into exactly one of the categories listed in the instruction. Respond with only the chosen category name, nothing else."
+	case entity.ActionNextAction:
+		return "You are a customer-support copilot. Recommend the single best next action for the agent as one short imperative sentence. Output only that sentence."
+	default:
+		return "You are a helpful customer-support copilot."
+	}
+}
 
 // renderContext renders the full policy-filtered context into a single prompt
 // string. Real providers (openai/gemini/anthropic) use this to build their

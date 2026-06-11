@@ -12,6 +12,8 @@ import (
 type SaveConfigRequest struct {
 	Provider              *string  `json:"provider"`
 	Model                 *string  `json:"model"`
+	APIKey                *string  `json:"api_key"`
+	BaseURL               *string  `json:"base_url"`
 	Temperature           *float64 `json:"temperature"`
 	MaxTokens             *int     `json:"max_tokens"`
 	AllowCustomerData     *bool    `json:"allow_customer_data"`
@@ -26,6 +28,8 @@ func (r SaveConfigRequest) ToCommand() ccontracts.SaveConfig {
 	return ccontracts.SaveConfig{
 		Provider:              r.Provider,
 		Model:                 r.Model,
+		APIKey:                r.APIKey,
+		BaseURL:               r.BaseURL,
 		Temperature:           r.Temperature,
 		MaxTokens:             r.MaxTokens,
 		AllowCustomerData:     r.AllowCustomerData,
@@ -36,12 +40,15 @@ func (r SaveConfigRequest) ToCommand() ccontracts.SaveConfig {
 	}
 }
 
-// ConfigResponse is the public representation of a tenant's copilot config.
+// ConfigResponse is the public representation of a tenant's copilot config. The
+// API key is never returned — only whether one is set (HasKey).
 type ConfigResponse struct {
 	ID                    string    `json:"id"`
 	TenantID              string    `json:"tenant_id"`
 	Provider              string    `json:"provider"`
 	Model                 string    `json:"model"`
+	HasKey                bool      `json:"has_key"`
+	BaseURL               string    `json:"base_url,omitempty"`
 	Temperature           float64   `json:"temperature"`
 	MaxTokens             int       `json:"max_tokens"`
 	AllowCustomerData     bool      `json:"allow_customer_data"`
@@ -53,13 +60,15 @@ type ConfigResponse struct {
 	UpdatedAt             time.Time `json:"updated_at"`
 }
 
-// NewConfigResponse maps a config entity.
+// NewConfigResponse maps a config entity, masking the API key.
 func NewConfigResponse(c *centity.AIConfig) ConfigResponse {
 	return ConfigResponse{
 		ID:                    c.ID,
 		TenantID:              c.TenantID,
 		Provider:              string(c.Provider),
 		Model:                 c.Model,
+		HasKey:                c.APIKey != "",
+		BaseURL:               c.BaseURL,
 		Temperature:           c.Temperature,
 		MaxTokens:             c.MaxTokens,
 		AllowCustomerData:     c.AllowCustomerData,

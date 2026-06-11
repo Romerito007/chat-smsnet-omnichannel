@@ -8,28 +8,36 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/models"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/secrets"
 )
 
-// ConfigRepository implements repository.ConfigRepository.
+// ConfigRepository implements repository.ConfigRepository. The per-tenant API key
+// is encrypted on write and decrypted on read so plaintext is never persisted.
 type ConfigRepository struct {
-	coll *mongo.Collection
+	coll   *mongo.Collection
+	cipher *secrets.Cipher
 }
 
 // NewConfigRepository builds the repository.
-func NewConfigRepository(db *mongo.Database) *ConfigRepository {
-	return &ConfigRepository{coll: db.Collection("copilot_configs")}
+func NewConfigRepository(db *mongo.Database, cipher *secrets.Cipher) *ConfigRepository {
+	return &ConfigRepository{coll: db.Collection("copilot_configs"), cipher: cipher}
 }
 
 func (r *ConfigRepository) Create(ctx context.Context, c *entity.AIConfig) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
 	}
-	_, err := r.coll.InsertOne(ctx, toModel(c))
+	m, err := r.toModel(c)
+	if err != nil {
+		return apperror.Internal("encrypt api key").Wrap(err)
+	}
+	_, err = r.coll.InsertOne(ctx, m)
 	return mongodb.MapError(err)
 }
 
@@ -38,11 +46,17 @@ func (r *ConfigRepository) Update(ctx context.Context, c *entity.AIConfig) error
 	if err != nil {
 		return err
 	}
+	enc, err := r.cipher.Encrypt(c.APIKey)
+	if err != nil {
+		return apperror.Internal("encrypt api key").Wrap(err)
+	}
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": c.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
 			"provider":                c.Provider,
 			"model":                   c.Model,
+			"encrypted_api_key":       enc,
+			"base_url":                c.BaseURL,
 			"temperature":             c.Temperature,
 			"max_tokens":              c.MaxTokens,
 			"allow_customer_data":     c.AllowCustomerData,
@@ -71,13 +85,19 @@ func (r *ConfigRepository) FindByTenant(ctx context.Context) (*entity.AIConfig, 
 	if err := r.coll.FindOne(ctx, bson.M{"tenant_id": tenantID}).Decode(&m); err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	return toEntity(&m), nil
+	return r.toEntity(&m)
 }
 
-func toModel(c *entity.AIConfig) models.AIConfig {
+func (r *ConfigRepository) toModel(c *entity.AIConfig) (models.AIConfig, error) {
+	enc, err := r.cipher.Encrypt(c.APIKey)
+	if err != nil {
+		return models.AIConfig{}, err
+	}
 	m := models.AIConfig{
 		Provider:              string(c.Provider),
 		Model:                 c.Model,
+		EncryptedAPIKey:       enc,
+		BaseURL:               c.BaseURL,
 		Temperature:           c.Temperature,
 		MaxTokens:             c.MaxTokens,
 		AllowCustomerData:     c.AllowCustomerData,
@@ -90,15 +110,21 @@ func toModel(c *entity.AIConfig) models.AIConfig {
 	m.TenantID = c.TenantID
 	m.CreatedAt = c.CreatedAt
 	m.UpdatedAt = c.UpdatedAt
-	return m
+	return m, nil
 }
 
-func toEntity(m *models.AIConfig) *entity.AIConfig {
+func (r *ConfigRepository) toEntity(m *models.AIConfig) (*entity.AIConfig, error) {
+	key, err := r.cipher.Decrypt(m.EncryptedAPIKey)
+	if err != nil {
+		return nil, apperror.Internal("decrypt api key").Wrap(err)
+	}
 	return &entity.AIConfig{
 		ID:                    m.ID,
 		TenantID:              m.TenantID,
 		Provider:              entity.Provider(m.Provider),
 		Model:                 m.Model,
+		APIKey:                key,
+		BaseURL:               m.BaseURL,
 		Temperature:           m.Temperature,
 		MaxTokens:             m.MaxTokens,
 		AllowCustomerData:     m.AllowCustomerData,
@@ -108,7 +134,7 @@ func toEntity(m *models.AIConfig) *entity.AIConfig {
 		Enabled:               m.Enabled,
 		CreatedAt:             m.CreatedAt,
 		UpdatedAt:             m.UpdatedAt,
-	}
+	}, nil
 }
 
 var _ repository.ConfigRepository = (*ConfigRepository)(nil)
