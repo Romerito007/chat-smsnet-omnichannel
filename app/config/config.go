@@ -46,6 +46,7 @@ type Config struct {
 	CSAT          CSATConfig
 	Maintenance   MaintenanceConfig
 	Privacy       PrivacyConfig
+	Reports       ReportsConfig
 	Attachments   AttachmentsConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
@@ -109,6 +110,15 @@ type PrivacyConfig struct {
 	DownloadBaseURL string
 	// DownloadTTL bounds how long an export's signed URL stays valid.
 	DownloadTTL time.Duration
+}
+
+// ReportsConfig holds the report-export storage settings: where export files are
+// written and how their temporary signed download URLs are minted.
+type ReportsConfig struct {
+	StorageDir      string
+	SigningSecret   string
+	DownloadBaseURL string
+	DownloadTTL     time.Duration
 }
 
 // CSATConfig holds the CSAT settings.
@@ -328,6 +338,12 @@ func Load() (Config, error) {
 			SigningSecret:   getString("PRIVACY_SIGNING_SECRET", getString("AUTH_JWT_SECRET", "dev-secret-change-me")),
 			DownloadBaseURL: getString("PRIVACY_DOWNLOAD_BASE_URL", "http://localhost:8080"),
 			DownloadTTL:     getDuration("PRIVACY_DOWNLOAD_TTL", 24*time.Hour),
+		},
+		Reports: ReportsConfig{
+			StorageDir:      getString("REPORTS_STORAGE_DIR", "/tmp/chat-reports"),
+			SigningSecret:   getString("REPORTS_SIGNING_SECRET", getString("AUTH_JWT_SECRET", "dev-secret-change-me")),
+			DownloadBaseURL: getString("REPORTS_DOWNLOAD_BASE_URL", "http://localhost:8080"),
+			DownloadTTL:     getDuration("REPORTS_DOWNLOAD_TTL", 24*time.Hour),
 		},
 		Attachments: AttachmentsConfig{
 			Provider:            getString("ATTACHMENTS_PROVIDER", "local"),

@@ -35,4 +35,7 @@ func registerReportRoutes(r chi.Router, c *container.Container) {
 		p.Use(middleware.RequirePermission(authz.ReportExport))
 		p.Post("/reports/export", ctl.Export)
 	})
+
+	// Public download: the signed, expiring token in the URL is the credential.
+	r.Get("/reports/downloads/{token}", ctl.Download)
 }

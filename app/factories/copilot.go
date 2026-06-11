@@ -21,7 +21,7 @@ func CopilotConfigService(c *container.Container) *cservice.ConfigService {
 
 // copilotRegistry builds the real provider registry. Adapters are stateless: the
 // per-tenant API key/base URL travel on each request, so no env keys are wired
-// and the echo mock is excluded from production.
+// and only real hosted providers are registered.
 func copilotRegistry(_ *container.Container) *provider.Registry {
 	return provider.NewRegistry()
 }

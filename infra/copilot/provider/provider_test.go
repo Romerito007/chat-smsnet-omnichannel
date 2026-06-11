@@ -209,7 +209,7 @@ func TestRegistry_ResolvesRealProvidersNotEcho(t *testing.T) {
 			t.Errorf("registry should resolve %q: %v", p, err)
 		}
 	}
-	if _, err := reg.Resolve(entity.ProviderEcho); err == nil {
+	if _, err := reg.Resolve(entity.Provider("echo")); err == nil {
 		t.Error("echo must NOT be resolvable in production")
 	}
 }

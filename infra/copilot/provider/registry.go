@@ -10,10 +10,8 @@ import (
 // Registry resolves a configured provider name to its real adapter. It implements
 // the domain's ProviderResolver port without the domain knowing any concrete
 // provider. Adapters are stateless: the per-tenant API key and base URL travel on
-// each Request, so a single registry instance serves every tenant.
-//
-// The echo mock is deliberately NOT registered: it exists for tests only and is
-// never selectable in production.
+// each Request, so a single registry instance serves every tenant. Only the real
+// hosted providers are registered.
 type Registry struct {
 	adapters map[entity.Provider]contracts.AIProvider
 }
@@ -30,8 +28,8 @@ func NewRegistry() *Registry {
 	}}
 }
 
-// Resolve implements contracts.ProviderResolver. An unknown or non-production
-// provider (e.g. echo) yields an error so the service surfaces a friendly message.
+// Resolve implements contracts.ProviderResolver. An unknown or unconfigured
+// provider yields an error so the service surfaces a friendly message.
 func (r *Registry) Resolve(p entity.Provider) (contracts.AIProvider, error) {
 	if adapter, ok := r.adapters[p]; ok {
 		return adapter, nil

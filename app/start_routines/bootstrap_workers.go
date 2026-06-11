@@ -45,8 +45,7 @@ func runWorker(ctx context.Context, c *container.Container) error {
 // place each domain registers its consumers.
 func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 	// automation.invoke: slow, non-critical invocation of the external flow.
-	// The flow itself is external; this handler is the integration seam where the
-	// outbound call + callback handling will live. For now it logs.
+	// The flow itself is external; this handler starts it and awaits the callback.
 	automation := factories.AutomationService(c)
 
 	// automation.invoke: start the external flow for a new conversation.
@@ -158,13 +157,8 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		return privacy.RunExport(ctx, p.RequestID)
 	})
 
-	// reports.export: prepared async report export. The MVP acknowledges and logs
-	// the request (already audited at request time); CSV/XLSX rendering to object
-	// storage is future work.
-	mux.HandleFunc(infraasynq.TaskReportsExport, func(_ context.Context, t *asynq.Task) error {
-		c.Logger.Info("reports.export requested", "payload", string(t.Payload()))
-		return nil
-	})
+	// Report export renders a real file synchronously and returns a signed URL at
+	// request time (see domain/reports), so there is no async export job here.
 
 	registerPeriodicHandlers(mux, c)
 }

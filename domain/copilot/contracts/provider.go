@@ -8,9 +8,9 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 )
 
-// AIProvider is the provider-agnostic inference port. Every backend (echo,
-// openai, gemini, anthropic, failover) implements it; the domain never depends
-// on a concrete provider.
+// AIProvider is the provider-agnostic inference port. Every backend (openai,
+// anthropic, gemini, mistral, deepseek, perplexity) implements it; the domain
+// never depends on a concrete provider.
 type AIProvider interface {
 	// Name returns the provider identifier (used in logs).
 	Name() string

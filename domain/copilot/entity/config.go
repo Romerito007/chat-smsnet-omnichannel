@@ -4,9 +4,8 @@ package entity
 
 import "time"
 
-// Provider identifies the configured AI backend. Production ships real adapters
-// behind the AIProvider port; echo is a deterministic mock kept for tests only
-// and is deliberately NOT a valid (selectable) production provider.
+// Provider identifies the configured AI backend. Every value below is a real
+// hosted provider with an adapter behind the AIProvider port.
 type Provider string
 
 const (
@@ -16,15 +15,9 @@ const (
 	ProviderMistral    Provider = "mistral"
 	ProviderDeepSeek   Provider = "deepseek"
 	ProviderPerplexity Provider = "perplexity"
-
-	// ProviderEcho is the test-only mock. It is never wired into production.
-	ProviderEcho Provider = "echo"
-	// ProviderFailover is retained for compatibility but is not selectable.
-	ProviderFailover Provider = "failover"
 )
 
-// IsValidProvider reports whether p is a selectable production provider. Echo and
-// failover are intentionally excluded so they cannot be configured by a tenant.
+// IsValidProvider reports whether p is a selectable production provider.
 func IsValidProvider(p Provider) bool {
 	switch p {
 	case ProviderOpenAI, ProviderAnthropic, ProviderGemini,

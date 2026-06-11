@@ -20,20 +20,32 @@ import (
 // LocalFileStore is a filesystem-backed contracts.FileStore. It writes objects
 // under a base directory and mints HMAC-signed, expiring download URLs validated
 // by the public download endpoint. An object-store backend can replace it
-// without touching the privacy domain.
+// without touching the consuming domain.
 type LocalFileStore struct {
-	baseDir string
-	secret  []byte
-	baseURL string // e.g. "http://localhost:8080" — download path is appended
+	baseDir      string
+	secret       []byte
+	baseURL      string // e.g. "http://localhost:8080" — download path is appended
+	downloadPath string // e.g. "/v1/privacy/downloads/" — the signed token is appended
 }
 
-// NewLocalFileStore builds the store. baseDir is created on demand; secret signs
-// download tokens; baseURL is the public API origin the signed link points at.
+// NewLocalFileStore builds the store for the privacy download endpoint. baseDir
+// is created on demand; secret signs download tokens; baseURL is the public API
+// origin the signed link points at.
 func NewLocalFileStore(baseDir, secret, baseURL string) *LocalFileStore {
+	return NewLocalFileStoreAt(baseDir, secret, baseURL, "/v1/privacy/downloads/")
+}
+
+// NewLocalFileStoreAt builds the store with an explicit download path, so the
+// same backend can serve different domains (e.g. /v1/reports/downloads/).
+func NewLocalFileStoreAt(baseDir, secret, baseURL, downloadPath string) *LocalFileStore {
+	if !strings.HasSuffix(downloadPath, "/") {
+		downloadPath += "/"
+	}
 	return &LocalFileStore{
-		baseDir: baseDir,
-		secret:  []byte(secret),
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseDir:      baseDir,
+		secret:       []byte(secret),
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		downloadPath: downloadPath,
 	}
 }
 
@@ -69,7 +81,7 @@ func (s *LocalFileStore) Open(key string) ([]byte, string, error) {
 func (s *LocalFileStore) SignedURL(key string, ttl time.Duration) (string, time.Time, error) {
 	expiresAt := time.Now().Add(ttl).UTC()
 	token := s.sign(key, expiresAt)
-	return fmt.Sprintf("%s/v1/privacy/downloads/%s", s.baseURL, token), expiresAt, nil
+	return s.baseURL + s.downloadPath + token, expiresAt, nil
 }
 
 // Resolve validates a signed token and returns the object key. It fails for

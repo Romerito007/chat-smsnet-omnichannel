@@ -121,9 +121,14 @@ curl -s -X PATCH $BASE/v1/privacy/retention -H "$AUTH" -H 'Content-Type: applica
 curl -s "$BASE/v1/reports/overview?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z" -H "$AUTH"
 curl -s "$BASE/v1/reports/sla?sector_id=<s>" -H "$AUTH"
 
-# Exportar relatório (permissão report.export; auditado: report.export)
+# Exportar relatório (permissão report.export; auditado: report.export).
+# Gera o arquivo (csv|json) na hora e devolve uma URL assinada e temporária.
 curl -s -X POST "$BASE/v1/reports/export?report=conversations&format=csv" -H "$AUTH"
-# → 202 { "status":"queued", "report":"conversations", "format":"csv" }
+# → 200 { "report":"conversations", "format":"csv", "filename":"...",
+#          "download_url":"$BASE/v1/reports/downloads/<token>", "expires_at":"...", "bytes":1234 }
+
+# Baixar o arquivo gerado (público: o token assinado é a credencial).
+curl -s -L "$BASE/v1/reports/downloads/<token>" -o report.csv
 ```
 
 ## Webhooks (auditado)

@@ -5,8 +5,8 @@
 // company's configured webhook (conn.BaseURL == outbound_url). The body is
 // HMAC-SHA256 signed with the connection's outbound_secret (conn.Secret).
 //
-// This is the production replacement for the old mock adapter. WhatsApp/Telegram
-// are later, separate adapters of the same contracts.Adapter interface.
+// It is the generic production default; WhatsApp/Telegram will be later, separate
+// adapters of the same contracts.Adapter interface.
 package api
 
 import (

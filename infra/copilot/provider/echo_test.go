@@ -12,7 +12,7 @@ import (
 // stand-in for tests that need an AIProvider without an HTTP call.
 func TestEcho_DeterministicSuggestAndClassify(t *testing.T) {
 	e := NewEcho()
-	if e.Name() != string(entity.ProviderEcho) {
+	if e.Name() != "echo" {
 		t.Fatalf("name = %q", e.Name())
 	}
 	got, err := e.Infer(t.Context(), contracts.Request{Action: entity.ActionSuggestReply, Context: samplePC()})

@@ -2,8 +2,9 @@
 // HTML templates (embedded from templates/) and delivers them over SMTP. It
 // implements both the notifications EmailSender port (the notification.email
 // channel) and the auth Mailer port (account-lifecycle emails: verification,
-// invitation, password reset and reset confirmation). There is no logging stub:
-// when no SMTP host is configured, sends fail loudly rather than silently drop.
+// invitation, password reset and reset confirmation). There is no logging-only
+// fallback: when no SMTP host is configured, sends fail loudly rather than
+// silently drop.
 package email
 
 import (

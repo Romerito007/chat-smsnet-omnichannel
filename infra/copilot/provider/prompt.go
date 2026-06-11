@@ -26,9 +26,8 @@ func systemPrompt(action entity.Action) string {
 }
 
 // renderContext renders the full policy-filtered context into a single prompt
-// string. Real providers (openai/gemini/anthropic) use this to build their
-// request body; the echo provider uses it for token estimation. Only sections
-// present in the context (i.e. allowed by policy) are rendered.
+// string that the providers send as the user message. Only sections present in
+// the context (i.e. allowed by the tenant's privacy policy) are rendered.
 func renderContext(pc contracts.PromptContext) string {
 	var b strings.Builder
 	b.WriteString("Channel: ")
@@ -69,24 +68,6 @@ func renderTranscript(pc contracts.PromptContext) string {
 	return b.String()
 }
 
-func lastCustomerTurn(pc contracts.PromptContext) string {
-	for i := len(pc.Transcript) - 1; i >= 0; i-- {
-		if pc.Transcript[i].Role == "customer" {
-			return pc.Transcript[i].Text
-		}
-	}
-	return ""
-}
-
-func firstCustomerTurn(pc contracts.PromptContext) string {
-	for _, t := range pc.Transcript {
-		if t.Role == "customer" {
-			return t.Text
-		}
-	}
-	return ""
-}
-
 func parseCategories(instruction string) []string {
 	const prefix = "categories:"
 	idx := strings.Index(instruction, prefix)
@@ -101,15 +82,6 @@ func parseCategories(instruction string) []string {
 		}
 	}
 	return out
-}
-
-// estimateTokens is a rough whitespace-based token estimate (~1 token per word),
-// good enough for mock cost/observability.
-func estimateTokens(s string) int {
-	if strings.TrimSpace(s) == "" {
-		return 0
-	}
-	return len(strings.Fields(s))
 }
 
 func truncate(s string, n int) string {

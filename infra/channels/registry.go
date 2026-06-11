@@ -6,7 +6,6 @@ import (
 	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/channels/api"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/channels/webchat"
-	"github.com/romerito007/chat-smsnet-omnichannel/infra/channels/whatsapp"
 )
 
 // Registry resolves an adapter for a channel type, falling back to the generic
@@ -16,16 +15,16 @@ type Registry struct {
 	fallback chcontracts.Adapter
 }
 
-// NewRegistry builds the registry with the available adapters. No mock adapter
-// is wired in production: the generic API channel is the real default.
+// NewRegistry builds the registry with the real adapters. The generic API channel
+// is the production default; webchat acknowledges delivery over the realtime
+// layer. Every other type (whatsapp/telegram/instagram/custom) integrates over
+// the generic API channel until it gets a dedicated adapter.
 func NewRegistry() *Registry {
 	return &Registry{
 		adapters: map[chentity.Type]chcontracts.Adapter{
-			chentity.TypeAPI:      api.New(chentity.TypeAPI),
-			chentity.TypeWhatsApp: whatsapp.New(),
-			chentity.TypeWebchat:  webchat.New(),
+			chentity.TypeAPI:     api.New(chentity.TypeAPI),
+			chentity.TypeWebchat: webchat.New(),
 		},
-		// telegram / instagram / custom integrate over the generic API channel.
 		fallback: api.New(chentity.TypeCustom),
 	}
 }

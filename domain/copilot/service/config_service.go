@@ -58,8 +58,8 @@ func (s *ConfigService) auditSaved(ctx context.Context, cfg *entity.AIConfig) {
 	})
 }
 
-// Current returns the tenant's config, creating a default one on first access so
-// the copilot is usable out of the box with the mock provider.
+// Current returns the tenant's config, creating a default one on first access
+// (the tenant then sets its provider API key before the copilot can run).
 func (s *ConfigService) Current(ctx context.Context) (*entity.AIConfig, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

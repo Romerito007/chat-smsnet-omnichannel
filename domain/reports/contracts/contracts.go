@@ -113,6 +113,26 @@ type CSATReport struct {
 	ByScore      []Bucket `json:"by_score"`
 }
 
+// ExportResult is the outcome of a report export: a real file written to the
+// store and a temporary signed URL to download it.
+type ExportResult struct {
+	Report      string    `json:"report"`
+	Format      string    `json:"format"`
+	Filename    string    `json:"filename"`
+	DownloadURL string    `json:"download_url"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	Bytes       int       `json:"bytes"`
+}
+
+// FileStore persists export artifacts and mints temporary, signed download URLs.
+// Implemented by infra/storage (reused across domains).
+type FileStore interface {
+	Save(key string, data []byte) error
+	SignedURL(key string, ttl time.Duration) (url string, expiresAt time.Time, err error)
+	Resolve(token string) (key string, err error)
+	Open(key string) (data []byte, filename string, err error)
+}
+
 // ReportService is the reporting abstraction. Every method enforces tenant +
 // report.view (the latter at the HTTP layer).
 type ReportService interface {
@@ -124,6 +144,7 @@ type ReportService interface {
 	Copilot(ctx context.Context, f Filter) (CopilotReport, error)
 	SLA(ctx context.Context, f Filter) (SLAReport, error)
 	CSAT(ctx context.Context, f Filter) (CSATReport, error)
-	// RequestExport audits + enqueues a report export (report.export permission).
-	RequestExport(ctx context.Context, report, format string, f Filter) error
+	// Export renders the named report (json|csv), stores the file and returns a
+	// signed download URL (report.export permission).
+	Export(ctx context.Context, report, format string, f Filter) (ExportResult, error)
 }

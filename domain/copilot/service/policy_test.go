@@ -218,7 +218,7 @@ func allCtx() context.Context {
 
 func TestService_SuggestReply_PersistsLogAndRespectsPolicy(t *testing.T) {
 	spy := &spyProvider{}
-	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.ProviderEcho, Model: "echo-1", Enabled: true}
+	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.Provider("echo"), Model: "echo-1", Enabled: true}
 	svc, logs := newService(cfg, spy)
 
 	res, err := svc.SuggestReply(allCtx(), contracts.SuggestReplyInput{ConversationID: "conv1"})
@@ -244,7 +244,7 @@ func TestService_SuggestReply_PersistsLogAndRespectsPolicy(t *testing.T) {
 
 func TestService_HumanApprovalRequired(t *testing.T) {
 	spy := &spyProvider{}
-	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.ProviderEcho, Model: "echo-1", Enabled: true, HumanApprovalRequired: true}
+	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.Provider("echo"), Model: "echo-1", Enabled: true, HumanApprovalRequired: true}
 	svc, logs := newService(cfg, spy)
 
 	res, err := svc.Summarize(allCtx(), contracts.SummarizeInput{ConversationID: "conv1"})
@@ -261,7 +261,7 @@ func TestService_HumanApprovalRequired(t *testing.T) {
 
 func TestService_Disabled(t *testing.T) {
 	spy := &spyProvider{}
-	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.ProviderEcho, Enabled: false}
+	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.Provider("echo"), Enabled: false}
 	svc, _ := newService(cfg, spy)
 	if _, err := svc.Summarize(allCtx(), contracts.SummarizeInput{ConversationID: "conv1"}); apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("expected validation error when disabled, got %v", err)
@@ -270,7 +270,7 @@ func TestService_Disabled(t *testing.T) {
 
 func TestService_VisibilityEnforced(t *testing.T) {
 	spy := &spyProvider{}
-	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.ProviderEcho, Enabled: true}
+	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.Provider("echo"), Enabled: true}
 	svc, _ := newService(cfg, spy)
 
 	// Out-of-scope agent (own scope, different sector, not assigned).

@@ -9,21 +9,22 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 )
 
-// Echo is a deterministic, dependency-free provider. It produces useful,
-// shaped output for each action from the (already policy-filtered) context, so
-// the copilot is fully functional in the MVP without any external API.
+// Echo is a deterministic, dependency-free AIProvider used ONLY by tests (it
+// lives in a _test.go file and is never compiled into production). It produces
+// shaped output for each action from the already policy-filtered context, so
+// tests that need an AIProvider can avoid an HTTP call.
 type Echo struct{}
 
-// NewEcho builds the echo provider.
+// NewEcho builds the test echo provider.
 func NewEcho() *Echo { return &Echo{} }
 
-// Name implements AIProvider.
-func (e *Echo) Name() string { return string(entity.ProviderEcho) }
+// Name implements contracts.AIProvider.
+func (e *Echo) Name() string { return "echo" }
 
-// Infer implements AIProvider.
+// Infer implements contracts.AIProvider.
 func (e *Echo) Infer(_ context.Context, req contracts.Request) (contracts.Response, error) {
 	pc := req.Context
-	tokensIn := estimateTokens(renderContext(pc))
+	tokensIn := wordCount(renderContext(pc))
 
 	var text string
 	var categories []string
@@ -46,7 +47,7 @@ func (e *Echo) Infer(_ context.Context, req contracts.Request) (contracts.Respon
 		Text:         text,
 		Categories:   categories,
 		TokensInput:  tokensIn,
-		TokensOutput: estimateTokens(text),
+		TokensOutput: wordCount(text),
 	}, nil
 }
 
@@ -101,8 +102,7 @@ func (e *Echo) classify(pc contracts.PromptContext) []string {
 	if len(categories) == 0 {
 		return nil
 	}
-	// Deterministic mock: pick the category whose name best overlaps the
-	// transcript, else the first.
+	// Pick the category whose name best overlaps the transcript, else the first.
 	text := strings.ToLower(renderTranscript(pc))
 	best, bestScore := categories[0], -1
 	for _, c := range categories {
@@ -125,6 +125,32 @@ func (e *Echo) nextAction(pc contracts.PromptContext) string {
 		return "Reply to the customer's last message and confirm resolution."
 	}
 	return "Greet the customer and ask how you can help."
+}
+
+// wordCount is a rough whitespace token estimate used by the test provider.
+func wordCount(s string) int {
+	if strings.TrimSpace(s) == "" {
+		return 0
+	}
+	return len(strings.Fields(s))
+}
+
+func lastCustomerTurn(pc contracts.PromptContext) string {
+	for i := len(pc.Transcript) - 1; i >= 0; i-- {
+		if pc.Transcript[i].Role == "customer" {
+			return pc.Transcript[i].Text
+		}
+	}
+	return ""
+}
+
+func firstCustomerTurn(pc contracts.PromptContext) string {
+	for _, t := range pc.Transcript {
+		if t.Role == "customer" {
+			return t.Text
+		}
+	}
+	return ""
 }
 
 var _ contracts.AIProvider = (*Echo)(nil)

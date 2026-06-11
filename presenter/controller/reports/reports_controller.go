@@ -5,7 +5,10 @@ package reports
 
 import (
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	rcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/reports/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
@@ -13,12 +16,13 @@ import (
 
 // Controller serves the report endpoints.
 type Controller struct {
-	svc rcontracts.ReportService
+	svc   rcontracts.ReportService
+	files rcontracts.FileStore
 }
 
 // NewController builds the controller.
-func NewController(svc rcontracts.ReportService) *Controller {
-	return &Controller{svc: svc}
+func NewController(svc rcontracts.ReportService, files rcontracts.FileStore) *Controller {
+	return &Controller{svc: svc, files: files}
 }
 
 // filter parses the common report filter from the query string.
@@ -93,7 +97,7 @@ func (c *Controller) CSAT(w http.ResponseWriter, r *http.Request) {
 }
 
 // Export handles POST /v1/reports/export?report=overview&format=csv (report.export).
-// It audits and enqueues the export job; file generation is asynchronous.
+// It renders the report into a real file and returns a temporary signed URL.
 func (c *Controller) Export(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	report := q.Get("report")
@@ -104,13 +108,39 @@ func (c *Controller) Export(w http.ResponseWriter, r *http.Request) {
 	if format == "" {
 		format = "csv"
 	}
-	if err := c.svc.RequestExport(r.Context(), report, format, filter(r)); err != nil {
+	res, err := c.svc.Export(r.Context(), report, format, filter(r))
+	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusAccepted, map[string]any{
-		"status": "queued", "report": report, "format": format,
-	})
+	middleware.WriteJSON(w, http.StatusOK, res)
+}
+
+// Download handles GET /v1/reports/downloads/{token}. Public: the unguessable,
+// expiring, HMAC-signed token is the only credential, mirroring the privacy and
+// CSAT public-token model.
+func (c *Controller) Download(w http.ResponseWriter, r *http.Request) {
+	key, err := c.files.Resolve(chi.URLParam(r, "token"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	data, filename, err := c.files.Open(key)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", contentTypeFor(filename))
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func contentTypeFor(filename string) string {
+	if strings.HasSuffix(filename, ".csv") {
+		return "text/csv; charset=utf-8"
+	}
+	return "application/json; charset=utf-8"
 }
 
 func write(w http.ResponseWriter, r *http.Request, res any, err error) {

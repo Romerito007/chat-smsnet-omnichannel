@@ -196,7 +196,7 @@ de segurança; **conformidade de contrato realtime**. → **médio**.
 **Handlers** (`app/start_routines/bootstrap_workers.go`): `automation.invoke`,
 `automation.timeout`, `channel.deliver`, `channel.retry`, `webhook.deliver`,
 `webhook.retry`, `notification.send`, `notification.email`, `csat.send`,
-`csat.expire`, `privacy.export`, `reports.export` (MVP: loga). Periódicos:
+`csat.expire`, `privacy.export`. Periódicos:
 `chat.close_inactive_conversations`, `notifications.cleanup`,
 `channels.health_check`, `audit.compact`, `privacy.retention`, `reports.snapshot`,
 `sla.check`.

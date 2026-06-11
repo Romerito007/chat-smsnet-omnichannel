@@ -9,8 +9,8 @@ import (
 
 // ChannelSender adapts the conversations service to the CSAT ChannelSender port:
 // it delivers the survey question as a system outbound message, which the
-// conversations service hands to the channels outbound path for real delivery
-// (Prompt 9). This reuses the existing channel adapters (mock/whatsapp/webchat).
+// conversations service hands to the channels outbound path for real delivery.
+// This reuses the existing channel adapters (the generic API channel, webchat).
 type ChannelSender struct {
 	conversations *convservice.Service
 }

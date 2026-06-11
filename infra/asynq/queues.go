@@ -43,11 +43,8 @@ const (
 	TaskChatCloseInactive = "chat.close_inactive_conversations"
 	TaskSLACheck          = "sla.check"
 	TaskReportsSnapshot   = "reports.snapshot"
-	// TaskReportsExport is prepared for a future async report export (CSV/XLSX to
-	// object storage + a download link). Not implemented in the MVP.
-	TaskReportsExport  = "reports.export"
-	TaskAuditCompact   = "audit.compact"
-	TaskChannelsHealth = "channels.health_check"
+	TaskAuditCompact      = "audit.compact"
+	TaskChannelsHealth    = "channels.health_check"
 
 	// Privacy (LGPD) tasks. privacy.export assembles a contact's data bundle into
 	// a file with a signed URL; privacy.retention applies the per-tenant

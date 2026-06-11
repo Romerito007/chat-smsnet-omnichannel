@@ -5,9 +5,10 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
-	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/reports/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/reports/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
@@ -16,12 +17,16 @@ import (
 // defaultPeriod is used when the caller does not bound the period.
 const defaultPeriod = 30 * 24 * time.Hour
 
+// defaultExportTTL bounds how long an export's signed URL stays valid.
+const defaultExportTTL = 24 * time.Hour
+
 // Service is the Mongo-backed ReportService.
 type Service struct {
 	repo    repository.Repository
 	clock   shared.Clock
 	auditor shared.Auditor
-	export  contracts.ExportEnqueuer
+	files   contracts.FileStore
+	urlTTL  time.Duration
 }
 
 // NewService builds the service.
@@ -29,7 +34,7 @@ func NewService(repo repository.Repository, clock shared.Clock) *Service {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}}
+	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}, urlTTL: defaultExportTTL}
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, report exports are not
@@ -40,39 +45,53 @@ func (s *Service) SetAuditor(a shared.Auditor) {
 	}
 }
 
-// SetExportEnqueuer wires the async report-export enqueuer. Optional: when unset,
-// RequestExport audits the request but does not enqueue a job.
-func (s *Service) SetExportEnqueuer(e contracts.ExportEnqueuer) {
-	if e != nil {
-		s.export = e
+// SetFileStore wires the export file store and the signed-URL lifetime. Export
+// requires it; without it Export returns an error rather than an empty result.
+func (s *Service) SetFileStore(files contracts.FileStore, ttl time.Duration) {
+	s.files = files
+	if ttl > 0 {
+		s.urlTTL = ttl
 	}
 }
 
-// RequestExport audits a report-export request ("exportação de relatório") and
-// enqueues the (prepared) reports.export job. The file generation is future work.
-func (s *Service) RequestExport(ctx context.Context, report, format string, f contracts.Filter) error {
+// Export renders the named report into a real file (json|csv), writes it to the
+// file store and returns a temporary signed download URL. The request is audited.
+func (s *Service) Export(ctx context.Context, report, format string, f contracts.Filter) (contracts.ExportResult, error) {
 	if err := s.guard(ctx); err != nil {
-		return err
+		return contracts.ExportResult{}, err
 	}
+	if s.files == nil {
+		return contracts.ExportResult{}, apperror.Internal("report export storage is not configured")
+	}
+	tenantID, _ := shared.TenantFrom(ctx)
 	f = s.normalize(f)
-	actor := ""
-	if ac, ok := authz.FromContext(ctx); ok {
-		actor = ac.UserID
+
+	data, ext, err := s.render(ctx, report, format, f)
+	if err != nil {
+		return contracts.ExportResult{}, err
 	}
+
+	filename := report + "-" + s.clock.Now().UTC().Format("20060102-150405") + "." + ext
+	key := strings.Join([]string{"reports", tenantID, shared.NewID() + "-" + filename}, "/")
+	if err := s.files.Save(key, data); err != nil {
+		return contracts.ExportResult{}, apperror.Internal("could not write report file").Wrap(err)
+	}
+	url, expiresAt, err := s.files.SignedURL(key, s.urlTTL)
+	if err != nil {
+		return contracts.ExportResult{}, apperror.Internal("could not sign report url").Wrap(err)
+	}
+
 	if err := s.auditor.Record(ctx, shared.AuditEntry{
 		Action: "report.export", ResourceType: "report", ResourceID: report,
-		Data: map[string]any{"format": format, "sector_id": f.SectorID, "channel": f.Channel},
+		Data: map[string]any{"format": ext, "bytes": len(data), "sector_id": f.SectorID, "channel": f.Channel},
 	}); err != nil {
-		return err
+		return contracts.ExportResult{}, err
 	}
-	if s.export != nil {
-		tenantID, _ := shared.TenantFrom(ctx)
-		return s.export.EnqueueExport(contracts.ExportTask{
-			TenantID: tenantID, ActorID: actor, Report: report, Format: format,
-			From: f.From.UnixMilli(), To: f.To.UnixMilli(), SectorID: f.SectorID, Channel: f.Channel,
-		})
-	}
-	return nil
+
+	return contracts.ExportResult{
+		Report: report, Format: ext, Filename: filename,
+		DownloadURL: url, ExpiresAt: expiresAt, Bytes: len(data),
+	}, nil
 }
 
 // normalize fills a missing period with the last 30 days (To defaults to now).
