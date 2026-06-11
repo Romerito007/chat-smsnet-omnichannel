@@ -48,4 +48,10 @@ const (
 	TaskReportsExport  = "reports.export"
 	TaskAuditCompact   = "audit.compact"
 	TaskChannelsHealth = "channels.health_check"
+
+	// Privacy (LGPD) tasks. privacy.export assembles a contact's data bundle into
+	// a file with a signed URL; privacy.retention applies the per-tenant
+	// RetentionPolicy across the scheduled, multi-tenant fan-out.
+	TaskPrivacyExport    = "privacy.export"
+	TaskPrivacyRetention = "privacy.retention"
 )

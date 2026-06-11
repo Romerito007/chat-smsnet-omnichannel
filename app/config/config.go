@@ -45,6 +45,7 @@ type Config struct {
 	Notifications NotificationsConfig
 	CSAT          CSATConfig
 	Maintenance   MaintenanceConfig
+	Privacy       PrivacyConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -62,6 +63,19 @@ type MaintenanceConfig struct {
 	// AuditRetention is how long audit logs are kept
 	// (tenant override: settings.audit_retention_days).
 	AuditRetention time.Duration
+}
+
+// PrivacyConfig holds the privacy (LGPD) settings: where export files are stored
+// and how their temporary signed download URLs are minted.
+type PrivacyConfig struct {
+	// StorageDir is the base directory for export artifacts.
+	StorageDir string
+	// SigningSecret signs download tokens (HMAC). Set a strong value in production.
+	SigningSecret string
+	// DownloadBaseURL is the public API origin the signed link points at.
+	DownloadBaseURL string
+	// DownloadTTL bounds how long an export's signed URL stays valid.
+	DownloadTTL time.Duration
 }
 
 // CSATConfig holds the CSAT settings.
@@ -251,6 +265,12 @@ func Load() (Config, error) {
 			InactiveCloseAfter:    getDuration("MAINTENANCE_INACTIVE_CLOSE_AFTER", 24*time.Hour),
 			NotificationRetention: getDuration("MAINTENANCE_NOTIFICATION_RETENTION", 30*24*time.Hour),
 			AuditRetention:        getDuration("MAINTENANCE_AUDIT_RETENTION", 365*24*time.Hour),
+		},
+		Privacy: PrivacyConfig{
+			StorageDir:      getString("PRIVACY_STORAGE_DIR", "/tmp/chat-exports"),
+			SigningSecret:   getString("PRIVACY_SIGNING_SECRET", getString("AUTH_JWT_SECRET", "dev-secret-change-me")),
+			DownloadBaseURL: getString("PRIVACY_DOWNLOAD_BASE_URL", "http://localhost:8080"),
+			DownloadTTL:     getDuration("PRIVACY_DOWNLOAD_TTL", 24*time.Hour),
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

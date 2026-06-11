@@ -15,6 +15,7 @@ import (
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	ccontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/contracts"
 	ncontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/notifications/contracts"
+	pcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/privacy/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	tenantentity "github.com/romerito007/chat-smsnet-omnichannel/domain/tenant/entity"
 	whcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/webhooks/contracts"
@@ -144,6 +145,19 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		return csat.Expire(ctx, p)
 	})
 
+	// privacy.export: assemble a contact's data bundle into a file with a
+	// temporary signed URL. Runs with the original requester as the audit actor.
+	privacy := factories.PrivacyService(c)
+	mux.HandleFunc(infraasynq.TaskPrivacyExport, func(ctx context.Context, t *asynq.Task) error {
+		var p pcontracts.ExportTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		actor := authz.NewAuthContext(p.TenantID, p.ActorID, authz.AllPermissions(), nil, authz.ScopeAll)
+		ctx = authz.WithAuthContext(shared.WithTenant(ctx, p.TenantID), actor)
+		return privacy.RunExport(ctx, p.RequestID)
+	})
+
 	registerPeriodicHandlers(mux, c)
 }
 
@@ -157,6 +171,7 @@ func registerPeriodicHandlers(mux *asynq.ServeMux, c *container.Container) {
 	notifications := factories.NotificationService(c)
 	connections := factories.ConnectionService(c)
 	maint := factories.MaintenanceService(c)
+	privacy := factories.PrivacyService(c)
 	cfg := c.Config.Maintenance
 
 	// chat.close_inactive_conversations: close conversations idle past the limit.
@@ -187,6 +202,14 @@ func registerPeriodicHandlers(mux *asynq.ServeMux, c *container.Container) {
 		return eachTenant(ctx, c, tenants, "audit.compact", func(tctx context.Context, t *tenantentity.Tenant) (int, error) {
 			retention := tenantDuration(t, "audit_retention_days", 24*time.Hour, cfg.AuditRetention)
 			return maint.CompactAudit(tctx, retention)
+		})
+	})
+
+	// privacy.retention: apply each tenant's RetentionPolicy, deleting data past
+	// the configured cutoffs while skipping anything under an active legal hold.
+	mux.HandleFunc(infraasynq.TaskPrivacyRetention, func(ctx context.Context, _ *asynq.Task) error {
+		return eachTenant(ctx, c, tenants, "privacy.retention", func(tctx context.Context, _ *tenantentity.Tenant) (int, error) {
+			return privacy.ApplyRetention(tctx)
 		})
 	})
 
