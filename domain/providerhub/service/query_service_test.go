@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -95,31 +94,30 @@ func (r *fakeContactRepo) FindByID(_ context.Context, id string) (*contactentity
 }
 
 type fakeGateway struct {
-	profile phcontracts.CustomerProfile
-	fin     phcontracts.FinancialStatus
-	ticket  phcontracts.Ticket
+	cliente phcontracts.ClienteResult
+	planos  []phcontracts.Plano
+	empresa phcontracts.Empresa
+	liber   phcontracts.Liberacao
+	chamado phcontracts.Chamado
 	err     error
-	gotLook phcontracts.Lookup
+	gotReq  phcontracts.ConsultaClienteRequest
 }
 
-func (g *fakeGateway) GetCustomerProfile(_ context.Context, _ *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) (phcontracts.CustomerProfile, error) {
-	g.gotLook = lk
-	return g.profile, g.err
+func (g *fakeGateway) ConsultarCliente(_ context.Context, _ *phentity.ProviderIntegrationConfig, req phcontracts.ConsultaClienteRequest) (phcontracts.ClienteResult, error) {
+	g.gotReq = req
+	return g.cliente, g.err
 }
-func (g *fakeGateway) GetContracts(context.Context, *phentity.ProviderIntegrationConfig, phcontracts.Lookup) ([]phcontracts.Contract, error) {
-	return nil, g.err
+func (g *fakeGateway) ListarPlanos(context.Context, *phentity.ProviderIntegrationConfig) ([]phcontracts.Plano, error) {
+	return g.planos, g.err
 }
-func (g *fakeGateway) GetFinancialStatus(context.Context, *phentity.ProviderIntegrationConfig, phcontracts.Lookup) (phcontracts.FinancialStatus, error) {
-	return g.fin, g.err
+func (g *fakeGateway) DadosEmpresa(context.Context, *phentity.ProviderIntegrationConfig) (phcontracts.Empresa, error) {
+	return g.empresa, g.err
 }
-func (g *fakeGateway) GetConnectionStatus(context.Context, *phentity.ProviderIntegrationConfig, phcontracts.Lookup) (phcontracts.ConnectionStatus, error) {
-	return phcontracts.ConnectionStatus{}, g.err
+func (g *fakeGateway) LiberarAcesso(context.Context, *phentity.ProviderIntegrationConfig, string) (phcontracts.Liberacao, error) {
+	return g.liber, g.err
 }
-func (g *fakeGateway) GetTickets(context.Context, *phentity.ProviderIntegrationConfig, phcontracts.Lookup) ([]phcontracts.Ticket, error) {
-	return nil, g.err
-}
-func (g *fakeGateway) OpenTicket(context.Context, *phentity.ProviderIntegrationConfig, phcontracts.Lookup, phcontracts.OpenTicketInput) (phcontracts.Ticket, error) {
-	return g.ticket, g.err
+func (g *fakeGateway) AbrirChamado(context.Context, *phentity.ProviderIntegrationConfig, string, string, string) (phcontracts.Chamado, error) {
+	return g.chamado, g.err
 }
 func (g *fakeGateway) Ping(context.Context, *phentity.ProviderIntegrationConfig) error { return g.err }
 
@@ -127,128 +125,204 @@ type fakeLimiter struct{ allow bool }
 
 func (l fakeLimiter) Allow(context.Context, string) (bool, error) { return l.allow, nil }
 
+type fakeAuditor struct{ entries []shared.AuditEntry }
+
+func (a *fakeAuditor) Record(_ context.Context, e shared.AuditEntry) error {
+	a.entries = append(a.entries, e)
+	return nil
+}
+func (a *fakeAuditor) has(action string) (shared.AuditEntry, bool) {
+	for _, e := range a.entries {
+		if e.Action == action {
+			return e, true
+		}
+	}
+	return shared.AuditEntry{}, false
+}
+
 // ── fixture ──────────────────────────────────────────────────────────────────
 
-type fixture struct {
-	svc     *QueryService
-	logs    *fakeLogs
-	gateway *fakeGateway
+func actorCtx(tenant, user string, perms ...authz.Permission) context.Context {
+	ctx := shared.WithTenant(context.Background(), tenant)
+	return authz.WithAuthContext(ctx, authz.NewAuthContext(tenant, user, perms, nil, authz.ScopeAll))
 }
 
-func newFixture(limiterAllow bool, gwErr error) fixture {
-	cfg := &phentity.ProviderIntegrationConfig{ID: "cfg1", TenantID: "t1", Enabled: true, BaseURL: "http://api", TimeoutMs: 1000}
-	convs := &fakeConvRepo{items: map[string]*conventity.Conversation{
-		"conv1": {ID: "conv1", TenantID: "t1", Channel: "whatsapp", ContactID: "c1", SectorID: "s1"},
-	}}
-	contacts := &fakeContactRepo{byID: map[string]*contactentity.Contact{
-		"c1": {ID: "c1", TenantID: "t1", Document: "12345678900", Phone: "5511",
-			Identities: []contactentity.ChannelIdentity{{Channel: "whatsapp", ExternalID: "wa-1"}}},
-	}}
-	logs := &fakeLogs{}
-	gw := &fakeGateway{
-		profile: phcontracts.CustomerProfile{Name: "Jane", Document: "12345678900"},
-		fin:     phcontracts.FinancialStatus{Balance: 10, Overdue: true},
-		ticket:  phcontracts.Ticket{ID: "tk1", Subject: "help"},
-		err:     gwErr,
+func newSvc(gw *fakeGateway, limiterAllow, withConfig bool) (*QueryService, *fakeLogs, *fakeAuditor) {
+	var cfg *phentity.ProviderIntegrationConfig
+	if withConfig {
+		cfg = &phentity.ProviderIntegrationConfig{ID: "cfg1", TenantID: "t1", Enabled: true, ISPType: phentity.ISPHubsoft, SMSNetBaseURL: "http://api", TimeoutMs: 1000}
 	}
-	svc := NewQueryService(&fakeConfigRepo{cfg: cfg}, logs, convs, contacts, gw, fakeLimiter{allow: limiterAllow}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
-	return fixture{svc: svc, logs: logs, gateway: gw}
-}
-
-// allCtx is an all-scope actor that can see any conversation.
-func allCtx() context.Context {
-	ctx := shared.WithTenant(context.Background(), "t1")
-	return authz.WithAuthContext(ctx, authz.NewAuthContext("t1", "u1", nil, nil, authz.ScopeAll))
+	logs := &fakeLogs{}
+	aud := &fakeAuditor{}
+	svc := NewQueryService(
+		&fakeConfigRepo{cfg: cfg},
+		logs,
+		&fakeConvRepo{items: map[string]*conventity.Conversation{
+			"cv1": {ID: "cv1", TenantID: "t1", ContactID: "c1", SectorID: "s1"},
+		}},
+		&fakeContactRepo{byID: map[string]*contactentity.Contact{
+			"c1": {ID: "c1", TenantID: "t1", Document: "123", Phone: "+55"},
+		}},
+		gw,
+		fakeLimiter{allow: limiterAllow},
+		fixedClock{t: time.Unix(1700000000, 0).UTC()},
+	)
+	svc.SetAuditor(aud)
+	return svc, logs, aud
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
-func TestCustomerProfile_SuccessLogsAndBuildsLookup(t *testing.T) {
-	fx := newFixture(true, nil)
-	res, err := fx.svc.CustomerProfile(allCtx(), "conv1")
+func TestConsultarCliente_SuccessOmitsFaturasWithoutFinancialPermission(t *testing.T) {
+	gw := &fakeGateway{cliente: phcontracts.ClienteResult{Cliente: &phcontracts.Cliente{
+		Nome: "João", CpfCnpj: "123", Faturas: []phcontracts.Fatura{{Valor: 99.9, Vencimento: "2026-07-01"}},
+	}}}
+	svc, logs, _ := newSvc(gw, true, true)
+
+	res, err := svc.ConsultarCliente(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", phcontracts.ConsultaClienteRequest{CpfCnpj: "123"})
 	if err != nil {
-		t.Fatalf("profile: %v", err)
+		t.Fatalf("consulta: %v", err)
 	}
-	if res.Name != "Jane" {
-		t.Errorf("unexpected profile: %+v", res)
+	if res.Cliente == nil || res.Cliente.Nome != "João" {
+		t.Fatalf("expected cliente, got %+v", res)
 	}
-	// lookup built from the contact.
-	if fx.gateway.gotLook.Document != "12345678900" || fx.gateway.gotLook.ExternalID != "wa-1" {
-		t.Errorf("lookup not built from contact: %+v", fx.gateway.gotLook)
+	if res.Cliente.Faturas != nil {
+		t.Errorf("faturas must be omitted without contact.view_financial, got %+v", res.Cliente.Faturas)
 	}
-	if l := fx.logs.last(); l == nil || l.Status != phentity.StatusSuccess || l.QueryType != phentity.QueryCustomerProfile {
-		t.Errorf("expected a success log, got %+v", l)
+	if logs.last() == nil || logs.last().Status != phentity.StatusSuccess {
+		t.Errorf("expected a success query log")
 	}
 }
 
-func TestQuery_RateLimited(t *testing.T) {
-	fx := newFixture(false, nil)
-	_, err := fx.svc.CustomerProfile(allCtx(), "conv1")
+func TestConsultarCliente_KeepsFaturasWithFinancialPermission(t *testing.T) {
+	gw := &fakeGateway{cliente: phcontracts.ClienteResult{Cliente: &phcontracts.Cliente{
+		Nome: "João", Faturas: []phcontracts.Fatura{{Valor: 99.9}},
+	}}}
+	svc, _, _ := newSvc(gw, true, true)
+
+	res, err := svc.ConsultarCliente(actorCtx("t1", "u1", authz.IntegrationRead, authz.ContactViewFinancial), "cv1", phcontracts.ConsultaClienteRequest{CpfCnpj: "123"})
+	if err != nil {
+		t.Fatalf("consulta: %v", err)
+	}
+	if len(res.Cliente.Faturas) != 1 {
+		t.Errorf("faturas must be kept with contact.view_financial, got %+v", res.Cliente.Faturas)
+	}
+}
+
+func TestConsultarCliente_NeedsInputReturnsOptions(t *testing.T) {
+	gw := &fakeGateway{cliente: phcontracts.ClienteResult{NeedsSelection: true, Options: []phcontracts.ContratoOption{
+		{IDCliente: "A", Label: "Contrato A"}, {IDCliente: "B", Label: "Contrato B"},
+	}}}
+	svc, _, _ := newSvc(gw, true, true)
+
+	res, err := svc.ConsultarCliente(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", phcontracts.ConsultaClienteRequest{Phone: "+55"})
+	if err != nil {
+		t.Fatalf("consulta: %v", err)
+	}
+	if !res.NeedsSelection || len(res.Options) != 2 {
+		t.Errorf("expected needs_input with 2 options, got %+v", res)
+	}
+}
+
+func TestConsultarCliente_FillsRequestFromContactWhenEmpty(t *testing.T) {
+	gw := &fakeGateway{cliente: phcontracts.ClienteResult{Cliente: &phcontracts.Cliente{Nome: "X"}}}
+	svc, _, _ := newSvc(gw, true, true)
+	if _, err := svc.ConsultarCliente(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", phcontracts.ConsultaClienteRequest{}); err != nil {
+		t.Fatalf("consulta: %v", err)
+	}
+	if gw.gotReq.CpfCnpj != "123" || gw.gotReq.Phone != "+55" {
+		t.Errorf("request not filled from contact: %+v", gw.gotReq)
+	}
+}
+
+func TestConsultarCliente_NotFoundPropagates(t *testing.T) {
+	gw := &fakeGateway{err: apperror.NotFound("cliente não localizado")}
+	svc, logs, _ := newSvc(gw, true, true)
+	_, err := svc.ConsultarCliente(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", phcontracts.ConsultaClienteRequest{CpfCnpj: "999"})
+	if apperror.From(err).Code != apperror.CodeNotFound {
+		t.Fatalf("expected not_found, got %v", err)
+	}
+	if logs.last().Status != phentity.StatusNotFound {
+		t.Errorf("log status = %q, want not_found", logs.last().Status)
+	}
+}
+
+func TestConsultarCliente_FallbackIsIntegrationError(t *testing.T) {
+	gw := &fakeGateway{err: apperror.Integration("unavailable")}
+	svc, logs, _ := newSvc(gw, true, true)
+	_, err := svc.ConsultarCliente(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", phcontracts.ConsultaClienteRequest{CpfCnpj: "1"})
+	if apperror.From(err).Code != apperror.CodeIntegrationUnavailable {
+		t.Fatalf("expected integration error, got %v", err)
+	}
+	if logs.last().Status != phentity.StatusError {
+		t.Errorf("log status = %q, want error", logs.last().Status)
+	}
+}
+
+func TestLiberarAcesso_SuccessIsAudited(t *testing.T) {
+	gw := &fakeGateway{liber: phcontracts.Liberacao{Liberado: true, Protocolo: "P1"}}
+	svc, _, aud := newSvc(gw, true, true)
+	res, err := svc.LiberarAcesso(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "idc1")
+	if err != nil {
+		t.Fatalf("liberar: %v", err)
+	}
+	if !res.Liberado || res.Protocolo != "P1" {
+		t.Errorf("unexpected liberacao: %+v", res)
+	}
+	e, ok := aud.has("providerhub.liberacao")
+	if !ok {
+		t.Fatalf("liberacao not audited: %+v", aud.entries)
+	}
+	if e.Data["id_cliente"] != "idc1" {
+		t.Errorf("audit missing id_cliente: %+v", e)
+	}
+}
+
+func TestAbrirChamado_SuccessIsAudited(t *testing.T) {
+	gw := &fakeGateway{chamado: phcontracts.Chamado{Protocolo: "C1"}}
+	svc, _, aud := newSvc(gw, true, true)
+	res, err := svc.AbrirChamado(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "idc1", "sem internet", "detalhe")
+	if err != nil {
+		t.Fatalf("chamado: %v", err)
+	}
+	if res.Protocolo != "C1" {
+		t.Errorf("unexpected chamado: %+v", res)
+	}
+	if _, ok := aud.has("providerhub.chamado"); !ok {
+		t.Fatalf("chamado not audited: %+v", aud.entries)
+	}
+}
+
+func TestLiberarAcesso_RequiresIDCliente(t *testing.T) {
+	svc, _, _ := newSvc(&fakeGateway{}, true, true)
+	_, err := svc.LiberarAcesso(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "  ")
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("expected validation for empty id_cliente, got %v", err)
+	}
+}
+
+func TestExecute_RateLimited(t *testing.T) {
+	svc, logs, _ := newSvc(&fakeGateway{}, false, true)
+	_, err := svc.ListarPlanos(actorCtx("t1", "u1", authz.IntegrationRead), "cv1")
 	if apperror.From(err).Code != apperror.CodeRateLimited {
-		t.Errorf("expected rate_limited, got %v", err)
+		t.Fatalf("expected rate_limited, got %v", err)
 	}
-	if l := fx.logs.last(); l == nil || l.Status != phentity.StatusBlocked {
-		t.Errorf("expected a blocked log, got %+v", l)
+	if logs.last().Status != phentity.StatusBlocked {
+		t.Errorf("log status = %q, want blocked", logs.last().Status)
 	}
 }
 
-func TestQuery_ExternalFailureFriendlyAndLogged(t *testing.T) {
-	fx := newFixture(true, errors.New("connection refused"))
-	_, err := fx.svc.FinancialStatus(allCtx(), "conv1")
+func TestExecute_NoConfig(t *testing.T) {
+	svc, _, _ := newSvc(&fakeGateway{}, true, false)
+	_, err := svc.DadosEmpresa(actorCtx("t1", "u1", authz.IntegrationRead), "cv1")
 	if apperror.From(err).Code != apperror.CodeIntegrationUnavailable {
-		t.Errorf("expected integration_unavailable (friendly), got %v", err)
-	}
-	if l := fx.logs.last(); l == nil || l.Status != phentity.StatusError {
-		t.Errorf("expected an error log, got %+v", l)
+		t.Errorf("expected integration error without config, got %v", err)
 	}
 }
 
-func TestQuery_TimeoutClassified(t *testing.T) {
-	fx := newFixture(true, context.DeadlineExceeded)
-	_, _ = fx.svc.Tickets(allCtx(), "conv1")
-	if l := fx.logs.last(); l == nil || l.Status != phentity.StatusTimeout {
-		t.Errorf("expected a timeout log, got %+v", l)
-	}
-}
-
-func TestQuery_NoConfig(t *testing.T) {
-	fx := newFixture(true, nil)
-	fx.svc = NewQueryService(&fakeConfigRepo{cfg: nil}, fx.logs,
-		&fakeConvRepo{items: map[string]*conventity.Conversation{"conv1": {ID: "conv1", TenantID: "t1", ContactID: "c1", SectorID: "s1"}}},
-		&fakeContactRepo{byID: map[string]*contactentity.Contact{}}, fx.gateway, fakeLimiter{allow: true}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
-	_, err := fx.svc.CustomerProfile(allCtx(), "conv1")
-	if apperror.From(err).Code != apperror.CodeIntegrationUnavailable {
-		t.Errorf("expected integration_unavailable when not configured, got %v", err)
-	}
-}
-
-func TestQuery_TenantAndVisibilityEnforced(t *testing.T) {
-	fx := newFixture(true, nil)
-	// Agent with scope own, in sector s2 (not the conversation's s1, not assigned).
-	ctx := shared.WithTenant(context.Background(), "t1")
-	ctx = authz.WithAuthContext(ctx, authz.NewAuthContext("t1", "bob", nil, []string{"s2"}, authz.ScopeOwn))
-	if _, err := fx.svc.CustomerProfile(ctx, "conv1"); apperror.From(err).Code != apperror.CodeNotFound {
-		t.Errorf("expected not_found for an out-of-scope conversation, got %v", err)
-	}
-
-	// Different tenant cannot see it either.
-	other := shared.WithTenant(context.Background(), "t2")
-	other = authz.WithAuthContext(other, authz.NewAuthContext("t2", "x", nil, nil, authz.ScopeAll))
-	if _, err := fx.svc.CustomerProfile(other, "conv1"); apperror.From(err).Code != apperror.CodeNotFound {
-		t.Errorf("expected not_found cross-tenant, got %v", err)
-	}
-}
-
-func TestOpenTicket_Success(t *testing.T) {
-	fx := newFixture(true, nil)
-	tk, err := fx.svc.OpenTicket(allCtx(), "conv1", phcontracts.OpenTicketInput{Subject: "down"})
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if tk.ID != "tk1" {
-		t.Errorf("unexpected ticket: %+v", tk)
-	}
-	if l := fx.logs.last(); l == nil || l.QueryType != phentity.QueryOpenTicket || l.Status != phentity.StatusSuccess {
-		t.Errorf("expected open_ticket success log, got %+v", l)
+func TestConsultarCliente_RequireTenant(t *testing.T) {
+	svc, _, _ := newSvc(&fakeGateway{}, true, true)
+	if _, err := svc.ConsultarCliente(context.Background(), "cv1", phcontracts.ConsultaClienteRequest{}); apperror.From(err).Code != apperror.CodeForbidden {
+		t.Errorf("expected forbidden without tenant, got %v", err)
 	}
 }

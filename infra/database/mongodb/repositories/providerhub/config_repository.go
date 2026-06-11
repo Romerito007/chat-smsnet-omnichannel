@@ -1,9 +1,11 @@
 // Package providerhub is the Mongo implementation of the providerhub repositories
-// (config and the minimal query log).
+// (config and the minimal query log). The API key and ISP credentials are
+// encrypted at rest.
 package providerhub
 
 import (
 	"context"
+	"encoding/json"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -18,8 +20,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/secrets"
 )
 
-// ConfigRepository implements repository.ConfigRepository. The secret is
-// encrypted at rest.
+// ConfigRepository implements repository.ConfigRepository.
 type ConfigRepository struct {
 	coll   *mongo.Collection
 	cipher *secrets.Cipher
@@ -34,11 +35,11 @@ func (r *ConfigRepository) Create(ctx context.Context, c *entity.ProviderIntegra
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
 	}
-	enc, err := r.cipher.Encrypt(c.Secret)
+	m, err := r.toModel(c)
 	if err != nil {
-		return apperror.Internal("encrypt secret").Wrap(err)
+		return err
 	}
-	_, err = r.coll.InsertOne(ctx, toModel(c, enc))
+	_, err = r.coll.InsertOne(ctx, m)
 	return mongodb.MapError(err)
 }
 
@@ -47,20 +48,23 @@ func (r *ConfigRepository) Update(ctx context.Context, c *entity.ProviderIntegra
 	if err != nil {
 		return err
 	}
-	enc, err := r.cipher.Encrypt(c.Secret)
+	m, err := r.toModel(c)
 	if err != nil {
-		return apperror.Internal("encrypt secret").Wrap(err)
+		return err
 	}
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": c.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
-			"name":             c.Name,
-			"base_url":         c.BaseURL,
-			"auth_type":        c.AuthType,
-			"encrypted_secret": enc,
-			"enabled":          c.Enabled,
-			"timeout_ms":       c.TimeoutMs,
-			"updated_at":       c.UpdatedAt,
+			"name":                  m.Name,
+			"smsnet_base_url":       m.SMSNetBaseURL,
+			"encrypted_api_key":     m.EncryptedAPIKey,
+			"isp_type":              m.ISPType,
+			"encrypted_credentials": m.EncryptedCredentials,
+			"bot_id":                m.BotID,
+			"options":               m.Options,
+			"enabled":               m.Enabled,
+			"timeout_ms":            m.TimeoutMs,
+			"updated_at":            c.UpdatedAt,
 		}},
 	)
 	if err != nil {
@@ -127,34 +131,84 @@ func (r *ConfigRepository) List(ctx context.Context, page shared.PageRequest) ([
 	return out, mongodb.MapError(c.Err())
 }
 
-func toModel(c *entity.ProviderIntegrationConfig, encryptedSecret string) models.ProviderIntegrationConfig {
+func (r *ConfigRepository) toModel(c *entity.ProviderIntegrationConfig) (models.ProviderIntegrationConfig, error) {
+	encKey := ""
+	if c.SMSNetAPIKey != "" {
+		v, err := r.cipher.Encrypt(c.SMSNetAPIKey)
+		if err != nil {
+			return models.ProviderIntegrationConfig{}, apperror.Internal("encrypt api key").Wrap(err)
+		}
+		encKey = v
+	}
+	encCreds := ""
+	if len(c.ISPCredentials) > 0 {
+		raw, err := json.Marshal(c.ISPCredentials)
+		if err != nil {
+			return models.ProviderIntegrationConfig{}, apperror.Internal("marshal credentials").Wrap(err)
+		}
+		v, err := r.cipher.Encrypt(string(raw))
+		if err != nil {
+			return models.ProviderIntegrationConfig{}, apperror.Internal("encrypt credentials").Wrap(err)
+		}
+		encCreds = v
+	}
 	m := models.ProviderIntegrationConfig{
-		Name:            c.Name,
-		BaseURL:         c.BaseURL,
-		AuthType:        c.AuthType,
-		EncryptedSecret: encryptedSecret,
-		Enabled:         c.Enabled,
-		TimeoutMs:       c.TimeoutMs,
+		Name:                 c.Name,
+		SMSNetBaseURL:        c.SMSNetBaseURL,
+		EncryptedAPIKey:      encKey,
+		ISPType:              c.ISPType,
+		EncryptedCredentials: encCreds,
+		BotID:                c.BotID,
+		Options: models.ProviderConfigOptions{
+			UsaPegarFaturaAtrasada:      c.Options.UsaPegarFaturaAtrasada,
+			UsaExtrairLinhaDigitavelPDF: c.Options.UsaExtrairLinhaDigitavelPDF,
+			DadosPlanos:                 c.Options.DadosPlanos,
+			DadosEmpresa:                c.Options.DadosEmpresa,
+		},
+		Enabled:   c.Enabled,
+		TimeoutMs: c.TimeoutMs,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
 	m.CreatedAt = c.CreatedAt
 	m.UpdatedAt = c.UpdatedAt
-	return m
+	return m, nil
 }
 
 func (r *ConfigRepository) toEntity(m *models.ProviderIntegrationConfig) (*entity.ProviderIntegrationConfig, error) {
-	secret, err := r.cipher.Decrypt(m.EncryptedSecret)
-	if err != nil {
-		return nil, apperror.Internal("decrypt secret").Wrap(err)
+	apiKey := ""
+	if m.EncryptedAPIKey != "" {
+		v, err := r.cipher.Decrypt(m.EncryptedAPIKey)
+		if err != nil {
+			return nil, apperror.Internal("decrypt api key").Wrap(err)
+		}
+		apiKey = v
+	}
+	var creds map[string]string
+	if m.EncryptedCredentials != "" {
+		raw, err := r.cipher.Decrypt(m.EncryptedCredentials)
+		if err != nil {
+			return nil, apperror.Internal("decrypt credentials").Wrap(err)
+		}
+		if err := json.Unmarshal([]byte(raw), &creds); err != nil {
+			return nil, apperror.Internal("unmarshal credentials").Wrap(err)
+		}
 	}
 	return &entity.ProviderIntegrationConfig{
-		ID:        m.ID,
-		TenantID:  m.TenantID,
-		Name:      m.Name,
-		BaseURL:   m.BaseURL,
-		AuthType:  m.AuthType,
-		Secret:    secret,
+		ID:             m.ID,
+		TenantID:       m.TenantID,
+		Name:           m.Name,
+		SMSNetBaseURL:  m.SMSNetBaseURL,
+		SMSNetAPIKey:   apiKey,
+		ISPType:        m.ISPType,
+		ISPCredentials: creds,
+		BotID:          m.BotID,
+		Options: entity.Options{
+			UsaPegarFaturaAtrasada:      m.Options.UsaPegarFaturaAtrasada,
+			UsaExtrairLinhaDigitavelPDF: m.Options.UsaExtrairLinhaDigitavelPDF,
+			DadosPlanos:                 m.Options.DadosPlanos,
+			DadosEmpresa:                m.Options.DadosEmpresa,
+		},
 		Enabled:   m.Enabled,
 		TimeoutMs: m.TimeoutMs,
 		CreatedAt: m.CreatedAt,

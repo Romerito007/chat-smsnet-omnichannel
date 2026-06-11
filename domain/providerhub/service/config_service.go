@@ -1,11 +1,9 @@
 // Package service holds the providerhub business logic: config management and
-// the on-demand query gateway. It never persists external payloads.
+// the on-demand smsnet-integrations gateway. It never persists external payloads.
 package service
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"strings"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
@@ -25,7 +23,7 @@ type TestResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// ConfigService manages the provider integration config.
+// ConfigService manages the smsnet-integrations config (one active per tenant).
 type ConfigService struct {
 	repo    repository.ConfigRepository
 	logs    repository.QueryLogRepository
@@ -41,31 +39,46 @@ func NewConfigService(repo repository.ConfigRepository, logs repository.QueryLog
 	return &ConfigService{repo: repo, logs: logs, gateway: gateway, clock: clock}
 }
 
-// Create registers the config, generating a secret when none is supplied.
+// Create registers the config.
 func (s *ConfigService) Create(ctx context.Context, cmd contracts.CreateConfig) (*entity.ProviderIntegrationConfig, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(cmd.BaseURL) == "" {
-		return nil, apperror.Validation("base_url is required").WithDetails(map[string]any{"base_url": "is required"})
+	v := map[string]any{}
+	if strings.TrimSpace(cmd.SMSNetBaseURL) == "" {
+		v["smsnet_base_url"] = "is required"
 	}
-	secret := cmd.Secret
-	if secret == "" {
-		secret = randomToken(32)
+	ispType := strings.TrimSpace(cmd.ISPType)
+	if ispType == "" {
+		v["isp_type"] = "is required"
+	} else if !entity.IsKnownISPType(ispType) {
+		v["isp_type"] = "unknown isp_type; expected one of " + strings.Join(entity.KnownISPTypes, ", ")
 	}
+	if len(v) > 0 {
+		return nil, apperror.Validation("invalid provider config").WithDetails(v)
+	}
+
 	timeout := cmd.TimeoutMs
 	if timeout <= 0 {
 		timeout = defaultTimeoutMs
 	}
 	now := s.clock.Now()
 	cfg := &entity.ProviderIntegrationConfig{
-		ID:        shared.NewID(),
-		TenantID:  tenantID,
-		Name:      strings.TrimSpace(cmd.Name),
-		BaseURL:   strings.TrimSpace(cmd.BaseURL),
-		AuthType:  cmd.AuthType,
-		Secret:    secret,
+		ID:             shared.NewID(),
+		TenantID:       tenantID,
+		Name:           strings.TrimSpace(cmd.Name),
+		SMSNetBaseURL:  strings.TrimSpace(cmd.SMSNetBaseURL),
+		SMSNetAPIKey:   cmd.SMSNetAPIKey,
+		ISPType:        ispType,
+		ISPCredentials: cmd.ISPCredentials,
+		BotID:          strings.TrimSpace(cmd.BotID),
+		Options: entity.Options{
+			UsaPegarFaturaAtrasada:      cmd.UsaPegarFaturaAtrasada,
+			UsaExtrairLinhaDigitavelPDF: cmd.UsaExtrairLinhaDigitavelPDF,
+			DadosPlanos:                 cmd.DadosPlanos,
+			DadosEmpresa:                cmd.DadosEmpresa,
+		},
 		Enabled:   true,
 		TimeoutMs: timeout,
 		CreatedAt: now,
@@ -77,8 +90,7 @@ func (s *ConfigService) Create(ctx context.Context, cmd contracts.CreateConfig) 
 	return cfg, nil
 }
 
-// Update applies the non-nil fields of cmd to the enabled config (resolved by
-// FindEnabled) — providerhub uses a single active config per tenant.
+// Update applies the non-nil fields of cmd to the enabled config.
 func (s *ConfigService) Update(ctx context.Context, cmd contracts.UpdateConfig) (*entity.ProviderIntegrationConfig, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return nil, err
@@ -90,20 +102,43 @@ func (s *ConfigService) Update(ctx context.Context, cmd contracts.UpdateConfig) 
 	if cmd.Name != nil {
 		cfg.Name = strings.TrimSpace(*cmd.Name)
 	}
-	if cmd.BaseURL != nil {
-		cfg.BaseURL = strings.TrimSpace(*cmd.BaseURL)
+	if cmd.SMSNetBaseURL != nil {
+		cfg.SMSNetBaseURL = strings.TrimSpace(*cmd.SMSNetBaseURL)
 	}
-	if cmd.AuthType != nil {
-		cfg.AuthType = *cmd.AuthType
+	if cmd.SMSNetAPIKey != nil {
+		cfg.SMSNetAPIKey = *cmd.SMSNetAPIKey
 	}
-	if cmd.Secret != nil {
-		cfg.Secret = *cmd.Secret
+	if cmd.ISPType != nil {
+		t := strings.TrimSpace(*cmd.ISPType)
+		if !entity.IsKnownISPType(t) {
+			return nil, apperror.Validation("unknown isp_type").
+				WithDetails(map[string]any{"isp_type": "expected one of " + strings.Join(entity.KnownISPTypes, ", ")})
+		}
+		cfg.ISPType = t
+	}
+	if cmd.ISPCredentials != nil {
+		cfg.ISPCredentials = *cmd.ISPCredentials
+	}
+	if cmd.BotID != nil {
+		cfg.BotID = strings.TrimSpace(*cmd.BotID)
 	}
 	if cmd.Enabled != nil {
 		cfg.Enabled = *cmd.Enabled
 	}
 	if cmd.TimeoutMs != nil && *cmd.TimeoutMs > 0 {
 		cfg.TimeoutMs = *cmd.TimeoutMs
+	}
+	if cmd.UsaPegarFaturaAtrasada != nil {
+		cfg.Options.UsaPegarFaturaAtrasada = *cmd.UsaPegarFaturaAtrasada
+	}
+	if cmd.UsaExtrairLinhaDigitavelPDF != nil {
+		cfg.Options.UsaExtrairLinhaDigitavelPDF = *cmd.UsaExtrairLinhaDigitavelPDF
+	}
+	if cmd.DadosPlanos != nil {
+		cfg.Options.DadosPlanos = *cmd.DadosPlanos
+	}
+	if cmd.DadosEmpresa != nil {
+		cfg.Options.DadosEmpresa = *cmd.DadosEmpresa
 	}
 	cfg.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, cfg); err != nil {
@@ -120,7 +155,7 @@ func (s *ConfigService) Current(ctx context.Context) (*entity.ProviderIntegratio
 	return s.repo.FindEnabled(ctx)
 }
 
-// Test pings the provider API and records a minimal query log.
+// Test pings the smsnet-integrations API and records a minimal query log.
 func (s *ConfigService) Test(ctx context.Context) (TestResult, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
@@ -176,10 +211,4 @@ func summarize(err error) string {
 		msg = msg[:200]
 	}
 	return msg
-}
-
-func randomToken(n int) string {
-	buf := make([]byte, n)
-	_, _ = rand.Read(buf)
-	return hex.EncodeToString(buf)
 }

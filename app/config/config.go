@@ -40,7 +40,6 @@ type Config struct {
 	Channels      ChannelsConfig
 	Automation    AutomationConfig
 	ProviderHub   ProviderHubConfig
-	Monitoring    MonitoringConfig
 	Copilot       CopilotConfig
 	Notifications NotificationsConfig
 	CSAT          CSATConfig
@@ -196,12 +195,6 @@ type ProviderHubConfig struct {
 	RatePerMinute int
 }
 
-// MonitoringConfig holds the monitoring settings.
-type MonitoringConfig struct {
-	// RatePerMinute caps outbound monitoring queries per tenant per minute.
-	RatePerMinute int
-}
-
 // CopilotConfig holds the copilot provider API keys. The MVP uses the echo mock
 // (no key needed); a hosted provider is activated only when its key is set.
 type CopilotConfig struct {
@@ -277,9 +270,6 @@ func Load() (Config, error) {
 		},
 		ProviderHub: ProviderHubConfig{
 			RatePerMinute: getInt("PROVIDERHUB_RATE_PER_MINUTE", 60),
-		},
-		Monitoring: MonitoringConfig{
-			RatePerMinute: getInt("MONITORING_RATE_PER_MINUTE", 60),
 		},
 		Copilot: CopilotConfig{
 			OpenAIKey:    getString("COPILOT_OPENAI_API_KEY", ""),

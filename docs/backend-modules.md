@@ -129,22 +129,23 @@ expõe (REST / WS / jobs).
 - **Nota:** o flow é externo; aqui só orquestramos chamadas, callbacks e logs.
 
 ### `providerhub`
-- **Responsabilidade:** cliente da **API padronizada de providers** (sua API).
-  **Consulta sob demanda**: consultar disponibilidade/dados de provider quando
-  necessário.
-- **Entidades:** nenhuma persistida (DTOs efêmeros).
-- **Depende de:** `infra/providerhub`, `secrets`.
-- **Expõe:** REST de *proxy/consulta*.
-- **Nota:** **não** sincroniza, **não** persiste payload externo completo,
-  **não** faz ingestão em tempo real. Cache curto opcional no Redis.
-
-### `monitoring`
-- **Responsabilidade:** cliente do **monitoramento externo**. **Consulta sob
-  demanda** de métricas/saúde de infraestrutura externa.
-- **Entidades:** nenhuma persistida.
-- **Depende de:** `infra/monitoring`.
-- **Expõe:** REST de consulta.
-- **Nota:** mesmas restrições do `providerhub`.
+- **Responsabilidade:** cliente da **API smsnet-integrations** (a API
+  padronizada). **Consulta sob demanda**: consultar cliente, listar planos,
+  dados da empresa, e ações com efeito (liberar acesso, abrir chamado). A cada
+  chamada o chat monta `{ botId, <campos da rota>, config: { type, <isp_credentials> } }`
+  e envia `x-api-key`; nunca fala direto com IXC/SGP/MK/Voalle.
+- **Config (`ProviderIntegrationConfig`):** `smsnet_base_url`, `smsnet_api_key`
+  (cifrado), `isp_type` (slug: hubsoft/sgpnet/ixcsoft/…), `isp_credentials`
+  (mapa cifrado), `options`, `bot_id`, `enabled`, `timeout_ms`. Mantém o
+  `ProviderQueryLog` mínimo (sem `response_body`).
+- **Envelope:** `success` → dados normalizados; `not_found` → erro amigável
+  "não localizado"; `needs_input` → `ClienteResult{NeedsSelection, Options}` para
+  o atendente escolher o contrato (próxima chamada com `idCliente`); `fallback` →
+  `integration_unavailable` (não quebra a tela).
+- **Depende de:** `infra/providerhub`, `secrets`, `conversations`, `contacts`.
+- **Expõe:** REST sob a conversa (`/conversations/{id}/external/*`) + config.
+- **Nota:** **não** sincroniza, **não** persiste payload externo, **não** faz
+  ingestão em tempo real. `liberacao`/`chamado` são auditadas.
 
 ### `copilot`
 - **Responsabilidade:** assistente de IA para o agente — **sugestão** de
@@ -256,5 +257,4 @@ tenant ◄── iam ◄── auth
    │         │        attachments ───────────────────────────►│
 contacts ◄───┘        copilot / csat / notifications / webhooks / search / privacy / audit ◄─ eventos
                       realtime ◄── (publish) ── todos
-monitoring (consulta sob demanda, isolado)
 ```

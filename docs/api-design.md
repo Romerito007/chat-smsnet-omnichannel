@@ -184,10 +184,20 @@ POST   /automation/callbacks         # callback do flow externo (assinado)
 GET    /automation/executions/{id}/logs
 ```
 
-### providerhub / monitoring (consulta sob demanda)
+### providerhub (smsnet-integrations, consulta sob demanda)
 ```
-GET    /providerhub/...             # proxy/consulta (sem persistir payload completo)
-GET    /monitoring/...              # consulta de métricas/saúde externas
+# Config (integration.read / integration.configure)
+GET    /providerhub/config
+POST   /providerhub/config
+PATCH  /providerhub/config
+POST   /providerhub/config/test
+
+# Sob a conversa — não persiste payload externo
+GET    /conversations/{id}/external/cliente   # ?cpfcnpj|phone|email&id_cliente=  (integration.read; faturas omitidas sem contact.view_financial)
+GET    /conversations/{id}/external/planos    # integration.read
+GET    /conversations/{id}/external/empresa   # integration.read
+POST   /conversations/{id}/external/liberacao # {id_cliente} (integration.execute_action; auditado)
+POST   /conversations/{id}/external/chamado   # {id_cliente, subject, message} (integration.execute_action; auditado)
 ```
 
 ### copilot

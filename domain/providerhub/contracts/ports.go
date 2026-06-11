@@ -6,42 +6,24 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
 )
 
-// Gateway is the on-demand client to the tenant's standardized provider API.
-// The implementation lives in infra/providerhub and talks ONLY to that API —
-// never to IXC/SGP/MK/Voalle directly. It performs no caching or persistence.
+// Gateway is the on-demand client to the tenant's smsnet-integrations API. The
+// implementation (infra/providerhub) builds the body
+// { botId, <route fields>, config: { type, <isp_credentials> } } and sends the
+// x-api-key header. It maps the response envelope (success/not_found/needs_input/
+// fallback) to normalized DTOs or domain errors, never persisting the payload.
 type Gateway interface {
-	GetCustomerProfile(ctx context.Context, cfg *entity.ProviderIntegrationConfig, lookup Lookup) (CustomerProfile, error)
-	GetContracts(ctx context.Context, cfg *entity.ProviderIntegrationConfig, lookup Lookup) ([]Contract, error)
-	GetFinancialStatus(ctx context.Context, cfg *entity.ProviderIntegrationConfig, lookup Lookup) (FinancialStatus, error)
-	GetConnectionStatus(ctx context.Context, cfg *entity.ProviderIntegrationConfig, lookup Lookup) (ConnectionStatus, error)
-	GetTickets(ctx context.Context, cfg *entity.ProviderIntegrationConfig, lookup Lookup) ([]Ticket, error)
-	OpenTicket(ctx context.Context, cfg *entity.ProviderIntegrationConfig, lookup Lookup, input OpenTicketInput) (Ticket, error)
-	// Ping verifies connectivity for the config test.
+	ConsultarCliente(ctx context.Context, cfg *entity.ProviderIntegrationConfig, req ConsultaClienteRequest) (ClienteResult, error)
+	ListarPlanos(ctx context.Context, cfg *entity.ProviderIntegrationConfig) ([]Plano, error)
+	DadosEmpresa(ctx context.Context, cfg *entity.ProviderIntegrationConfig) (Empresa, error)
+	LiberarAcesso(ctx context.Context, cfg *entity.ProviderIntegrationConfig, idCliente string) (Liberacao, error)
+	AbrirChamado(ctx context.Context, cfg *entity.ProviderIntegrationConfig, idCliente, subject, message string) (Chamado, error)
+	// Ping verifies connectivity/credentials for the config test.
 	Ping(ctx context.Context, cfg *entity.ProviderIntegrationConfig) error
 }
 
 // RateLimiter caps the per-tenant rate of outbound provider queries, protecting
-// the upstream API. The implementation lives in infra/redis.
+// the upstream API. The implementation lives in infra/providerhub.
 type RateLimiter interface {
 	// Allow reports whether another query is permitted for the tenant right now.
 	Allow(ctx context.Context, tenantID string) (bool, error)
-}
-
-// CreateConfig registers a provider integration config.
-type CreateConfig struct {
-	Name      string
-	BaseURL   string
-	AuthType  string
-	Secret    string
-	TimeoutMs int
-}
-
-// UpdateConfig carries optional fields; nil pointers mean "leave unchanged".
-type UpdateConfig struct {
-	Name      *string
-	BaseURL   *string
-	AuthType  *string
-	Secret    *string
-	Enabled   *bool
-	TimeoutMs *int
 }

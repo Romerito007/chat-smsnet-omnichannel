@@ -3,75 +3,110 @@
 // persisted.
 package contracts
 
-import "time"
-
-// Lookup identifies a customer to the standardized provider API. The service
-// builds it from the conversation's contact.
-type Lookup struct {
-	ContactID  string
-	Document   string
-	Phone      string
-	ExternalID string
+// ConsultaClienteRequest identifies a customer to the smsnet-integrations API.
+// One of CpfCnpj/Phone/Email locates the customer; IDCliente targets a specific
+// contract after a needs_input selection.
+type ConsultaClienteRequest struct {
+	CpfCnpj   string
+	Phone     string
+	Email     string
+	IDCliente string
 }
 
-// CustomerProfile is the normalized customer record.
-type CustomerProfile struct {
-	ProviderRef string         `json:"provider_ref,omitempty"`
-	Name        string         `json:"name,omitempty"`
-	Document    string         `json:"document,omitempty"`
-	Email       string         `json:"email,omitempty"`
-	Phone       string         `json:"phone,omitempty"`
-	Address     string         `json:"address,omitempty"`
-	Status      string         `json:"status,omitempty"`
-	Extra       map[string]any `json:"extra,omitempty"`
+// ContratoOption is one selectable contract returned on a needs_input response.
+type ContratoOption struct {
+	IDCliente string `json:"id_cliente"`
+	Label     string `json:"label"`
+	Endereco  string `json:"endereco,omitempty"`
+	Status    string `json:"status,omitempty"`
 }
 
-// Contract is a normalized service contract.
-type Contract struct {
-	ID           string     `json:"id"`
-	Plan         string     `json:"plan,omitempty"`
-	Status       string     `json:"status,omitempty"`
-	MonthlyValue float64    `json:"monthly_value,omitempty"`
-	StartDate    *time.Time `json:"start_date,omitempty"`
+// Fatura is a normalized invoice line.
+type Fatura struct {
+	Valor          float64 `json:"valor"`
+	Vencimento     string  `json:"vencimento,omitempty"`
+	Link           string  `json:"link,omitempty"`
+	LinhaDigitavel string  `json:"linha_digitavel,omitempty"`
+	Pix            string  `json:"pix,omitempty"`
 }
 
-// FinancialStatus is the normalized financial snapshot.
-type FinancialStatus struct {
-	Balance      float64   `json:"balance"`
-	Overdue      bool      `json:"overdue"`
-	OverdueValue float64   `json:"overdue_value,omitempty"`
-	Invoices     []Invoice `json:"invoices,omitempty"`
+// Cliente is the normalized customer record.
+type Cliente struct {
+	Nome                  string   `json:"nome,omitempty"`
+	CpfCnpj               string   `json:"cpfcnpj,omitempty"`
+	ContratoStatusDisplay string   `json:"contrato_status_display,omitempty"`
+	ValorCheckOut         float64  `json:"valor_check_out,omitempty"`
+	Faturas               []Fatura `json:"faturas,omitempty"`
 }
 
-// Invoice is a normalized invoice line.
-type Invoice struct {
-	ID      string     `json:"id"`
-	Value   float64    `json:"value"`
-	Status  string     `json:"status,omitempty"`
-	DueDate *time.Time `json:"due_date,omitempty"`
+// ClienteResult is the outcome of ConsultarCliente. On a needs_input response,
+// NeedsSelection is true and Options lists the contracts for the agent to pick;
+// the next call carries the chosen IDCliente. On success, Cliente is set.
+type ClienteResult struct {
+	NeedsSelection bool             `json:"needs_selection"`
+	Options        []ContratoOption `json:"options,omitempty"`
+	Cliente        *Cliente         `json:"cliente,omitempty"`
 }
 
-// ConnectionStatus is the normalized connection/link status.
-type ConnectionStatus struct {
-	Online     bool       `json:"online"`
-	IP         string     `json:"ip,omitempty"`
-	Technology string     `json:"technology,omitempty"`
-	SignalDBm  float64    `json:"signal_dbm,omitempty"`
-	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
+// Plano is a normalized plan/offer.
+type Plano struct {
+	Nome       string  `json:"nome"`
+	Valor      float64 `json:"valor,omitempty"`
+	Velocidade string  `json:"velocidade,omitempty"`
+	Descricao  string  `json:"descricao,omitempty"`
 }
 
-// Ticket is a normalized support ticket.
-type Ticket struct {
-	ID        string     `json:"id"`
-	Subject   string     `json:"subject,omitempty"`
-	Status    string     `json:"status,omitempty"`
-	Priority  string     `json:"priority,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
+// Empresa is the normalized company/ISP profile.
+type Empresa struct {
+	Nome     string `json:"nome,omitempty"`
+	CNPJ     string `json:"cnpj,omitempty"`
+	Telefone string `json:"telefone,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Endereco string `json:"endereco,omitempty"`
+	Site     string `json:"site,omitempty"`
 }
 
-// OpenTicketInput is the payload to open a ticket.
-type OpenTicketInput struct {
-	Subject     string
-	Description string
-	Priority    string
+// Liberacao is the outcome of a trust-unlock (liberar acesso) action.
+type Liberacao struct {
+	Liberado    bool   `json:"liberado"`
+	Protocolo   string `json:"protocolo,omitempty"`
+	LiberadoAte string `json:"liberado_ate,omitempty"`
+	Msg         string `json:"msg,omitempty"`
+}
+
+// Chamado is the outcome of opening a support ticket.
+type Chamado struct {
+	Protocolo string `json:"protocolo,omitempty"`
+	Msg       string `json:"msg,omitempty"`
+}
+
+// CreateConfig registers a smsnet-integrations config.
+type CreateConfig struct {
+	Name                        string
+	SMSNetBaseURL               string
+	SMSNetAPIKey                string
+	ISPType                     string
+	ISPCredentials              map[string]string
+	BotID                       string
+	TimeoutMs                   int
+	UsaPegarFaturaAtrasada      bool
+	UsaExtrairLinhaDigitavelPDF bool
+	DadosPlanos                 map[string]any
+	DadosEmpresa                map[string]any
+}
+
+// UpdateConfig carries optional fields; nil pointers mean "leave unchanged".
+type UpdateConfig struct {
+	Name                        *string
+	SMSNetBaseURL               *string
+	SMSNetAPIKey                *string
+	ISPType                     *string
+	ISPCredentials              *map[string]string
+	BotID                       *string
+	Enabled                     *bool
+	TimeoutMs                   *int
+	UsaPegarFaturaAtrasada      *bool
+	UsaExtrairLinhaDigitavelPDF *bool
+	DadosPlanos                 *map[string]any
+	DadosEmpresa                *map[string]any
 }

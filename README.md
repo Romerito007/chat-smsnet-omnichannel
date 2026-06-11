@@ -12,7 +12,7 @@ selecionados em runtime via `RUN_ROLE` (`all | api | ws | worker | scheduler`).
 `auth` · `iam` (users/roles/permissões) · `tenant` · `sectors` · `queues` ·
 `presence` · `conversations` (mensagens/notas/timeline) · `routing`
 (atribuição/transferência) · `channels` (inbound/outbound) · `contacts` ·
-`automation` · `providerhub` (consultas a provedor sob demanda) · `monitoring` ·
+`automation` · `providerhub` (smsnet-integrations sob demanda) ·
 `webhooks` · `copilot` (IA) · `conversationtools` (tags/respostas/motivos) ·
 `businesshours` · `sla` · `notifications` · `csat` · `search` · `reports` ·
 `privacy` (LGPD) · `audit` · `attachments`.
@@ -25,7 +25,7 @@ resource_id, ip, user_agent, data, created_at`) — `domain/audit`. O `ip` e o
 resolvido do token; serviços auditam via a porta `shared.Auditor`. Ações
 auditadas: `auth.login`/`auth.logout`, `user.*`, `role.*` (alteração de
 permissões), `webhook.*`, `conversation.closed`/`conversation.transferred`,
-`providerhub.financial_status.viewed`/`providerhub.ticket.opened`,
+`providerhub.liberacao`/`providerhub.chamado`,
 `ai.config.updated`, `privacy.*` (anonimização/exportação) e `report.export`.
 Consulta: `GET /v1/audit` (permissão `audit.view`).
 

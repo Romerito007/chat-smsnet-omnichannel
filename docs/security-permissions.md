@@ -58,7 +58,7 @@ tag:read tag:write   canned:read canned:write   reason:read reason:write
 routing:read routing:write
 channel:read channel:write
 automation:read automation:write
-providerhub:read   monitoring:read
+integration:read   integration:configure   integration:execute_action
 copilot:use
 sla:read sla:write   csat:read csat:write   businesshours:read businesshours:write
 webhook:read webhook:write   notification:read

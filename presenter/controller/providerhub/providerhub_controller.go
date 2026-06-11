@@ -1,5 +1,5 @@
 // Package providerhub holds the HTTP controllers for the providerhub config and
-// the on-demand conversation queries.
+// the on-demand, by-conversation queries to the smsnet-integrations API.
 package providerhub
 
 import (
@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	phcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/contracts"
 	phservice "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/service"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/providerhub"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
@@ -77,8 +78,17 @@ func (c *Controller) TestConfig(w http.ResponseWriter, r *http.Request) {
 
 // ── on-demand conversation queries ───────────────────────────────────────────
 
-func (c *Controller) CustomerProfile(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.CustomerProfile(r.Context(), chi.URLParam(r, "id"))
+// Cliente handles GET /v1/conversations/{id}/external/cliente
+// (query: cpfcnpj|phone|email, id_cliente?).
+func (c *Controller) Cliente(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	req := phcontracts.ConsultaClienteRequest{
+		CpfCnpj:   q.Get("cpfcnpj"),
+		Phone:     q.Get("phone"),
+		Email:     q.Get("email"),
+		IDCliente: q.Get("id_cliente"),
+	}
+	res, err := c.queries.ConsultarCliente(r.Context(), chi.URLParam(r, "id"), req)
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
@@ -86,8 +96,9 @@ func (c *Controller) CustomerProfile(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, res)
 }
 
-func (c *Controller) Contracts(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.Contracts(r.Context(), chi.URLParam(r, "id"))
+// Planos handles GET /v1/conversations/{id}/external/planos.
+func (c *Controller) Planos(w http.ResponseWriter, r *http.Request) {
+	res, err := c.queries.ListarPlanos(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
@@ -95,8 +106,9 @@ func (c *Controller) Contracts(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{"data": res})
 }
 
-func (c *Controller) FinancialStatus(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.FinancialStatus(r.Context(), chi.URLParam(r, "id"))
+// Empresa handles GET /v1/conversations/{id}/external/empresa.
+func (c *Controller) Empresa(w http.ResponseWriter, r *http.Request) {
+	res, err := c.queries.DadosEmpresa(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
@@ -104,31 +116,29 @@ func (c *Controller) FinancialStatus(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, res)
 }
 
-func (c *Controller) ConnectionStatus(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.ConnectionStatus(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		middleware.WriteError(w, r, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusOK, res)
-}
-
-func (c *Controller) Tickets(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.Tickets(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		middleware.WriteError(w, r, err)
-		return
-	}
-	middleware.WriteJSON(w, http.StatusOK, map[string]any{"data": res})
-}
-
-func (c *Controller) OpenTicket(w http.ResponseWriter, r *http.Request) {
-	var req dto.OpenTicketRequest
+// Liberacao handles POST /v1/conversations/{id}/external/liberacao.
+func (c *Controller) Liberacao(w http.ResponseWriter, r *http.Request) {
+	var req dto.LiberacaoRequest
 	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	res, err := c.queries.OpenTicket(r.Context(), chi.URLParam(r, "id"), req.ToInput())
+	res, err := c.queries.LiberarAcesso(r.Context(), chi.URLParam(r, "id"), req.IDCliente)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, res)
+}
+
+// Chamado handles POST /v1/conversations/{id}/external/chamado.
+func (c *Controller) Chamado(w http.ResponseWriter, r *http.Request) {
+	var req dto.ChamadoRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.queries.AbrirChamado(r.Context(), chi.URLParam(r, "id"), req.IDCliente, req.Subject, req.Message)
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return

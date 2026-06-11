@@ -16,12 +16,8 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
-// friendlyUnavailable is the user-safe message for any external failure — the
-// screen must not break ("falha externa retorna erro amigável").
-const friendlyUnavailable = "the provider service is temporarily unavailable, please try again"
-
-// QueryService performs on-demand provider queries scoped to a conversation,
-// enforcing tenant + visibility, rate limiting, and minimal logging.
+// QueryService performs on-demand smsnet-integrations queries scoped to a
+// conversation, enforcing tenant + visibility, rate limiting and minimal logging.
 type QueryService struct {
 	config        phrepo.ConfigRepository
 	logs          phrepo.QueryLogRepository
@@ -31,14 +27,6 @@ type QueryService struct {
 	limiter       phcontracts.RateLimiter
 	clock         shared.Clock
 	auditor       shared.Auditor
-}
-
-// SetAuditor wires the audit trail. Optional: when unset, sensitive provider
-// actions are not audited.
-func (s *QueryService) SetAuditor(a shared.Auditor) {
-	if a != nil {
-		s.auditor = a
-	}
 }
 
 // NewQueryService builds the service.
@@ -57,110 +45,129 @@ func NewQueryService(
 	return &QueryService{config: config, logs: logs, conversations: conversations, contacts: contacts, gateway: gateway, limiter: limiter, clock: clock, auditor: shared.NoopAuditor{}}
 }
 
-// CustomerProfile fetches the customer profile for a conversation's contact.
-func (s *QueryService) CustomerProfile(ctx context.Context, conversationID string) (phcontracts.CustomerProfile, error) {
-	conv, err := s.loadVisible(ctx, conversationID)
-	if err != nil {
-		return phcontracts.CustomerProfile{}, err
+// SetAuditor wires the audit trail. Optional: when unset, side-effect actions are
+// not audited.
+func (s *QueryService) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
 	}
-	return runQuery(s, ctx, conv, phentity.QueryCustomerProfile,
-		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) (phcontracts.CustomerProfile, error) {
-			return s.gateway.GetCustomerProfile(ctx, cfg, lk)
-		})
 }
 
-// Contracts fetches the contracts for a conversation's contact.
-func (s *QueryService) Contracts(ctx context.Context, conversationID string) ([]phcontracts.Contract, error) {
-	conv, err := s.loadVisible(ctx, conversationID)
+// ConsultarCliente looks up the customer. When the request omits all identifiers
+// it falls back to the conversation contact's document/phone. A needs_input
+// response returns ClienteResult{NeedsSelection:true, Options:[...]} for the agent
+// to pick a contract; the next call carries IDCliente. Faturas are omitted unless
+// the actor holds contact.view_financial.
+func (s *QueryService) ConsultarCliente(ctx context.Context, conversationID string, req phcontracts.ConsultaClienteRequest) (phcontracts.ClienteResult, error) {
+	conv, ac, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
-		return nil, err
+		return phcontracts.ClienteResult{}, err
 	}
-	return runQuery(s, ctx, conv, phentity.QueryContracts,
-		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) ([]phcontracts.Contract, error) {
-			return s.gateway.GetContracts(ctx, cfg, lk)
+	req = s.fillFromContact(ctx, conv, req)
+
+	res, err := execute(s, ctx, conv, phentity.QueryConsultarCliente,
+		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.ClienteResult, error) {
+			return s.gateway.ConsultarCliente(ctx, cfg, req)
 		})
+	if err != nil {
+		return phcontracts.ClienteResult{}, err
+	}
+	// Omit the invoices for agents without the financial permission.
+	if res.Cliente != nil && !ac.Has(authz.ContactViewFinancial) {
+		res.Cliente.Faturas = nil
+	}
+	return res, nil
 }
 
-// FinancialStatus fetches the financial snapshot (gated by contact.view_financial
-// at the route).
-func (s *QueryService) FinancialStatus(ctx context.Context, conversationID string) (phcontracts.FinancialStatus, error) {
-	conv, err := s.loadVisible(ctx, conversationID)
-	if err != nil {
-		return phcontracts.FinancialStatus{}, err
-	}
-	res, err := runQuery(s, ctx, conv, phentity.QueryFinancialStatus,
-		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) (phcontracts.FinancialStatus, error) {
-			return s.gateway.GetFinancialStatus(ctx, cfg, lk)
-		})
-	if err == nil {
-		// Sensitive provider action: viewing a customer's financial data.
-		_ = s.auditor.Record(ctx, shared.AuditEntry{
-			Action: "providerhub.financial_status.viewed", ResourceType: "conversation", ResourceID: conv.ID,
-			Data: map[string]any{"contact_id": conv.ContactID},
-		})
-	}
-	return res, err
-}
-
-// ConnectionStatus fetches the connection status (gated by
-// contact.view_connection_status at the route).
-func (s *QueryService) ConnectionStatus(ctx context.Context, conversationID string) (phcontracts.ConnectionStatus, error) {
-	conv, err := s.loadVisible(ctx, conversationID)
-	if err != nil {
-		return phcontracts.ConnectionStatus{}, err
-	}
-	return runQuery(s, ctx, conv, phentity.QueryConnectionStatus,
-		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) (phcontracts.ConnectionStatus, error) {
-			return s.gateway.GetConnectionStatus(ctx, cfg, lk)
-		})
-}
-
-// Tickets fetches the customer's tickets.
-func (s *QueryService) Tickets(ctx context.Context, conversationID string) ([]phcontracts.Ticket, error) {
-	conv, err := s.loadVisible(ctx, conversationID)
+// ListarPlanos returns the tenant's plans/offers.
+func (s *QueryService) ListarPlanos(ctx context.Context, conversationID string) ([]phcontracts.Plano, error) {
+	conv, _, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	return runQuery(s, ctx, conv, phentity.QueryTickets,
-		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) ([]phcontracts.Ticket, error) {
-			return s.gateway.GetTickets(ctx, cfg, lk)
+	return execute(s, ctx, conv, phentity.QueryListarPlanos,
+		func(cfg *phentity.ProviderIntegrationConfig) ([]phcontracts.Plano, error) {
+			return s.gateway.ListarPlanos(ctx, cfg)
 		})
 }
 
-// OpenTicket opens a ticket (gated by integration.execute_action at the route).
-func (s *QueryService) OpenTicket(ctx context.Context, conversationID string, input phcontracts.OpenTicketInput) (phcontracts.Ticket, error) {
-	conv, err := s.loadVisible(ctx, conversationID)
+// DadosEmpresa returns the company/ISP profile.
+func (s *QueryService) DadosEmpresa(ctx context.Context, conversationID string) (phcontracts.Empresa, error) {
+	conv, _, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
-		return phcontracts.Ticket{}, err
+		return phcontracts.Empresa{}, err
 	}
-	res, err := runQuery(s, ctx, conv, phentity.QueryOpenTicket,
-		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) (phcontracts.Ticket, error) {
-			return s.gateway.OpenTicket(ctx, cfg, lk, input)
+	return execute(s, ctx, conv, phentity.QueryDadosEmpresa,
+		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.Empresa, error) {
+			return s.gateway.DadosEmpresa(ctx, cfg)
 		})
-	if err == nil {
-		// Sensitive provider action: executing a write (open a ticket).
-		_ = s.auditor.Record(ctx, shared.AuditEntry{
-			Action: "providerhub.ticket.opened", ResourceType: "conversation", ResourceID: conv.ID,
-			Data: map[string]any{"contact_id": conv.ContactID},
-		})
-	}
-	return res, err
 }
 
-// runQuery wraps a gateway call with rate limiting, config resolution, latency
-// measurement, minimal logging and friendly error mapping.
-func runQuery[T any](
+// LiberarAcesso performs a trust-unlock for a customer contract (side effect).
+// Audited as providerhub.liberacao.
+func (s *QueryService) LiberarAcesso(ctx context.Context, conversationID, idCliente string) (phcontracts.Liberacao, error) {
+	conv, _, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return phcontracts.Liberacao{}, err
+	}
+	if strings.TrimSpace(idCliente) == "" {
+		return phcontracts.Liberacao{}, apperror.Validation("id_cliente is required")
+	}
+	res, err := execute(s, ctx, conv, phentity.QueryLiberarAcesso,
+		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.Liberacao, error) {
+			return s.gateway.LiberarAcesso(ctx, cfg, idCliente)
+		})
+	if err != nil {
+		return phcontracts.Liberacao{}, err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "providerhub.liberacao", ResourceType: "conversation", ResourceID: conv.ID,
+		Data: map[string]any{"id_cliente": idCliente, "liberado": res.Liberado, "protocolo": res.Protocolo},
+	})
+	return res, nil
+}
+
+// AbrirChamado opens a support ticket for a customer contract (side effect).
+// Audited as providerhub.chamado.
+func (s *QueryService) AbrirChamado(ctx context.Context, conversationID, idCliente, subject, message string) (phcontracts.Chamado, error) {
+	conv, _, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return phcontracts.Chamado{}, err
+	}
+	if strings.TrimSpace(idCliente) == "" {
+		return phcontracts.Chamado{}, apperror.Validation("id_cliente is required")
+	}
+	if strings.TrimSpace(subject) == "" {
+		return phcontracts.Chamado{}, apperror.Validation("subject is required")
+	}
+	res, err := execute(s, ctx, conv, phentity.QueryAbrirChamado,
+		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.Chamado, error) {
+			return s.gateway.AbrirChamado(ctx, cfg, idCliente, subject, message)
+		})
+	if err != nil {
+		return phcontracts.Chamado{}, err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "providerhub.chamado", ResourceType: "conversation", ResourceID: conv.ID,
+		Data: map[string]any{"id_cliente": idCliente, "subject": subject, "protocolo": res.Protocolo},
+	})
+	return res, nil
+}
+
+// execute wraps a gateway call with rate limiting, config resolution, latency
+// measurement and minimal logging. The gateway already returns domain errors
+// (not_found → friendly NotFound, fallback → Integration), which pass through.
+func execute[T any](
 	s *QueryService,
 	ctx context.Context,
 	conv *conventity.Conversation,
 	qtype phentity.QueryType,
-	fn func(cfg *phentity.ProviderIntegrationConfig, lookup phcontracts.Lookup) (T, error),
+	fn func(cfg *phentity.ProviderIntegrationConfig) (T, error),
 ) (T, error) {
 	var zero T
-	tenantID := conv.TenantID
 
 	if s.limiter != nil {
-		if allowed, err := s.limiter.Allow(ctx, tenantID); err == nil && !allowed {
+		if allowed, err := s.limiter.Allow(ctx, conv.TenantID); err == nil && !allowed {
 			s.log(ctx, conv, qtype, phentity.StatusBlocked, 0, "rate limited")
 			return zero, apperror.RateLimited("too many provider queries, please wait a moment")
 		}
@@ -172,67 +179,75 @@ func runQuery[T any](
 		return zero, apperror.Integration("provider integration is not configured")
 	}
 
-	lookup := s.lookup(ctx, conv)
 	start := s.clock.Now()
-	res, callErr := fn(cfg, lookup)
+	res, callErr := fn(cfg)
 	latency := s.clock.Now().Sub(start).Milliseconds()
 
-	if callErr != nil {
-		status := phentity.StatusError
-		if isTimeout(callErr) {
-			status = phentity.StatusTimeout
-		}
-		s.log(ctx, conv, qtype, status, latency, summarize(callErr))
-		return zero, apperror.Integration(friendlyUnavailable)
-	}
-
-	s.log(ctx, conv, qtype, phentity.StatusSuccess, latency, "")
-	return res, nil
+	s.log(ctx, conv, qtype, statusFor(callErr), latency, summarize0(callErr))
+	return res, callErr
 }
 
-// lookup builds the provider lookup key from the conversation's contact.
-func (s *QueryService) lookup(ctx context.Context, conv *conventity.Conversation) phcontracts.Lookup {
-	lk := phcontracts.Lookup{ContactID: conv.ContactID}
+// statusFor maps a gateway error to a query-log status.
+func statusFor(err error) phentity.QueryStatus {
+	switch {
+	case err == nil:
+		return phentity.StatusSuccess
+	case apperror.From(err).Code == apperror.CodeNotFound:
+		return phentity.StatusNotFound
+	case isTimeout(err):
+		return phentity.StatusTimeout
+	default:
+		return phentity.StatusError
+	}
+}
+
+func summarize0(err error) string {
+	if err == nil {
+		return ""
+	}
+	return summarize(err)
+}
+
+// fillFromContact fills missing identifiers from the conversation's contact so the
+// agent can open the panel without retyping the customer's document.
+func (s *QueryService) fillFromContact(ctx context.Context, conv *conventity.Conversation, req phcontracts.ConsultaClienteRequest) phcontracts.ConsultaClienteRequest {
+	if req.CpfCnpj != "" || req.Phone != "" || req.Email != "" || req.IDCliente != "" {
+		return req
+	}
 	contact, err := s.contacts.FindByID(ctx, conv.ContactID)
 	if err != nil {
-		return lk
+		return req
 	}
-	lk.Document = contact.Document
-	lk.Phone = contact.Phone
-	for _, id := range contact.Identities {
-		if id.Channel == conv.Channel {
-			lk.ExternalID = id.ExternalID
-			break
-		}
-	}
-	return lk
+	req.CpfCnpj = contact.Document
+	req.Phone = contact.Phone
+	return req
 }
 
 // loadVisible loads a conversation and enforces the actor's visibility.
-func (s *QueryService) loadVisible(ctx context.Context, id string) (*conventity.Conversation, error) {
+func (s *QueryService) loadVisible(ctx context.Context, id string) (*conventity.Conversation, authz.AuthContext, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
-		return nil, err
+		return nil, authz.AuthContext{}, err
 	}
 	ac, ok := authz.FromContext(ctx)
 	if !ok {
-		return nil, apperror.Unauthorized("authentication required")
+		return nil, authz.AuthContext{}, apperror.Unauthorized("authentication required")
 	}
 	conv, err := s.conversations.FindByID(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, ac, err
 	}
 	if ac.SectorScope == authz.ScopeAll {
-		return conv, nil
+		return conv, ac, nil
 	}
 	if conv.AssignedTo != "" && conv.AssignedTo == ac.UserID {
-		return conv, nil
+		return conv, ac, nil
 	}
 	for _, sid := range ac.SectorIDs {
 		if sid == conv.SectorID && sid != "" {
-			return conv, nil
+			return conv, ac, nil
 		}
 	}
-	return nil, apperror.NotFound("conversation not found")
+	return nil, ac, apperror.NotFound("conversation not found")
 }
 
 func (s *QueryService) log(ctx context.Context, conv *conventity.Conversation, qtype phentity.QueryType, status phentity.QueryStatus, latencyMs int64, summary string) {

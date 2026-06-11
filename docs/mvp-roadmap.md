@@ -56,9 +56,11 @@ padrões transversais, Asynq/Redis/Mongo bootstrap, health) já está implementa
 - **Entregável:** SLA monitorado; satisfação coletada.
 
 ## Fase 6 — Integrações externas
-**Domínios:** `automation`, `providerhub`, `monitoring`, `copilot`.
+**Domínios:** `automation`, `providerhub`, `copilot`.
 - `automation`: invoke + callbacks + logs do **flow externo**.
-- `providerhub`/`monitoring`: consulta sob demanda (sem persistir payload).
+- `providerhub`: consulta/ação sob demanda à API **smsnet-integrations**
+  (consultar cliente, planos, empresa; liberar acesso; abrir chamado) —
+  sem persistir payload. `monitoring` foi removido.
 - `copilot`: adapter echo(mock) → providers reais; `ai.*` jobs + WS.
 - **Entregável:** automações externas, consultas sob demanda e copiloto.
 
@@ -88,22 +90,22 @@ correspondente:
 2. **Contrato do flow externo (`automation`).** Endpoints, autenticação,
    formato de invoke, **callbacks** (URLs, assinatura HMAC, payload) e o que
    exatamente logar. Sem isso o `automation` não fecha.
-3. **Contrato do `providerhub` (sua API padronizada).** Endpoints, auth,
-   campos retornados e quais o domínio realmente consome (consulta sob demanda).
-4. **Contrato do `monitoring` externo.** O que consultar e expor.
-5. **Copilot — provider e modo.** Qual provider no MVP (OpenAI/Gemini/Anthropic
+3. **Contrato do `providerhub` (API smsnet-integrations).** Resolvido: corpo
+   `{ botId, <campos>, config: { type, <isp_credentials> } }` + `x-api-key`;
+   envelope `success|not_found|needs_input|fallback`.
+4. **Copilot — provider e modo.** Qual provider no MVP (OpenAI/Gemini/Anthropic
    ou só echo/mock)? Sugestão **síncrona** (latência interativa) vs.
    **assíncrona** (job `ai.*`)? Onde ficam as chaves (tenant ou global)?
-6. **Estratégia de tokens JWT.** HS256 (segredo único) vs. RS256 (par de
+5. **Estratégia de tokens JWT.** HS256 (segredo único) vs. RS256 (par de
    chaves/rotação)? TTLs de access/refresh? Logout = revogação de sessão server-
    side (lista no Mongo/Redis) confirmada?
-7. **Leitura/`unread` de mensagens.** Por-participante (read receipts) vs.
+6. **Leitura/`unread` de mensagens.** Por-participante (read receipts) vs.
    `unread_count` simples? Multi-agente numa conversa muda o cálculo.
-8. **Regra de “conversa inativa”.** Tempo e condições de auto-close
+7. **Regra de “conversa inativa”.** Tempo e condições de auto-close
    (`chat.close_inactive_conversations`) — por tenant? por canal?
-9. **SLA — base de tempo.** Considerar `businesshours` (pausar relógio fora de
+8. **SLA — base de tempo.** Considerar `businesshours` (pausar relógio fora de
    expediente) já no MVP ou só 24/7? Metas (first response/resolution) default?
-10. **Retenção/LGPD.** Períodos padrão de retenção por entidade e definição de
+9. **Retenção/LGPD.** Períodos padrão de retenção por entidade e definição de
     “anonimização” aceitável (o que apaga vs. o que mantém para métricas).
 
 ## Decisões pragmáticas já assumidas (não bloqueiam)

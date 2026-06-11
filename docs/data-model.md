@@ -161,8 +161,11 @@ claro), `settings`, `last_health_at`.
   `started_at`, `finished_at`.
 - `automation_logs`: `tenant_id`🔑, `execution_id`🔑, `level`, `message`, `at`.
 
-> **providerhub** e **monitoring**: **sem collection** — consulta sob demanda,
-> sem persistir payload externo completo. Cache curto opcional em Redis.
+> **providerhub**: persiste apenas a config (`providerhub_configs`:
+> `smsnet_base_url`, `encrypted_api_key`, `isp_type`, `encrypted_credentials`,
+> `bot_id`, `options`, `enabled`, `timeout_ms`) e o log técnico mínimo
+> (`provider_query_logs`, **sem** `response_body`). As consultas são sob demanda
+> à API smsnet-integrations; o payload externo **não** é persistido.
 
 ### `copilot_runs`
 `tenant_id`🔑, `conversation_id`🔑, `kind` (suggest/summarize/classify),

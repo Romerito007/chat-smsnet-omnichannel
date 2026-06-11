@@ -55,8 +55,7 @@ chat-backend/
 │   ├── realtime/                       # manager, hub, pub/sub transport
 │   ├── channels/                       # adapters: whatsapp, telegram, webchat, mock
 │   ├── automation/                     # client do flow externo (chamadas + callbacks)
-│   ├── providerhub/                    # HTTP client da API padronizada (sob demanda)
-│   ├── monitoring/                     # HTTP client do monitoramento externo (sob demanda)
+│   ├── providerhub/                    # HTTP client da API smsnet-integrations (sob demanda)
 │   ├── copilot/provider/               # adapters de IA: echo(mock), openai, gemini, anthropic
 │   ├── webhooks/                       # delivery client + assinatura HMAC
 │   ├── email/                          # smtp + templates
