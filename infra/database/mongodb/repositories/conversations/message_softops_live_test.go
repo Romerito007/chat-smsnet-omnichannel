@@ -11,11 +11,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	auditrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/audit/repository"
+	auditservice "github.com/romerito007/chat-smsnet-omnichannel/domain/audit/service"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
 	convcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	convservice "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/service"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
+	auditmongo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/audit"
 	sectorsrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/sectors"
 )
 
@@ -48,6 +51,7 @@ func TestMessageSoftOpsLive(t *testing.T) {
 	ctx := actorCtx(tenant, "u1")
 
 	messages := NewMessageRepository(db)
+	audit := auditservice.NewService(auditmongo.New(db), shared.SystemClock{})
 	svc := convservice.New(
 		NewConversationRepository(db),
 		messages,
@@ -56,6 +60,7 @@ func TestMessageSoftOpsLive(t *testing.T) {
 		shared.NoopPublisher{},
 		shared.SystemClock{},
 	)
+	svc.SetAuditor(audit)
 
 	conv, err := svc.Create(ctx, convcontracts.CreateConversation{ContactID: "c1", Channel: "wa"})
 	if err != nil {
@@ -108,4 +113,36 @@ func TestMessageSoftOpsLive(t *testing.T) {
 			t.Errorf("expected timeline event %q (n=%d err=%v)", typ, n, err)
 		}
 	}
+
+	// Deleting a customer message must surface in the audit trail (the same
+	// audit.List that backs GET /v1/audit), tagged sender_type=customer so content
+	// moderation is distinguishable.
+	if _, err := db.Collection("messages").InsertOne(context.Background(), bson.M{
+		"_id": "cust1", "tenant_id": tenant, "conversation_id": conv.ID,
+		"sender_type": string(conventity.SenderCustomer), "direction": string(conventity.DirectionInbound),
+		"message_type": string(conventity.MessageText), "text": "spam", "created_at": time.Now(),
+	}); err != nil {
+		t.Fatalf("seed customer message: %v", err)
+	}
+	if err := svc.DeleteMessage(ctx, conv.ID, "cust1"); err != nil {
+		t.Fatalf("delete customer message: %v", err)
+	}
+
+	entries, err := audit.List(ctx, auditrepo.Filter{Action: "message.deleted"}, shared.PageRequest{Limit: 50})
+	if err != nil {
+		t.Fatalf("audit list: %v", err)
+	}
+	var foundCustomer bool
+	for _, e := range entries {
+		if e.ResourceType == "message" && e.ResourceID == "cust1" && e.Data["sender_type"] == string(conventity.SenderCustomer) {
+			foundCustomer = true
+			if e.ActorID != "u1" || e.ActorType != shared.ActorTypeUser {
+				t.Errorf("audit actor not captured: %+v", e)
+			}
+		}
+	}
+	if !foundCustomer {
+		t.Fatalf("customer-message deletion not found in GET /v1/audit data: %+v", entries)
+	}
+	t.Logf("audit has message.deleted for customer message (entries=%d)", len(entries))
 }

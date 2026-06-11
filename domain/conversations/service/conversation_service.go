@@ -718,6 +718,13 @@ func (s *Service) DeleteMessage(ctx context.Context, conversationID, messageID s
 	s.recordEvent(ctx, conv, entity.EventMessageDeleted, map[string]any{"message_id": msg.ID})
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
 		contracts.RealtimeMessageDeleted, contracts.MessageRefPayload{MessageID: msg.ID, ConversationID: conv.ID})
+	// Audit the deletion: the sender_type lets reviewers tell content moderation of
+	// a customer message apart from an agent retracting their own. actor_id/type/ip/
+	// user_agent are filled from the request context by the recorder.
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "message.deleted", ResourceType: "message", ResourceID: msg.ID,
+		Data: map[string]any{"sender_type": string(msg.SenderType), "conversation_id": conv.ID},
+	})
 	return nil
 }
 
