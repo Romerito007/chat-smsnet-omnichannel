@@ -9,7 +9,7 @@ import (
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
-	"github.com/romerito007/chat-smsnet-omnichannel/infra/channels/mock"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/channels/sign"
 )
 
 // Adapter is the webchat adapter.
@@ -31,12 +31,12 @@ func (a *Adapter) SendMessage(_ context.Context, _ *chentity.ChannelConnection, 
 
 // VerifyInbound validates the request signature/secret.
 func (a *Adapter) VerifyInbound(conn *chentity.ChannelConnection, rawBody []byte, headers map[string]string) error {
-	return mock.VerifySignature(conn.Secret, rawBody, headers)
+	return sign.VerifySignature(conn.Secret, rawBody, headers)
 }
 
 // ParseDeliveryReceipt parses a delivery-receipt payload.
 func (a *Adapter) ParseDeliveryReceipt(rawBody []byte) ([]chcontracts.DeliveryReceipt, error) {
-	return mock.ParseReceipts(rawBody)
+	return sign.ParseReceipts(rawBody)
 }
 
 var _ chcontracts.Adapter = (*Adapter)(nil)

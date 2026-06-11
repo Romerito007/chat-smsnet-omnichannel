@@ -9,6 +9,10 @@ import "time"
 type Type string
 
 const (
+	// TypeAPI is the generic HTTP "API channel": any external system integrates
+	// by POSTing inbound messages in and receiving outbound deliveries on its
+	// configured webhook (outbound_url), both HMAC-signed.
+	TypeAPI       Type = "api"
 	TypeWhatsApp  Type = "whatsapp"
 	TypeTelegram  Type = "telegram"
 	TypeInstagram Type = "instagram"
@@ -19,7 +23,7 @@ const (
 // Valid reports whether t is a known channel type.
 func (t Type) Valid() bool {
 	switch t {
-	case TypeWhatsApp, TypeTelegram, TypeInstagram, TypeWebchat, TypeCustom:
+	case TypeAPI, TypeWhatsApp, TypeTelegram, TypeInstagram, TypeWebchat, TypeCustom:
 		return true
 	}
 	return false

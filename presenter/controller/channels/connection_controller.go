@@ -35,7 +35,9 @@ func (c *ConnectionController) Create(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusCreated, dto.NewConnectionResponse(conn))
+	// Creation is the only response that reveals the inbound_token and the
+	// outbound_secret; both are masked on every subsequent read.
+	middleware.WriteJSON(w, http.StatusCreated, dto.NewCreatedConnectionResponse(conn))
 }
 
 // List handles GET /v1/channels.

@@ -129,8 +129,12 @@ func (s *OutboundService) Deliver(ctx context.Context, deliveryID string) error 
 		return s.fail(ctx, delivery, message, conv, "no adapter for channel type")
 	}
 
+	recipient := s.recipient(ctx, conv, conn.Type)
 	res, err := adapter.SendMessage(ctx, conn, chcontracts.OutboundSend{
-		ExternalContactID: s.recipient(ctx, conv, conn.Type),
+		DeliveryID:        delivery.ID,
+		ConversationID:    conv.ID,
+		ExternalContactID: recipient.ExternalID,
+		Contact:           recipient,
 		Text:              message.Text,
 		Attachments:       message.Attachments,
 		Metadata:          message.Metadata,
@@ -286,19 +290,26 @@ func (s *OutboundService) ApplyReceipt(ctx context.Context, receipt chcontracts.
 	return nil
 }
 
-// recipient resolves the contact's external id for a channel, falling back to
-// the phone.
-func (s *OutboundService) recipient(ctx context.Context, conv *conventity.Conversation, t chentity.Type) string {
+// recipient resolves the contact reference for an outbound send: the external id
+// for the channel (falling back to the phone) plus name/phone for the envelope.
+func (s *OutboundService) recipient(ctx context.Context, conv *conventity.Conversation, t chentity.Type) chcontracts.OutboundContact {
 	contact, err := s.contacts.FindByID(ctx, conv.ContactID)
 	if err != nil {
-		return ""
+		return chcontracts.OutboundContact{}
 	}
+	externalID := contact.Phone
 	for _, id := range contact.Identities {
 		if id.Channel == string(t) {
-			return id.ExternalID
+			externalID = id.ExternalID
+			break
 		}
 	}
-	return contact.Phone
+	return chcontracts.OutboundContact{
+		ID:         contact.ID,
+		Name:       contact.Name,
+		Phone:      contact.Phone,
+		ExternalID: externalID,
+	}
 }
 
 func (s *OutboundService) publishStatus(ctx context.Context, conv *conventity.Conversation, msg *conventity.Message, event, errMsg string) {

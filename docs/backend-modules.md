@@ -108,15 +108,24 @@ expõe (REST / WS / jobs).
 ## Canais e integrações externas
 
 ### `channels`
-- **Responsabilidade:** abstração de canais (WhatsApp, Telegram, webchat,
-  mock). Configuração de instâncias, normalização inbound, **entrega outbound**,
-  status de saúde, mídia.
-- **Entidades:** `Channel` (instância/config), `ChannelHealth`.
+- **Responsabilidade:** abstração de canais (canal genérico **API**, WhatsApp,
+  webchat). Configuração de instâncias, normalização inbound, **entrega
+  outbound** (POST assinado em HMAC-SHA256 no `outbound_url`), status de saúde,
+  mídia.
+- **Canal `api` (genérico):** qualquer sistema externo integra por HTTP —
+  inbound autenticado por `inbound_token` (header) + assinatura; outbound
+  entregue por POST assinado no `outbound_url` (headers `X-Chat-Event`,
+  `Timestamp`, `Signature`, `Delivery-Id`); recibos idempotentes por
+  `external_message_id`. É o substituto real do antigo adapter mock.
+- **Entidades:** `ChannelConnection` (instância/config), `OutboundDelivery`,
+  `InboundRecord`.
 - **Depende de:** `conversations`, `contacts`, `secrets`, `attachments`,
   `providerhub`.
-- **Expõe:** REST (`/channels`); webhooks de inbound; jobs (`channel.deliver`,
-  `channel.retry`, `channels.health_check`).
-- **Adapters:** `infra/channels/{whatsapp,telegram,webchat,mock}`.
+- **Expõe:** REST (`/channels` CRUD + `/channels/{id}/test`); webhooks de inbound
+  (`/inbound/channel/{channel}/messages` e `/delivery-receipts`); jobs
+  (`channel.deliver`, `channel.retry`, `channels.health_check`).
+- **Adapters:** `infra/channels/{api,whatsapp,webchat}` (HMAC compartilhado em
+  `infra/channels/sign`). Sem adapter mock em produção.
 
 ### `automation`
 - **Responsabilidade:** **integração com o sistema de flow externo já

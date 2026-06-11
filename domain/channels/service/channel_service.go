@@ -82,11 +82,18 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 	}
 	if !cmd.Type.Valid() {
 		return nil, apperror.Validation("invalid channel type").
-			WithDetails(map[string]any{"type": "must be whatsapp|telegram|instagram|webchat|custom"})
+			WithDetails(map[string]any{"type": "must be api|whatsapp|telegram|instagram|webchat|custom"})
 	}
 	authType := cmd.AuthType
 	if authType == "" {
 		authType = entity.AuthToken
+	}
+	// The API channel signs outbound deliveries with an HMAC secret. When the
+	// company does not supply one, generate it so a signing key always exists;
+	// it is returned once on creation and never again.
+	secret := cmd.Secret
+	if cmd.Type == entity.TypeAPI && secret == "" {
+		secret = randomToken(32)
 	}
 	now := s.clock.Now()
 	conn := &entity.ChannelConnection{
@@ -97,7 +104,7 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 		Status:             entity.StatusDisconnected,
 		BaseURL:            strings.TrimSpace(cmd.BaseURL),
 		AuthType:           authType,
-		Secret:             cmd.Secret,
+		Secret:             secret,
 		WebhookVerifyToken: randomToken(24),
 		DefaultSectorID:    cmd.DefaultSectorID,
 		Enabled:            true,

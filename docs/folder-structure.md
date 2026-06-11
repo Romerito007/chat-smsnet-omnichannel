@@ -53,7 +53,7 @@ chat-backend/
 │   ├── asynq/                          # client, server, filas, middleware de job
 │   ├── redis/                          # client, locks, cache, presença
 │   ├── realtime/                       # manager, hub, pub/sub transport
-│   ├── channels/                       # adapters: whatsapp, telegram, webchat, mock
+│   ├── channels/                       # adapters: api (genérico), whatsapp, webchat + sign/
 │   ├── automation/                     # client do flow externo (chamadas + callbacks)
 │   ├── providerhub/                    # HTTP client da API smsnet-integrations (sob demanda)
 │   ├── copilot/provider/               # adapters de IA: echo(mock), openai, gemini, anthropic

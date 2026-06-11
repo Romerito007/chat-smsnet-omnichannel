@@ -118,7 +118,9 @@ correspondente:
 - **Eventos do sistema** aparecem na timeline (`message.type=event`) **e** em
   `audit_log`.
 - **Search** começa em índices Mongo (text) com caminho de evolução.
-- **Adapter de canal `mock`** primeiro, para destravar Fases 2–3 antes do canal
-  real definido.
+- **Canal genérico `api`** (estilo Chatwoot API channel): qualquer sistema
+  externo integra por HTTP (inbound com `inbound_token` + assinatura; outbound
+  por POST assinado HMAC-SHA256 no `outbound_url`). Substituiu o antigo adapter
+  mock; WhatsApp/Telegram entram depois como outros adapters da mesma interface.
 - **Copilot echo(mock)** primeiro, para destravar a Fase 6 sem provider final.
 - **Scheduler** singleton + handlers idempotentes.

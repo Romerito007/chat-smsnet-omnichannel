@@ -7,12 +7,26 @@ import (
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 )
 
-// OutboundSend is the channel-agnostic payload an adapter delivers.
+// OutboundSend is the channel-agnostic payload an adapter delivers. DeliveryID,
+// ConversationID and Contact let adapters that POST a full envelope (e.g. the API
+// channel) build it without reaching back into other domains.
 type OutboundSend struct {
+	DeliveryID        string
+	ConversationID    string
 	ExternalContactID string
+	Contact           OutboundContact
 	Text              string
 	Attachments       []conventity.Attachment
 	Metadata          map[string]any
+}
+
+// OutboundContact is the minimal contact reference included in an outbound
+// envelope. ExternalID is the contact's identifier on this channel.
+type OutboundContact struct {
+	ID         string
+	Name       string
+	Phone      string
+	ExternalID string
 }
 
 // SendResult is the outcome of a successful send.

@@ -148,10 +148,13 @@ text `(name)`, 🔑 keyset.
 
 ## Canais e integrações
 
-### `channels`
-`tenant_id`🔑, `type` (whatsapp/telegram/webchat/mock), `name`,
-`status` (active/inactive/error), `credentials_ref` (→ `secrets`, **nunca** em
-claro), `settings`, `last_health_at`.
+### `channel_connections`
+`tenant_id`🔑, `type` (api/whatsapp/webchat/…), `name`,
+`status` (connected/disconnected/error), `base_url` (= `outbound_url` no canal
+api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
+**nunca** em claro nem retornado após criação), `webhook_verify_token` (=
+`inbound_token`, exibido uma vez), `default_sector_id`, `enabled`,
+`automation_enabled`.
 
 ### `automation_bindings` / `automation_executions` / `automation_logs`
 - `automation_bindings`: `tenant_id`🔑, `trigger`, `flow_ref` (id no flow
