@@ -31,7 +31,7 @@ func DefaultRoles() []DefaultRoleDefinition {
 			Name: DefaultRoleAdmin,
 			Permissions: []Permission{
 				ConversationRead, ConversationAssign, ConversationTransfer, ConversationClose,
-				MessageSend, MessageInternalNote,
+				MessageSend, MessageInternalNote, MessageDelete,
 				ContactRead, ContactViewConnectionStatus,
 				SectorManage, QueueManage, UserManage,
 				AutomationManage, CopilotUse, CopilotConfigure,

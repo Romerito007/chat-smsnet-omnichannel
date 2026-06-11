@@ -6,6 +6,8 @@ import "time"
 const (
 	EventConversationCreated     = "conversation.created"
 	EventMessageCreated          = "message.created"
+	EventMessageEdited           = "message.edited"
+	EventMessageDeleted          = "message.deleted"
 	EventInternalNoteAdded       = "internal_note.added"
 	EventConversationUpdated     = "conversation.updated"
 	EventConversationClosed      = "conversation.closed"

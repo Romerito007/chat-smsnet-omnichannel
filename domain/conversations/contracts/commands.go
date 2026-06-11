@@ -32,6 +32,12 @@ type SendMessage struct {
 	Metadata    map[string]any
 }
 
+// EditMessage is the input to edit a message's text (soft edit: edited_at is set
+// and the original is preserved as history).
+type EditMessage struct {
+	Text string
+}
+
 // AddInternalNote is the input to add an internal note (never delivered).
 type AddInternalNote struct {
 	Text string

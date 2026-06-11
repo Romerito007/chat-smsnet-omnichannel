@@ -102,6 +102,30 @@ func (c *Controller) SendMessage(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusCreated, dto.NewMessageResponse(msg))
 }
 
+// EditMessage handles PATCH /v1/conversations/{id}/messages/{mid}.
+func (c *Controller) EditMessage(w http.ResponseWriter, r *http.Request) {
+	var req dto.EditMessageRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	msg, err := c.svc.EditMessage(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "mid"), req.ToCommand())
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewMessageResponse(msg))
+}
+
+// DeleteMessage handles DELETE /v1/conversations/{id}/messages/{mid}.
+func (c *Controller) DeleteMessage(w http.ResponseWriter, r *http.Request) {
+	if err := c.svc.DeleteMessage(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "mid")); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // AddInternalNote handles POST /v1/conversations/{id}/internal-notes.
 func (c *Controller) AddInternalNote(w http.ResponseWriter, r *http.Request) {
 	var req dto.InternalNoteRequest

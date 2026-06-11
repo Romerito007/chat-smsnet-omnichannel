@@ -30,6 +30,10 @@ func registerConversationRoutes(r chi.Router, c *container.Container) {
 
 			// Messaging.
 			cv.With(middleware.RequirePermission(authz.MessageSend)).Post("/{id}/messages", ctl.SendMessage)
+			// Edit requires message.send (author-or-elevated enforced in the service);
+			// delete requires the elevated message.delete permission.
+			cv.With(middleware.RequirePermission(authz.MessageSend)).Patch("/{id}/messages/{mid}", ctl.EditMessage)
+			cv.With(middleware.RequirePermission(authz.MessageDelete)).Delete("/{id}/messages/{mid}", ctl.DeleteMessage)
 			cv.With(middleware.RequirePermission(authz.MessageInternalNote)).Post("/{id}/internal-notes", ctl.AddInternalNote)
 
 			// Lifecycle.

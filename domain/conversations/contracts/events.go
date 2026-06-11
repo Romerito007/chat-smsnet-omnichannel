@@ -9,6 +9,8 @@ import (
 // Realtime event names emitted by the conversations service.
 const (
 	RealtimeMessageCreated          = "message.created"
+	RealtimeMessageUpdated          = "message.updated"
+	RealtimeMessageDeleted          = "message.deleted"
 	RealtimeConversationCreated     = "conversation.created"
 	RealtimeConversationUpdated     = "conversation.updated"
 	RealtimeConversationClosed      = "conversation.closed"
@@ -83,16 +85,17 @@ func NewConversationPayload(c *entity.Conversation) ConversationPayload {
 
 // MessagePayload is the realtime/event representation of a message.
 type MessagePayload struct {
-	ID             string    `json:"id"`
-	ConversationID string    `json:"conversation_id"`
-	SenderType     string    `json:"sender_type"`
-	SenderID       string    `json:"sender_id,omitempty"`
-	Direction      string    `json:"direction"`
-	MessageType    string    `json:"message_type"`
-	Text           string    `json:"text"`
-	Internal       bool      `json:"internal"`
-	DeliveryStatus string    `json:"delivery_status,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversation_id"`
+	SenderType     string     `json:"sender_type"`
+	SenderID       string     `json:"sender_id,omitempty"`
+	Direction      string     `json:"direction"`
+	MessageType    string     `json:"message_type"`
+	Text           string     `json:"text"`
+	Internal       bool       `json:"internal"`
+	DeliveryStatus string     `json:"delivery_status,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	EditedAt       *time.Time `json:"edited_at,omitempty"`
 }
 
 // NewMessagePayload builds the payload from a message entity.
@@ -108,5 +111,13 @@ func NewMessagePayload(m *entity.Message) MessagePayload {
 		Internal:       m.Direction == entity.DirectionInternal,
 		DeliveryStatus: string(m.DeliveryStatus),
 		CreatedAt:      m.CreatedAt,
+		EditedAt:       m.EditedAt,
 	}
+}
+
+// MessageRefPayload is the minimal reference broadcast for a message.deleted
+// event — it carries no body, since a deleted message is hidden from listings.
+type MessageRefPayload struct {
+	MessageID      string `json:"message_id"`
+	ConversationID string `json:"conversation_id"`
 }

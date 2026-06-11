@@ -647,6 +647,106 @@ func (s *Service) MarkRead(ctx context.Context, conversationID string) error {
 		contracts.ReadPayload{ConversationID: conv.ID, UserID: ac.UserID, ReadAt: s.clock.Now()})
 }
 
+// EditMessage edits a message's text (soft edit). It sets edited_at and keeps the
+// message in place — only agent-authored messages can be edited, and only by the
+// author or someone holding message.delete (the elevated "manage messages"
+// capability). Editing never touches the external channel: a message already
+// delivered to the customer is only updated in the chat. Publishes message.updated.
+func (s *Service) EditMessage(ctx context.Context, conversationID, messageID string, cmd contracts.EditMessage) (*entity.Message, error) {
+	conv, ac, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	text := strings.TrimSpace(cmd.Text)
+	if text == "" {
+		return nil, apperror.Validation("message text is required")
+	}
+	msg, err := s.loadMessage(ctx, conv, messageID)
+	if err != nil {
+		return nil, err
+	}
+	// Only agent-authored messages (outbound replies or internal notes) are
+	// editable; a customer's words are never rewritten.
+	if msg.SenderType != entity.SenderAgent {
+		return nil, apperror.Validation("only agent messages can be edited")
+	}
+	if !s.canManageMessage(ac, msg) {
+		return nil, apperror.Forbidden("you can only edit your own messages")
+	}
+
+	now := s.clock.Now()
+	msg.Text = text
+	msg.EditedAt = &now
+	if err := s.messages.Update(ctx, msg); err != nil {
+		return nil, err
+	}
+
+	s.recordEvent(ctx, conv, entity.EventMessageEdited, map[string]any{"message_id": msg.ID})
+	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
+		contracts.RealtimeMessageUpdated, contracts.NewMessagePayload(msg))
+	return msg, nil
+}
+
+// DeleteMessage soft-deletes a message: it sets deleted_at so the message
+// disappears from listings while staying in the database (history preserved).
+// The route requires message.delete; the elevated holder may delete any message,
+// including another user's internal note. A message already delivered to the
+// customer is only soft-marked in the chat — the external channel is never
+// touched. Idempotent. Publishes message.deleted.
+func (s *Service) DeleteMessage(ctx context.Context, conversationID, messageID string) error {
+	conv, ac, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	msg, err := s.loadMessage(ctx, conv, messageID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeConflict {
+			return nil // already deleted → idempotent
+		}
+		return err
+	}
+	if !s.canManageMessage(ac, msg) {
+		return apperror.Forbidden("not allowed to delete this message")
+	}
+
+	now := s.clock.Now()
+	msg.DeletedAt = &now
+	if err := s.messages.Update(ctx, msg); err != nil {
+		return err
+	}
+
+	s.recordEvent(ctx, conv, entity.EventMessageDeleted, map[string]any{"message_id": msg.ID})
+	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
+		contracts.RealtimeMessageDeleted, contracts.MessageRefPayload{MessageID: msg.ID, ConversationID: conv.ID})
+	return nil
+}
+
+// loadMessage fetches a message and verifies it belongs to the conversation and
+// is not already soft-deleted (conflict, so callers can treat delete idempotently).
+func (s *Service) loadMessage(ctx context.Context, conv *entity.Conversation, messageID string) (*entity.Message, error) {
+	msg, err := s.messages.FindByID(ctx, messageID)
+	if err != nil {
+		return nil, err
+	}
+	if msg.ConversationID != conv.ID {
+		return nil, apperror.NotFound("message not found")
+	}
+	if msg.IsDeleted() {
+		return nil, apperror.Conflict("message is already deleted")
+	}
+	return msg, nil
+}
+
+// canManageMessage reports whether the actor may edit/delete the message: the
+// author always may; otherwise the elevated message.delete permission is required
+// (this also guards "do not edit/delete another user's internal note").
+func (s *Service) canManageMessage(ac authz.AuthContext, msg *entity.Message) bool {
+	if msg.SenderID != "" && msg.SenderID == ac.UserID {
+		return true
+	}
+	return ac.Has(authz.MessageDelete)
+}
+
 // ── internals ────────────────────────────────────────────────────────────────
 
 // persistMessage stores a message, bumps conversation activity, records the

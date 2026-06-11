@@ -14,6 +14,7 @@ const (
 
 	MessageSend         Permission = "message.send"
 	MessageInternalNote Permission = "message.internal_note"
+	MessageDelete       Permission = "message.delete"
 
 	ContactRead                 Permission = "contact.read"
 	ContactViewFinancial        Permission = "contact.view_financial"
@@ -47,7 +48,7 @@ const (
 func AllPermissions() []Permission {
 	return []Permission{
 		ConversationRead, ConversationAssign, ConversationTransfer, ConversationClose,
-		MessageSend, MessageInternalNote,
+		MessageSend, MessageInternalNote, MessageDelete,
 		ContactRead, ContactViewFinancial, ContactViewConnectionStatus,
 		SectorManage, QueueManage, UserManage,
 		AutomationManage,

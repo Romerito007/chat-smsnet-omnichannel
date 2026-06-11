@@ -95,6 +95,16 @@ func (r SendMessageRequest) ToCommand() contracts.SendMessage {
 	}
 }
 
+// EditMessageRequest is the body of PATCH /v1/conversations/{id}/messages/{mid}.
+type EditMessageRequest struct {
+	Text string `json:"text"`
+}
+
+// ToCommand maps the request to the service command.
+func (r EditMessageRequest) ToCommand() contracts.EditMessage {
+	return contracts.EditMessage{Text: r.Text}
+}
+
 // InternalNoteRequest is the body of POST /v1/conversations/{id}/internal-notes.
 type InternalNoteRequest struct {
 	Text           string   `json:"text"`

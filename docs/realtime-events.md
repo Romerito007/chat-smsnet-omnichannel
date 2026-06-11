@@ -88,11 +88,16 @@ Publicados no tópico `conversation:{id}` (`message.created` também em `inbox`)
 | Evento | Quando | Payload |
 |---|---|---|
 | `message.created` | nova mensagem/nota | `MessagePayload` |
+| `message.updated` | edição (soft) do texto (`edited_at` setado) | `MessagePayload` |
+| `message.deleted` | exclusão (soft) — some das listagens | `MessageRefPayload` |
 | `message.sent` | outbound entregue ao canal | `MessageStatusPayload` |
 | `message.delivered` | receipt do canal: entregue | `MessageStatusPayload` |
 | `message.read` | receipt do canal: lida / leitura do agente | `MessageStatusPayload` / `ReadPayload` |
 | `message.failed` | falha de entrega (após retries) | `MessageStatusPayload` |
 | `typing.started` / `typing.stopped` | digitação | `TypingPayload` |
+
+`MessageRefPayload` = `{ message_id, conversation_id }` (sem corpo: a mensagem
+excluída fica oculta das listagens, preservada no banco).
 
 `MessageStatusPayload` = `{ message_id, conversation_id, delivery_status, error? }`.
 
