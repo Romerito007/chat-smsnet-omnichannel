@@ -27,6 +27,7 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 	svc.SetSLAHook(SLAService(c))
 	svc.SetNotifier(NotificationEnqueuer(c))
 	svc.SetAuditor(AuditService(c))
+	svc.SetQueueStatsNotifier(QueueService(c))
 	return svc
 }
 

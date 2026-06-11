@@ -40,8 +40,8 @@ Sempre **tenant-scoped**. Convenção `t:{tenant_id}:{escopo}[:{id}]`:
 |---|---|---|
 | `t:{tenant}:user:{userId}` | o próprio agente | notificações, atribuições, presença pessoal |
 | `t:{tenant}:conversation:{id}` | participantes/observadores | mensagens, status, typing, SLA |
-| `t:{tenant}:inbox:{sectorId}` | agentes do setor | novas conversas, mudanças de fila |
-| `t:{tenant}:queue:{queueId}` | supervisores | stats de fila |
+| `t:{tenant}:inbox:{sectorId}` | agentes do setor | novas conversas, lifecycle, `queue.stats` |
+| `t:{tenant}:queue:{queueId}` | supervisores | reservado (futuro) |
 | `t:{tenant}:presence` | quem precisa | mudanças de presença agregadas |
 
 ## Envelope (servidor → cliente)
@@ -58,51 +58,72 @@ Sempre **tenant-scoped**. Convenção `t:{tenant_id}:{escopo}[:{id}]`:
 
 ## Catálogo de eventos
 
-### Conversas e mensagens (`conversations`)
-| Evento | Tópico | Payload (resumo) |
+> Esta tabela reflete **exatamente** os nomes emitidos pelo backend (constantes em
+> `domain/<x>/contracts`). Os eventos de **ciclo de vida** da conversa são
+> publicados com nome próprio **e** acompanhados de `conversation.updated` (para
+> clientes que só assinam o evento genérico de mudança). Os eventos de mensagem
+> são **granulares** (`message.sent/delivered/read/failed`), não um `message.status`
+> genérico.
+
+### Conversas (`conversations`) — lifecycle
+Publicados nos tópicos `conversation:{id}` **e** `inbox:{sectorId}`.
+
+| Evento | Quando | Payload |
 |---|---|---|
-| `conversation.created` | inbox/setor | conversa (resumo) |
-| `conversation.updated` | conversation, inbox | status, priority, tags, subject |
-| `conversation.assigned` | conversation, user | `{ assignee_id, by }` |
-| `conversation.transferred` | conversation, inbox | `{ from, to, by }` |
-| `conversation.resolved` | conversation, inbox | `{ reason_id, by }` |
-| `conversation.closed` | conversation, inbox | `{ by, closed_at }` |
-| `conversation.reopened` | conversation, inbox | |
-| `message.created` | conversation, inbox | mensagem completa |
-| `message.status` | conversation | `{ message_id, status: sent|delivered|read|failed }` |
-| `message.read` | conversation | `{ message_id, by }` |
-| `typing` | conversation | `{ user_id|contact, on: bool }` |
+| `conversation.created` | criação (`Create`) | `ConversationPayload` |
+| `conversation.updated` | qualquer mudança (acompanha todos os demais) | `ConversationPayload` |
+| `conversation.closed` | `Close`/`CloseInactive` (status `closed`/`archived`) | `ConversationPayload` |
+| `conversation.resolved` | `Update` com `status=resolved` | `ConversationPayload` |
+| `conversation.reopened` | `Reopen` | `ConversationPayload` |
+| `conversation.assigned` | atribuição (routing) | `ConversationPayload` |
+| `conversation.transferred` | transferência (routing) | `ConversationPayload` |
+| `conversation.tagged` | aplicação de tags | `{ conversation_id, tags }` |
+
+`ConversationPayload` = `{ id, tenant_id, contact_id, channel, sector_id, queue_id,
+status, assigned_to, priority, tags, last_message_at, updated_at }`.
+
+### Mensagens (`conversations`)
+Publicados no tópico `conversation:{id}` (`message.created` também em `inbox`).
+
+| Evento | Quando | Payload |
+|---|---|---|
+| `message.created` | nova mensagem/nota | `MessagePayload` |
+| `message.sent` | outbound entregue ao canal | `MessageStatusPayload` |
+| `message.delivered` | receipt do canal: entregue | `MessageStatusPayload` |
+| `message.read` | receipt do canal: lida / leitura do agente | `MessageStatusPayload` / `ReadPayload` |
+| `message.failed` | falha de entrega (após retries) | `MessageStatusPayload` |
+| `typing.started` / `typing.stopped` | digitação | `TypingPayload` |
+
+`MessageStatusPayload` = `{ message_id, conversation_id, delivery_status, error? }`.
 
 ### Presença (`presence`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `presence.changed` | presence, user | `{ user_id, status, capacity }` |
+| `presence.changed` | presence, user | `{ user_id, status, ... }` |
 
 ### Filas (`queues`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `queue.stats` | queue | `{ queue_id, waiting, serving, agents_online }` |
+| `queue.stats` | inbox/setor | `{ tenant_id, sector_id, queue_id, waiting_count, assigned_count }` |
+
+Emitido quando a composição da fila muda — entrada (`enqueue`/criação em fila),
+saída (fechamento) ou atribuição (`assign`/`transfer`).
 
 ### SLA (`sla`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `sla.warning` | conversation, user | `{ conversation_id, target, due_at }` |
-| `sla.breached` | conversation, inbox, user | `{ conversation_id, target }` |
+| `sla.warning` | conversation | `{ conversation_id, target, ... }` |
+| `sla.breached` | conversation (+ webhook `sla.breached`) | `{ conversation_id, target, ... }` |
 
 ### Copilot (`copilot`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `copilot.suggestion` | conversation, user | `{ run_id, kind, output }` |
+| `copilot.suggestion_completed` | conversation, user | `{ run_id, action, output, ... }` |
 
 ### Notificações (`notifications`)
 | Evento | Tópico | Payload |
 |---|---|---|
 | `notification.created` | user | notificação |
-
-### Automation (`automation`)
-| Evento | Tópico | Payload |
-|---|---|---|
-| `automation.updated` | conversation | `{ execution_id, status }` |
 
 ## Como os eventos são publicados
 

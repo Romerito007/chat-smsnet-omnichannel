@@ -40,6 +40,7 @@ type Service struct {
 	webhooks      shared.WebhookEmitter
 	notifier      shared.Notifier
 	auditor       shared.Auditor
+	queueStats    shared.QueueStatsNotifier
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, transfers are not
@@ -47,6 +48,14 @@ type Service struct {
 func (s *Service) SetAuditor(a shared.Auditor) {
 	if a != nil {
 		s.auditor = a
+	}
+}
+
+// SetQueueStatsNotifier wires the queue.stats notifier. Optional: when unset,
+// queue-composition changes are not broadcast.
+func (s *Service) SetQueueStatsNotifier(n shared.QueueStatsNotifier) {
+	if n != nil {
+		s.queueStats = n
 	}
 }
 
@@ -102,6 +111,7 @@ func New(
 		webhooks:      shared.NoopWebhookEmitter{},
 		notifier:      shared.NoopNotifier{},
 		auditor:       shared.NoopAuditor{},
+		queueStats:    shared.NoopQueueStatsNotifier{},
 	}
 }
 
@@ -159,6 +169,7 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 		}
 		fromSector := conv.SectorID
 		fromAgent := conv.AssignedTo
+		fromQueue := conv.QueueID
 
 		if cmd.SectorID != "" && cmd.SectorID != conv.SectorID {
 			if _, err := s.sectors.FindByID(ctx, cmd.SectorID); err != nil {
@@ -199,6 +210,10 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 			"to_agent":    conv.AssignedTo,
 		})
 		s.publishTransferred(ctx, conv, fromSector)
+		// A transfer pulls the conversation out of its previous queue.
+		if fromQueue != "" {
+			s.queueStats.QueueChanged(ctx, fromSector, fromQueue)
+		}
 		s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationTransferred, convcontracts.NewConversationPayload(conv))
 		_ = s.auditor.Record(ctx, shared.AuditEntry{
 			Action: "conversation.transferred", ResourceType: "conversation", ResourceID: conv.ID,
@@ -234,6 +249,7 @@ func (s *Service) Enqueue(ctx context.Context, conversationID string, cmd contra
 			return nil, err
 		}
 
+		fromQueue, fromSector := conv.QueueID, conv.SectorID
 		conv.QueueID = queue.ID
 		conv.SectorID = queue.SectorID
 		conv.AssignedTo = ""
@@ -248,6 +264,12 @@ func (s *Service) Enqueue(ctx context.Context, conversationID string, cmd contra
 			"sector_id": queue.SectorID,
 		})
 		s.publishUpdated(ctx, conv)
+		// The conversation entered this queue (waiting++); if it was waiting in a
+		// different queue before, that one shrank too.
+		s.queueStats.QueueChanged(ctx, queue.SectorID, queue.ID)
+		if fromQueue != "" && fromQueue != queue.ID {
+			s.queueStats.QueueChanged(ctx, fromSector, fromQueue)
+		}
 		return conv, nil
 	})
 }
@@ -417,6 +439,7 @@ func (s *Service) withLock(ctx context.Context, conversationID string, fn func(*
 // applyAssignment sets the conversation as assigned to agentID and emits the
 // event + realtime.
 func (s *Service) applyAssignment(ctx context.Context, conv *conventity.Conversation, agentID string) (*conventity.Conversation, error) {
+	fromQueue := conv.QueueID
 	conv.AssignedTo = agentID
 	conv.Status = conventity.StatusAssigned
 	conv.QueueID = ""
@@ -427,6 +450,8 @@ func (s *Service) applyAssignment(ctx context.Context, conv *conventity.Conversa
 
 	s.recordEvent(ctx, conv, conventity.EventConversationAssigned, map[string]any{"agent_id": agentID})
 	s.publishAssigned(ctx, conv, agentID)
+	// The conversation left the queue (waiting--) and is now assigned (assigned++).
+	s.queueStats.QueueChanged(ctx, conv.SectorID, fromQueue)
 	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationAssigned, convcontracts.NewConversationPayload(conv))
 	s.notifier.Notify(ctx, shared.NotifyInput{
 		TenantID: conv.TenantID, UserID: agentID,

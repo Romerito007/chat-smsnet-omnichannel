@@ -20,9 +20,12 @@ func SectorService(c *container.Container) *sectorservice.Service {
 	return sectorservice.New(sectorrepo.New(c.Mongo.DB), clock)
 }
 
-// QueueService builds the queue service (validates sectors).
+// QueueService builds the queue service (validates sectors) wired to publish
+// queue.stats from the realtime publisher + conversation composition counter.
 func QueueService(c *container.Container) *queueservice.Service {
-	return queueservice.New(queuerepo.New(c.Mongo.DB), sectorrepo.New(c.Mongo.DB), clock)
+	svc := queueservice.New(queuerepo.New(c.Mongo.DB), sectorrepo.New(c.Mongo.DB), clock)
+	svc.SetStats(c.Events, queuerepo.NewCompositionCounter(c.Mongo.DB))
+	return svc
 }
 
 // PresenceService builds the presence service (Redis store + Mongo load counter

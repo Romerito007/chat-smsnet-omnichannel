@@ -9,7 +9,11 @@ import (
 // Realtime event names emitted by the conversations service.
 const (
 	RealtimeMessageCreated          = "message.created"
+	RealtimeConversationCreated     = "conversation.created"
 	RealtimeConversationUpdated     = "conversation.updated"
+	RealtimeConversationClosed      = "conversation.closed"
+	RealtimeConversationResolved    = "conversation.resolved"
+	RealtimeConversationReopened    = "conversation.reopened"
 	RealtimeConversationAssigned    = "conversation.assigned"
 	RealtimeConversationTransferred = "conversation.transferred"
 	RealtimeConversationTagged      = "conversation.tagged"

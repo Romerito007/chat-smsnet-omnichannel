@@ -14,11 +14,14 @@ import (
 )
 
 // Service manages tenant queues. It validates that the referenced sector exists
-// within the same tenant.
+// within the same tenant. It also publishes queue.stats when notified that a
+// queue's composition changed (see QueueChanged).
 type Service struct {
-	repo    repository.QueueRepository
-	sectors sectorrepo.SectorRepository
-	clock   shared.Clock
+	repo      repository.QueueRepository
+	sectors   sectorrepo.SectorRepository
+	clock     shared.Clock
+	publisher shared.EventPublisher
+	counter   contracts.CompositionCounter
 }
 
 // New builds the service.
@@ -26,8 +29,45 @@ func New(repo repository.QueueRepository, sectors sectorrepo.SectorRepository, c
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, sectors: sectors, clock: clock}
+	return &Service{repo: repo, sectors: sectors, clock: clock, publisher: shared.NoopPublisher{}}
 }
+
+// SetStats wires the realtime publisher and the conversation composition counter
+// used by QueueChanged. Optional: when unset, queue.stats is not published.
+func (s *Service) SetStats(publisher shared.EventPublisher, counter contracts.CompositionCounter) {
+	if publisher != nil {
+		s.publisher = publisher
+	}
+	s.counter = counter
+}
+
+// QueueChanged implements shared.QueueStatsNotifier: it recomputes the queue's
+// waiting/assigned composition and publishes the queue.stats event to the sector
+// inbox. Fire-and-forget — failures are swallowed so the caller's operation is
+// never affected.
+func (s *Service) QueueChanged(ctx context.Context, sectorID, queueID string) {
+	if s.counter == nil || queueID == "" {
+		return
+	}
+	tenantID, ok := shared.TenantFrom(ctx)
+	if !ok || tenantID == "" {
+		return
+	}
+	waiting, assigned, err := s.counter.QueueComposition(ctx, sectorID, queueID)
+	if err != nil {
+		return
+	}
+	_ = s.publisher.Publish(ctx, shared.TopicInbox(tenantID, sectorID), contracts.RealtimeQueueStats,
+		contracts.QueueStatsPayload{
+			TenantID:      tenantID,
+			SectorID:      sectorID,
+			QueueID:       queueID,
+			WaitingCount:  waiting,
+			AssignedCount: assigned,
+		})
+}
+
+var _ shared.QueueStatsNotifier = (*Service)(nil)
 
 // Create validates and persists a queue.
 func (s *Service) Create(ctx context.Context, cmd contracts.CreateQueue) (*entity.Queue, error) {
