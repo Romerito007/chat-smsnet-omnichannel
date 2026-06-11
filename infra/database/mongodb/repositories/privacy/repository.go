@@ -17,6 +17,7 @@ import (
 	privrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/privacy/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/models"
 )
 
 // closedStatuses are the terminal conversation states subject to the
@@ -55,23 +56,12 @@ func New(db *mongo.Database) *Repository {
 
 // --- Retention policy ---
 
-type retentionDoc struct {
-	ID                      string    `bson:"_id"`
-	TenantID                string    `bson:"tenant_id"`
-	MessagesDays            int       `bson:"messages_days"`
-	ClosedConversationsDays int       `bson:"closed_conversations_days"`
-	TechnicalLogsDays       int       `bson:"technical_logs_days"`
-	AuditLogsDays           int       `bson:"audit_logs_days"`
-	NotificationsDays       int       `bson:"notifications_days"`
-	UpdatedAt               time.Time `bson:"updated_at"`
-}
-
 func (r *Repository) GetRetention(ctx context.Context) (*entity.RetentionPolicy, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var d retentionDoc
+	var d models.RetentionPolicy
 	err = r.retention.FindOne(ctx, bson.M{"_id": tenantID}).Decode(&d)
 	if err == mongo.ErrNoDocuments {
 		return nil, nil
@@ -113,27 +103,13 @@ func (r *Repository) SaveRetention(ctx context.Context, p *entity.RetentionPolic
 
 // --- Export requests ---
 
-type exportDoc struct {
-	ID          string     `bson:"_id"`
-	TenantID    string     `bson:"tenant_id"`
-	ContactID   string     `bson:"contact_id"`
-	Status      string     `bson:"status"`
-	RequestedBy string     `bson:"requested_by,omitempty"`
-	StorageKey  string     `bson:"storage_key,omitempty"`
-	DownloadURL string     `bson:"download_url,omitempty"`
-	ExpiresAt   time.Time  `bson:"expires_at,omitempty"`
-	Error       string     `bson:"error,omitempty"`
-	CreatedAt   time.Time  `bson:"created_at"`
-	CompletedAt *time.Time `bson:"completed_at,omitempty"`
-}
-
 func (r *Repository) CreateExport(ctx context.Context, e *entity.ExportRequest) error {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return err
 	}
 	e.TenantID = tenantID
-	_, err = r.exports.InsertOne(ctx, exportDoc{
+	_, err = r.exports.InsertOne(ctx, models.PrivacyExport{
 		ID:          e.ID,
 		TenantID:    tenantID,
 		ContactID:   e.ContactID,
@@ -174,7 +150,7 @@ func (r *Repository) FindExport(ctx context.Context, id string) (*entity.ExportR
 	if err != nil {
 		return nil, err
 	}
-	var d exportDoc
+	var d models.PrivacyExport
 	if err := r.exports.FindOne(ctx, bson.M{"_id": id, "tenant_id": tenantID}).Decode(&d); err != nil {
 		return nil, mongodb.MapError(err)
 	}
@@ -195,51 +171,12 @@ func (r *Repository) FindExport(ctx context.Context, id string) (*entity.ExportR
 
 // --- Export bundle assembly ---
 
-type contactDoc struct {
-	ID         string `bson:"_id"`
-	Name       string `bson:"name"`
-	Phone      string `bson:"phone"`
-	Document   string `bson:"document"`
-	Identities []struct {
-		Channel    string `bson:"channel"`
-		ExternalID string `bson:"external_id"`
-	} `bson:"identities"`
-	CreatedAt time.Time `bson:"created_at"`
-}
-
-type convDoc struct {
-	ID        string     `bson:"_id"`
-	Channel   string     `bson:"channel"`
-	Status    string     `bson:"status"`
-	CreatedAt time.Time  `bson:"created_at"`
-	ClosedAt  *time.Time `bson:"closed_at,omitempty"`
-}
-
-type msgDoc struct {
-	ID          string     `bson:"_id"`
-	Direction   string     `bson:"direction"`
-	SenderType  string     `bson:"sender_type"`
-	MessageType string     `bson:"message_type"`
-	Text        string     `bson:"text"`
-	CreatedAt   time.Time  `bson:"created_at"`
-	DeletedAt   *time.Time `bson:"deleted_at,omitempty"`
-}
-
-type csatDoc struct {
-	ID             string    `bson:"_id"`
-	ConversationID string    `bson:"conversation_id"`
-	Score          *int      `bson:"score,omitempty"`
-	Comment        string    `bson:"comment,omitempty"`
-	Status         string    `bson:"status"`
-	CreatedAt      time.Time `bson:"created_at"`
-}
-
 func (r *Repository) CollectBundle(ctx context.Context, contactID string) (*privrepo.ExportBundle, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var c contactDoc
+	var c models.PrivacyContact
 	if err := r.contacts.FindOne(ctx, bson.M{"_id": contactID, "tenant_id": tenantID}).Decode(&c); err != nil {
 		return nil, mongodb.MapError(err)
 	}
@@ -266,9 +203,9 @@ func (r *Repository) CollectBundle(ctx context.Context, contactID string) (*priv
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer convCur.Close(ctx)
+	defer func() { _ = convCur.Close(ctx) }()
 	for convCur.Next(ctx) {
-		var cv convDoc
+		var cv models.PrivacyConversation
 		if err := convCur.Decode(&cv); err != nil {
 			return nil, mongodb.MapError(err)
 		}
@@ -298,9 +235,9 @@ func (r *Repository) CollectBundle(ctx context.Context, contactID string) (*priv
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer csatCur.Close(ctx)
+	defer func() { _ = csatCur.Close(ctx) }()
 	for csatCur.Next(ctx) {
-		var cs csatDoc
+		var cs models.PrivacyCSAT
 		if err := csatCur.Decode(&cs); err != nil {
 			return nil, mongodb.MapError(err)
 		}
@@ -324,10 +261,10 @@ func (r *Repository) messagesFor(ctx context.Context, tenantID, convID string) (
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var out []privrepo.MessageData
 	for cur.Next(ctx) {
-		var m msgDoc
+		var m models.PrivacyMessage
 		if err := cur.Decode(&m); err != nil {
 			return nil, mongodb.MapError(err)
 		}

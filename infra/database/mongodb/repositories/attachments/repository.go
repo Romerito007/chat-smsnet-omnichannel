@@ -3,7 +3,6 @@ package attachments
 
 import (
 	"context"
-	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -12,6 +11,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/attachments/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/models"
 )
 
 // Repository implements repository.Repository over MongoDB.
@@ -24,24 +24,8 @@ func New(db *mongo.Database) *Repository {
 	return &Repository{coll: db.Collection("attachments")}
 }
 
-type attachmentDoc struct {
-	ID              string    `bson:"_id"`
-	TenantID        string    `bson:"tenant_id"`
-	ConversationID  string    `bson:"conversation_id"`
-	MessageID       string    `bson:"message_id,omitempty"`
-	Filename        string    `bson:"filename"`
-	ContentType     string    `bson:"content_type"`
-	Size            int64     `bson:"size"`
-	StorageProvider string    `bson:"storage_provider"`
-	StorageKey      string    `bson:"storage_key"`
-	SignedURL       string    `bson:"signed_url,omitempty"`
-	Status          string    `bson:"status"`
-	CreatedBy       string    `bson:"created_by,omitempty"`
-	CreatedAt       time.Time `bson:"created_at"`
-}
-
-func toDoc(a *entity.Attachment) attachmentDoc {
-	return attachmentDoc{
+func toDoc(a *entity.Attachment) models.AttachmentRecord {
+	return models.AttachmentRecord{
 		ID:              a.ID,
 		TenantID:        a.TenantID,
 		ConversationID:  a.ConversationID,
@@ -58,7 +42,7 @@ func toDoc(a *entity.Attachment) attachmentDoc {
 	}
 }
 
-func toEntity(d *attachmentDoc) *entity.Attachment {
+func toEntity(d *models.AttachmentRecord) *entity.Attachment {
 	return &entity.Attachment{
 		ID:              d.ID,
 		TenantID:        d.TenantID,
@@ -111,7 +95,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*entity.Attachmen
 	if err != nil {
 		return nil, err
 	}
-	var d attachmentDoc
+	var d models.AttachmentRecord
 	if err := r.coll.FindOne(ctx, bson.M{"_id": id, "tenant_id": tenantID}).Decode(&d); err != nil {
 		return nil, mongodb.MapError(err)
 	}

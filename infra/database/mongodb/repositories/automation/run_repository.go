@@ -95,7 +95,7 @@ func (r *RunRepository) List(ctx context.Context, page shared.PageRequest) ([]*e
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.AutomationRun
 	for c.Next(ctx) {
 		var m models.AutomationRun

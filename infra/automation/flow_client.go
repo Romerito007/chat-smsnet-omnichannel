@@ -59,7 +59,7 @@ func (c *FlowClient) Start(ctx context.Context, integration *entity.AutomationIn
 	if err != nil {
 		return contracts.FlowStartResult{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return contracts.FlowStartResult{}, fmt.Errorf("flow returned status %d", resp.StatusCode)
 	}

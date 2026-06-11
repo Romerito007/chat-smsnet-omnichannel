@@ -77,7 +77,7 @@ func (g *Gateway) Ping(ctx context.Context, cfg *mentity.MonitoringIntegrationCo
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("monitoring returned status %d", resp.StatusCode)
 	}
@@ -118,7 +118,7 @@ func (g *Gateway) get(ctx context.Context, cfg *mentity.MonitoringIntegrationCon
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("monitoring returned status %d", resp.StatusCode)
 	}

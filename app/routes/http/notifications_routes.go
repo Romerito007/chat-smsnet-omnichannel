@@ -10,7 +10,10 @@ import (
 
 // registerNotificationRoutes mounts the personal notification inbox and
 // preferences. Every endpoint operates on the authenticated user's own
-// notifications (no extra permission — notifications are personal).
+// notifications (no extra permission — notifications are personal); the service
+// scopes every read/write by the actor's user id, so one user can never touch
+// another's notifications. This own-resource rule is covered by
+// TestMarkRead_OtherUsersNotificationDenied (domain/notifications/service).
 func registerNotificationRoutes(r chi.Router, c *container.Container) {
 	ctl := factories.NotificationController(c)
 

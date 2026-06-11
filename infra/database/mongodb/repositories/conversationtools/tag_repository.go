@@ -100,7 +100,7 @@ func (r *TagRepository) List(ctx context.Context, page shared.PageRequest) ([]*e
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Tag
 	for c.Next(ctx) {
 		var m models.Tag
@@ -124,7 +124,7 @@ func (r *TagRepository) FindByIDs(ctx context.Context, ids []string) ([]*entity.
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Tag
 	for c.Next(ctx) {
 		var m models.Tag

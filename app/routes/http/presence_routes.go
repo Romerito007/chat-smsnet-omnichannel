@@ -10,7 +10,9 @@ import (
 
 // registerPresenceRoutes mounts the agent presence endpoints. Both require
 // authentication; the service enforces that an agent may only change its own
-// status unless it holds user.manage (supervisor/admin).
+// status unless it holds user.manage (supervisor/admin). This own-resource rule
+// is covered by TestSetStatus_CannotChangeOthersWithoutPermission
+// (domain/presence/service).
 func registerPresenceRoutes(r chi.Router, c *container.Container) {
 	ctl := factories.PresenceController(c)
 

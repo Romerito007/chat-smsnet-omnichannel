@@ -49,7 +49,7 @@ func (r *Repository) ListActive(ctx context.Context) ([]*entity.Tenant, error) {
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Tenant
 	for c.Next(ctx) {
 		var m models.Tenant

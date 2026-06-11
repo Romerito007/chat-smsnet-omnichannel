@@ -1,0 +1,29 @@
+# golangci-lint v2 configuration.
+# High-signal linters; run with `make lint`.
+version: "2"
+
+run:
+  timeout: 5m
+
+# Report every finding (no per-linter / same-issue caps).
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  # The "standard" set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - misspell
+    - unconvert
+  exclusions:
+    generated: lax
+    rules:
+      # Unchecked errors in tests are acceptable (assertions cover behaviour).
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt

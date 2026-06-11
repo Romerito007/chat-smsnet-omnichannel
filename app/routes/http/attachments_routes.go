@@ -10,8 +10,11 @@ import (
 
 // registerAttachmentRoutes mounts the attachments endpoints. The management
 // surface is authenticated and the service enforces conversation access on every
-// call; the blob upload sink is public — the unguessable, expiring, HMAC-signed
-// token is the only credential (local backend only).
+// call (an actor may only act on attachments of a conversation it can see); the
+// blob upload sink is public — the unguessable, expiring, HMAC-signed token is
+// the only credential (local backend only). The conversation-access rule is
+// covered by TestRequestUploadURL_EnforcesConversationAccess and
+// TestDownload_ChecksAccessAndServes (domain/attachments/service).
 func registerAttachmentRoutes(r chi.Router, c *container.Container) {
 	ctl := factories.AttachmentController(c)
 

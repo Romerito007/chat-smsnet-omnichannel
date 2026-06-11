@@ -70,10 +70,13 @@ func TestJWTManager_RefreshHashStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	if m.HashRefresh(plain) != m.HashRefresh(plain) {
+	// Hashing the same token twice must yield the same digest (deterministic).
+	first := m.HashRefresh(plain)
+	second := m.HashRefresh(plain)
+	if first != second {
 		t.Error("hash must be deterministic")
 	}
-	if m.HashRefresh(plain) == plain {
+	if first == plain {
 		t.Error("stored hash must not equal the plaintext")
 	}
 }

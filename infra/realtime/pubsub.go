@@ -38,7 +38,7 @@ func (p *PubSub) Publish(ctx context.Context, msg Message) error {
 // clients until the context is cancelled.
 func (p *PubSub) Run(ctx context.Context) error {
 	sub := p.rdb.Subscribe(ctx, channelName)
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 
 	ch := sub.Channel()
 	for {

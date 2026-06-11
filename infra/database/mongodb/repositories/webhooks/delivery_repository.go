@@ -83,7 +83,7 @@ func (r *DeliveryRepository) ListByWebhook(ctx context.Context, webhookID string
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.WebhookDelivery
 	for c.Next(ctx) {
 		var m models.WebhookDelivery

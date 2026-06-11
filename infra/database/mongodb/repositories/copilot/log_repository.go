@@ -47,7 +47,7 @@ func (r *LogRepository) ListByConversation(ctx context.Context, conversationID s
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.AILog
 	for c.Next(ctx) {
 		var m models.AILog

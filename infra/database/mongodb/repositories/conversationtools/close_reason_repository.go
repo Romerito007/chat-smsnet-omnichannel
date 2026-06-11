@@ -97,7 +97,7 @@ func (r *CloseReasonRepository) List(ctx context.Context, page shared.PageReques
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.CloseReason
 	for c.Next(ctx) {
 		var m models.CloseReason

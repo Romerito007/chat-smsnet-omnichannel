@@ -119,7 +119,7 @@ func (r *ConversationRepository) ListInactiveOpen(ctx context.Context, idleBefor
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Conversation
 	for c.Next(ctx) {
 		var m models.Conversation
@@ -175,7 +175,7 @@ func (r *ConversationRepository) List(ctx context.Context, filter contracts.List
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Conversation
 	for c.Next(ctx) {
 		var m models.Conversation

@@ -113,7 +113,7 @@ func (r *HolidayRepository) query(ctx context.Context, filter bson.M, opts *opti
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Holiday
 	for c.Next(ctx) {
 		var m models.Holiday

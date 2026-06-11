@@ -98,7 +98,7 @@ func (i *Index) SearchConversations(ctx context.Context, f contracts.Conversatio
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*conventity.Conversation
 	for c.Next(ctx) {
 		var m models.Conversation
@@ -125,7 +125,7 @@ func (i *Index) SearchContactsText(ctx context.Context, query string, cur shared
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*contactentity.Contact
 	for c.Next(ctx) {
 		var m models.Contact
@@ -155,7 +155,7 @@ func (i *Index) SearchMessagesText(ctx context.Context, query, conversationID st
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*conventity.Message
 	for c.Next(ctx) {
 		var m models.Message
@@ -222,7 +222,7 @@ func (i *Index) conversationIDsBySLA(ctx context.Context, tenantID, status strin
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	ids := []string{}
 	for cur.Next(ctx) {
 		var doc struct {

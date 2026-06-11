@@ -115,7 +115,7 @@ func (r *Repository) ConversationsDaily(ctx context.Context, f contracts.Filter)
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var out []contracts.DateCount
 	for cur.Next(ctx) {
 		var row struct {
@@ -159,7 +159,7 @@ func (r *Repository) CountMessages(ctx context.Context, f contracts.Filter) (int
 	if err != nil {
 		return 0, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	if cur.Next(ctx) {
 		var row struct {
 			N int `bson:"n"`
@@ -250,7 +250,7 @@ func (r *Repository) AgentStats(ctx context.Context, f contracts.Filter) ([]cont
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var out []contracts.AgentStat
 	for cur.Next(ctx) {
 		var row struct {
@@ -310,7 +310,7 @@ func (r *Repository) CopilotUsage(ctx context.Context, f contracts.Filter) (cont
 	if err != nil {
 		return contracts.CopilotReport{}, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	rep := contracts.CopilotReport{ByAction: byAction}
 	if cur.Next(ctx) {
 		var row struct {
@@ -353,7 +353,7 @@ func (r *Repository) SLACounts(ctx context.Context, f contracts.Filter) (contrac
 	if err != nil {
 		return contracts.SLAReport{}, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var rep contracts.SLAReport
 	if cur.Next(ctx) {
 		var row struct {
@@ -391,7 +391,7 @@ func (r *Repository) CSAT(ctx context.Context, f contracts.Filter) (repository.C
 	if err != nil {
 		return repository.CSATRaw{}, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var raw repository.CSATRaw
 	if cur.Next(ctx) {
 		var row struct {
@@ -439,7 +439,7 @@ func (r *Repository) runGroup(ctx context.Context, coll *mongo.Collection, pipe 
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var out []contracts.Bucket
 	for cur.Next(ctx) {
 		var row struct {
@@ -468,7 +468,7 @@ func (r *Repository) avgSecondsBetween(ctx context.Context, coll *mongo.Collecti
 	if err != nil {
 		return 0, mongodb.MapError(err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	if cur.Next(ctx) {
 		var row struct {
 			Avg float64 `bson:"avg"`

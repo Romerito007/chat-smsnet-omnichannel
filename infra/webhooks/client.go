@@ -56,7 +56,7 @@ func (s *Sender) Send(ctx context.Context, sub *entity.WebhookSubscription, deli
 	if err != nil {
 		return contracts.SendResult{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return contracts.SendResult{StatusCode: resp.StatusCode}, nil
 }
 

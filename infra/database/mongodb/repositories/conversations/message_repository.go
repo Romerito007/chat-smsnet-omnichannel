@@ -91,7 +91,7 @@ func (r *MessageRepository) ListByConversation(ctx context.Context, conversation
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Message
 	for c.Next(ctx) {
 		var m models.Message

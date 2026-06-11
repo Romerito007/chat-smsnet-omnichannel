@@ -254,7 +254,7 @@ func eachTenant(ctx context.Context, c *container.Container, tenants tenantRepo,
 		total += n
 	}
 	c.Logger.Info("periodic job finished", "job", job,
-		"tenants", len(list), "count", total, "duration_ms", time.Now().Sub(start).Milliseconds())
+		"tenants", len(list), "count", total, "duration_ms", time.Since(start).Milliseconds())
 	return nil
 }
 

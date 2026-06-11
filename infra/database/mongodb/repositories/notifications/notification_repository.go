@@ -66,7 +66,7 @@ func (r *NotificationRepository) ListByUser(ctx context.Context, userID string, 
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Notification
 	for c.Next(ctx) {
 		var m models.Notification

@@ -87,7 +87,7 @@ func (g *Gateway) Ping(ctx context.Context, cfg *phentity.ProviderIntegrationCon
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("provider returned status %d", resp.StatusCode)
 	}
@@ -148,7 +148,7 @@ func (g *Gateway) do(req *http.Request, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("provider returned status %d", resp.StatusCode)
 	}

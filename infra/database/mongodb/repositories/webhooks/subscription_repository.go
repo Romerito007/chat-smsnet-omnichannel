@@ -110,7 +110,7 @@ func (r *SubscriptionRepository) List(ctx context.Context, page shared.PageReque
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	return r.decodeAll(ctx, c)
 }
 
@@ -119,7 +119,7 @@ func (r *SubscriptionRepository) ListEnabledByEvent(ctx context.Context, tenantI
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	return r.decodeAll(ctx, c)
 }
 

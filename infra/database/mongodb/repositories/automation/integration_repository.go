@@ -126,7 +126,7 @@ func (r *IntegrationRepository) List(ctx context.Context, page shared.PageReques
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.AutomationIntegration
 	for c.Next(ctx) {
 		var m models.AutomationIntegration

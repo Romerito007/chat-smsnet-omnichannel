@@ -121,7 +121,7 @@ func (r *UserRepository) List(ctx context.Context, page shared.PageRequest) ([]*
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.User
 	for c.Next(ctx) {
 		var m models.User
@@ -148,7 +148,7 @@ func (r *UserRepository) ListBySector(ctx context.Context, sectorID string) ([]*
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.User
 	for c.Next(ctx) {
 		var m models.User

@@ -109,7 +109,7 @@ func (r *TrackingRepository) query(ctx context.Context, filter bson.M, opts *opt
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.SLATracking
 	for c.Next(ctx) {
 		var m models.SLATracking

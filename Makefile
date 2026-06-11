@@ -22,6 +22,10 @@ test:
 vet:
 	go vet ./...
 
+# Static analysis via golangci-lint (config in .golangci.yml).
+lint:
+	golangci-lint run ./...
+
 fmt:
 	gofmt -s -w .
 

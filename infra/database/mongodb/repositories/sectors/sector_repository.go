@@ -100,7 +100,7 @@ func (r *Repository) List(ctx context.Context, page shared.PageRequest) ([]*enti
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.Sector
 	for c.Next(ctx) {
 		var m models.Sector

@@ -5,7 +5,6 @@ package audit
 
 import (
 	"context"
-	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -15,6 +14,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/audit/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/models"
 )
 
 // Repository implements repository.Repository over MongoDB.
@@ -27,26 +27,12 @@ func New(db *mongo.Database) *Repository {
 	return &Repository{coll: db.Collection("audit_logs")}
 }
 
-type auditDoc struct {
-	ID           string         `bson:"_id"`
-	TenantID     string         `bson:"tenant_id"`
-	ActorID      string         `bson:"actor_id,omitempty"`
-	ActorType    string         `bson:"actor_type,omitempty"`
-	Action       string         `bson:"action"`
-	ResourceType string         `bson:"resource_type,omitempty"`
-	ResourceID   string         `bson:"resource_id,omitempty"`
-	IP           string         `bson:"ip,omitempty"`
-	UserAgent    string         `bson:"user_agent,omitempty"`
-	Data         map[string]any `bson:"data,omitempty"`
-	CreatedAt    time.Time      `bson:"created_at"`
-}
-
 func (r *Repository) Create(ctx context.Context, l *entity.AuditLog) error {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return err
 	}
-	doc := auditDoc{
+	doc := models.AuditLog{
 		ID:           l.ID,
 		TenantID:     tenantID,
 		ActorID:      l.ActorID,
@@ -85,10 +71,10 @@ func (r *Repository) List(ctx context.Context, f repository.Filter, page shared.
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.AuditLog
 	for c.Next(ctx) {
-		var d auditDoc
+		var d models.AuditLog
 		if err := c.Decode(&d); err != nil {
 			return nil, mongodb.MapError(err)
 		}

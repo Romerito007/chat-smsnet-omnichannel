@@ -132,7 +132,7 @@ func (r *RoleRepository) List(ctx context.Context, page shared.PageRequest) ([]*
 }
 
 func decodeRoles(ctx context.Context, cur *mongo.Cursor) ([]*entity.Role, error) {
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var out []*entity.Role
 	for cur.Next(ctx) {
 		var m models.Role

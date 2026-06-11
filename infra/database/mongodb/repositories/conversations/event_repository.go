@@ -48,7 +48,7 @@ func (r *EventRepository) ListByConversation(ctx context.Context, conversationID
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
-	defer c.Close(ctx)
+	defer func() { _ = c.Close(ctx) }()
 	var out []*entity.ConversationEvent
 	for c.Next(ctx) {
 		var m models.ConversationEvent
