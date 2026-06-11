@@ -10,12 +10,14 @@ import (
 
 // WebhookSubscriptionService builds the subscription CRUD + test service.
 func WebhookSubscriptionService(c *container.Container) *wservice.SubscriptionService {
-	return wservice.NewSubscriptionService(
+	svc := wservice.NewSubscriptionService(
 		webhookrepo.NewSubscriptionRepository(c.Mongo.DB, c.Cipher),
 		webhookrepo.NewDeliveryRepository(c.Mongo.DB),
 		infrawebhooks.NewSender(),
 		clock,
 	)
+	svc.SetAuditor(AuditService(c))
+	return svc
 }
 
 // WebhookDispatcher builds the internal-event dispatcher (a shared.WebhookEmitter).

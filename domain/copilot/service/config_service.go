@@ -25,8 +25,9 @@ const (
 
 // ConfigService manages the per-tenant copilot configuration.
 type ConfigService struct {
-	repo  repository.ConfigRepository
-	clock shared.Clock
+	repo    repository.ConfigRepository
+	clock   shared.Clock
+	auditor shared.Auditor
 }
 
 // NewConfigService builds the service.
@@ -34,7 +35,27 @@ func NewConfigService(repo repository.ConfigRepository, clock shared.Clock) *Con
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &ConfigService{repo: repo, clock: clock}
+	return &ConfigService{repo: repo, clock: clock, auditor: shared.NoopAuditor{}}
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, AI config changes are
+// not audited.
+func (s *ConfigService) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
+}
+
+// auditSaved records an AI configuration change.
+func (s *ConfigService) auditSaved(ctx context.Context, cfg *entity.AIConfig) {
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "ai.config.updated", ResourceType: "ai_config", ResourceID: cfg.TenantID,
+		Data: map[string]any{
+			"provider":            string(cfg.Provider),
+			"model":               cfg.Model,
+			"allow_customer_data": cfg.AllowCustomerData,
+		},
+	})
 }
 
 // Current returns the tenant's config, creating a default one on first access so
@@ -76,6 +97,7 @@ func (s *ConfigService) Save(ctx context.Context, cmd contracts.SaveConfig) (*en
 		if err := s.repo.Create(ctx, cfg); err != nil {
 			return nil, err
 		}
+		s.auditSaved(ctx, cfg)
 		return cfg, nil
 	}
 
@@ -86,6 +108,7 @@ func (s *ConfigService) Save(ctx context.Context, cmd contracts.SaveConfig) (*en
 	if err := s.repo.Update(ctx, cfg); err != nil {
 		return nil, err
 	}
+	s.auditSaved(ctx, cfg)
 	return cfg, nil
 }
 

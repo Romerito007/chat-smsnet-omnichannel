@@ -124,4 +124,6 @@ type ReportService interface {
 	Copilot(ctx context.Context, f Filter) (CopilotReport, error)
 	SLA(ctx context.Context, f Filter) (SLAReport, error)
 	CSAT(ctx context.Context, f Filter) (CSATReport, error)
+	// RequestExport audits + enqueues a report export (report.export permission).
+	RequestExport(ctx context.Context, report, format string, f Filter) error
 }

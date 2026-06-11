@@ -19,9 +19,10 @@ const minPasswordLen = 8
 
 // UserService manages tenant users.
 type UserService struct {
-	users  repository.UserRepository
-	hasher iam.PasswordHasher
-	clock  shared.Clock
+	users   repository.UserRepository
+	hasher  iam.PasswordHasher
+	clock   shared.Clock
+	auditor shared.Auditor
 }
 
 // NewUserService builds the service.
@@ -29,7 +30,15 @@ func NewUserService(users repository.UserRepository, hasher iam.PasswordHasher, 
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &UserService{users: users, hasher: hasher, clock: clock}
+	return &UserService{users: users, hasher: hasher, clock: clock, auditor: shared.NoopAuditor{}}
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, user changes are not
+// audited.
+func (s *UserService) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // Create validates and persists a new user within the current tenant, hashing
@@ -83,6 +92,10 @@ func (s *UserService) Create(ctx context.Context, cmd contracts.CreateUser) (*en
 	if err := s.users.Create(ctx, user); err != nil {
 		return nil, err
 	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "user.created", ResourceType: "user", ResourceID: user.ID,
+		Data: map[string]any{"email": user.Email, "role_ids": user.RoleIDs},
+	})
 	return user, nil
 }
 
@@ -136,6 +149,15 @@ func (s *UserService) Update(ctx context.Context, id string, cmd contracts.Updat
 	if err := s.users.Update(ctx, user); err != nil {
 		return nil, err
 	}
+	data := map[string]any{}
+	if cmd.RoleIDs != nil {
+		// A role re-assignment is a permission change ("alteração de permissões").
+		data["permissions_changed"] = true
+		data["role_ids"] = user.RoleIDs
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "user.updated", ResourceType: "user", ResourceID: user.ID, Data: data,
+	})
 	return user, nil
 }
 
@@ -144,7 +166,13 @@ func (s *UserService) Delete(ctx context.Context, id string) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
 	}
-	return s.users.Delete(ctx, id)
+	if err := s.users.Delete(ctx, id); err != nil {
+		return err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "user.deleted", ResourceType: "user", ResourceID: id,
+	})
+	return nil
 }
 
 // Get returns a user by id.

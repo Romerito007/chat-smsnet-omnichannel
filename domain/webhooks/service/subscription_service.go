@@ -30,6 +30,7 @@ type SubscriptionService struct {
 	deliveries repository.DeliveryRepository
 	sender     contracts.Sender
 	clock      shared.Clock
+	auditor    shared.Auditor
 }
 
 // NewSubscriptionService builds the service.
@@ -42,7 +43,15 @@ func NewSubscriptionService(
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &SubscriptionService{subs: subs, deliveries: deliveries, sender: sender, clock: clock}
+	return &SubscriptionService{subs: subs, deliveries: deliveries, sender: sender, clock: clock, auditor: shared.NoopAuditor{}}
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, webhook changes are not
+// audited.
+func (s *SubscriptionService) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // Create registers a webhook. The returned entity carries the plaintext secret
@@ -91,6 +100,10 @@ func (s *SubscriptionService) Create(ctx context.Context, cmd contracts.CreateSu
 	if err := s.subs.Create(ctx, sub); err != nil {
 		return nil, err
 	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "webhook.created", ResourceType: "webhook", ResourceID: sub.ID,
+		Data: map[string]any{"url": sub.URL, "events": sub.Events},
+	})
 	return sub, nil
 }
 
@@ -148,6 +161,10 @@ func (s *SubscriptionService) Update(ctx context.Context, id string, cmd contrac
 	if err := s.subs.Update(ctx, sub); err != nil {
 		return nil, err
 	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "webhook.updated", ResourceType: "webhook", ResourceID: sub.ID,
+		Data: map[string]any{"url": sub.URL, "enabled": sub.Enabled},
+	})
 	return sub, nil
 }
 
@@ -160,7 +177,13 @@ func (s *SubscriptionService) Delete(ctx context.Context, id string) error {
 	if _, err := s.subs.FindByID(ctx, id); err != nil {
 		return err
 	}
-	return s.subs.Delete(ctx, id)
+	if err := s.subs.Delete(ctx, id); err != nil {
+		return err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "webhook.deleted", ResourceType: "webhook", ResourceID: id,
+	})
+	return nil
 }
 
 // Test sends a signed test event to the webhook synchronously and records the

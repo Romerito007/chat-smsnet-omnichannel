@@ -30,6 +30,15 @@ type QueryService struct {
 	gateway       phcontracts.Gateway
 	limiter       phcontracts.RateLimiter
 	clock         shared.Clock
+	auditor       shared.Auditor
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, sensitive provider
+// actions are not audited.
+func (s *QueryService) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // NewQueryService builds the service.
@@ -45,7 +54,7 @@ func NewQueryService(
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &QueryService{config: config, logs: logs, conversations: conversations, contacts: contacts, gateway: gateway, limiter: limiter, clock: clock}
+	return &QueryService{config: config, logs: logs, conversations: conversations, contacts: contacts, gateway: gateway, limiter: limiter, clock: clock, auditor: shared.NoopAuditor{}}
 }
 
 // CustomerProfile fetches the customer profile for a conversation's contact.
@@ -79,10 +88,18 @@ func (s *QueryService) FinancialStatus(ctx context.Context, conversationID strin
 	if err != nil {
 		return phcontracts.FinancialStatus{}, err
 	}
-	return runQuery(s, ctx, conv, phentity.QueryFinancialStatus,
+	res, err := runQuery(s, ctx, conv, phentity.QueryFinancialStatus,
 		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) (phcontracts.FinancialStatus, error) {
 			return s.gateway.GetFinancialStatus(ctx, cfg, lk)
 		})
+	if err == nil {
+		// Sensitive provider action: viewing a customer's financial data.
+		_ = s.auditor.Record(ctx, shared.AuditEntry{
+			Action: "providerhub.financial_status.viewed", ResourceType: "conversation", ResourceID: conv.ID,
+			Data: map[string]any{"contact_id": conv.ContactID},
+		})
+	}
+	return res, err
 }
 
 // ConnectionStatus fetches the connection status (gated by
@@ -116,10 +133,18 @@ func (s *QueryService) OpenTicket(ctx context.Context, conversationID string, in
 	if err != nil {
 		return phcontracts.Ticket{}, err
 	}
-	return runQuery(s, ctx, conv, phentity.QueryOpenTicket,
+	res, err := runQuery(s, ctx, conv, phentity.QueryOpenTicket,
 		func(cfg *phentity.ProviderIntegrationConfig, lk phcontracts.Lookup) (phcontracts.Ticket, error) {
 			return s.gateway.OpenTicket(ctx, cfg, lk, input)
 		})
+	if err == nil {
+		// Sensitive provider action: executing a write (open a ticket).
+		_ = s.auditor.Record(ctx, shared.AuditEntry{
+			Action: "providerhub.ticket.opened", ResourceType: "conversation", ResourceID: conv.ID,
+			Data: map[string]any{"contact_id": conv.ContactID},
+		})
+	}
+	return res, err
 }
 
 // runQuery wraps a gateway call with rate limiting, config resolution, latency

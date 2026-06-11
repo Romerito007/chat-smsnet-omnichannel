@@ -28,6 +28,7 @@ func RoutingService(c *container.Container) *routingservice.Service {
 	)
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
 	svc.SetNotifier(NotificationEnqueuer(c))
+	svc.SetAuditor(AuditService(c))
 	return svc
 }
 

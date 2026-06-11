@@ -3,10 +3,42 @@
 Backend do chat omnichannel. Monólito modular em **binário único**, com papéis
 selecionados em runtime via `RUN_ROLE` (`all | api | ws | worker | scheduler`).
 
-> **Status:** fundação (scaffold). A arquitetura em camadas, os padrões
-> transversais e o bootstrap por papel estão implementados e compilando. Os
-> domínios de negócio ainda não foram adicionados — há um único ponto de
-> extensão em cada camada para incluí-los.
+> **Status:** MVP completo. A arquitetura em camadas, os padrões transversais e
+> todos os domínios de negócio estão implementados, com testes (unitários +
+> integração com Mongo/Redis sob a tag de build `e2e`).
+
+## Domínios implementados
+
+`auth` · `iam` (users/roles/permissões) · `tenant` · `sectors` · `queues` ·
+`presence` · `conversations` (mensagens/notas/timeline) · `routing`
+(atribuição/transferência) · `channels` (inbound/outbound) · `contacts` ·
+`automation` · `providerhub` (consultas a provedor sob demanda) · `monitoring` ·
+`webhooks` · `copilot` (IA) · `conversationtools` (tags/respostas/motivos) ·
+`businesshours` · `sla` · `notifications` · `csat` · `search` · `reports` ·
+`privacy` (LGPD) · `audit` · `attachments`.
+
+### Audit (trilha de auditoria)
+
+`AuditLog` (`tenant_id, actor_id, actor_type, action, resource_type,
+resource_id, ip, user_agent, data, created_at`) — `domain/audit`. O `ip` e o
+`user_agent` são capturados na borda HTTP (`request_id` middleware) e o ator é
+resolvido do token; serviços auditam via a porta `shared.Auditor`. Ações
+auditadas: `auth.login`/`auth.logout`, `user.*`, `role.*` (alteração de
+permissões), `webhook.*`, `conversation.closed`/`conversation.transferred`,
+`providerhub.financial_status.viewed`/`providerhub.ticket.opened`,
+`ai.config.updated`, `privacy.*` (anonimização/exportação) e `report.export`.
+Consulta: `GET /v1/audit` (permissão `audit.view`).
+
+### Attachments (anexos por URL assinada)
+
+Fluxo: `POST /v1/attachments/upload-url` (valida `content_type` + `size`, gera
+`storage_key` + URL assinada) → upload direto no storage → `POST
+/v1/attachments/confirm` (cria/atualiza o registro e vincula à mensagem) →
+`GET /v1/attachments/{id}/download` (valida acesso à conversa e serve/redireciona
+por URL assinada curta). Adapter de storage em `infra/storage` com backends
+**local** (sink `PUT /v1/attachments/blobs/{token}` com token HMAC) e
+**S3-compatível** (URLs pré-assinadas AWS SigV4, sem SDK). Selecionável por
+`ATTACHMENTS_PROVIDER=local|s3`.
 
 ## Arquitetura em camadas
 
@@ -36,6 +68,11 @@ os routines do papel.
 - **OpenTelemetry** (traces + métricas) — `app/providers/observability.go` +
   middleware `presenter/middleware/telemetry.go` (gated por `OTEL_ENABLED`).
 - **Rate limit** por tenant/IP — `presenter/middleware/ratelimit.go` (Redis).
+- **Recovery** (panic → 500 padronizado) — `presenter/middleware/recover.go`.
+- **CORS configurável** (`HTTP_ALLOWED_ORIGINS`) — `presenter/middleware/cors.go`.
+- **Timeouts HTTP** (read/read-header/write/idle/shutdown) — `app/server/server.go`.
+- **Validação de payload** (JSON estrito, sem campos desconhecidos) —
+  `presenter/middleware/request.go`.
 - **Seed inicial idempotente** (tenant + owner + papéis + permissões) —
   `app/start_routines/bootstrap_seeds.go`.
 - **Índices centralizados e numerados** — `infra/database/mongodb/migrations`.
@@ -105,7 +142,12 @@ Veja `docs/architecture.md` (e os demais documentos em `docs/`) para detalhes.
 
 ```bash
 make build    # compila o binário em bin/
-make test     # testes
+make test     # testes unitários
 make vet      # go vet
 make fmt      # gofmt -s -w .
+
+# testes de integração (precisam de Mongo em :27017 e Redis em :6379):
+go test -tags e2e ./...
 ```
+
+Exemplos de uso da API (curl) em [`docs/api-examples.md`](docs/api-examples.md).

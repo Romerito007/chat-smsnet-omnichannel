@@ -304,7 +304,7 @@ func (s *Service) audit(ctx context.Context, action, resourceType, resourceID st
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
-		Metadata:     meta,
+		Data:         meta,
 		At:           s.clock.Now(),
 	})
 }

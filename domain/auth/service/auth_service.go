@@ -25,12 +25,13 @@ var errInvalidCredentials = apperror.Unauthorized("invalid credentials")
 
 // Service implements login / refresh / logout.
 type Service struct {
-	users  iamrepo.UserRepository
-	roles  iamrepo.RoleRepository
-	tokens authrepo.RefreshTokenRepository
-	hasher iam.PasswordHasher
-	tm     auth.TokenManager
-	clock  shared.Clock
+	users   iamrepo.UserRepository
+	roles   iamrepo.RoleRepository
+	tokens  authrepo.RefreshTokenRepository
+	hasher  iam.PasswordHasher
+	tm      auth.TokenManager
+	clock   shared.Clock
+	auditor shared.Auditor
 }
 
 // New builds the auth service.
@@ -45,7 +46,15 @@ func New(
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{users: users, roles: roles, tokens: tokens, hasher: hasher, tm: tm, clock: clock}
+	return &Service{users: users, roles: roles, tokens: tokens, hasher: hasher, tm: tm, clock: clock, auditor: shared.NoopAuditor{}}
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, auth events are not
+// audited.
+func (s *Service) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // Login authenticates a user and issues an access + refresh token pair.
@@ -76,7 +85,16 @@ func (s *Service) Login(ctx context.Context, cmd contracts.LoginCommand) (*contr
 	}
 
 	ctx = shared.WithTenant(ctx, user.TenantID)
-	return s.issue(ctx, user, cmd.UserAgent, cmd.IP)
+	pair, err := s.issue(ctx, user, cmd.UserAgent, cmd.IP)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		TenantID: user.TenantID, ActorID: user.ID, ActorType: shared.ActorTypeUser,
+		Action: "auth.login", ResourceType: "user", ResourceID: user.ID,
+		IP: cmd.IP, UserAgent: cmd.UserAgent,
+	})
+	return pair, nil
 }
 
 // Refresh validates and rotates a refresh token, issuing a new pair.
@@ -129,7 +147,14 @@ func (s *Service) Logout(ctx context.Context, cmd contracts.LogoutCommand) error
 		}
 		return err
 	}
-	return s.tokens.Revoke(ctx, rt.ID)
+	if err := s.tokens.Revoke(ctx, rt.ID); err != nil {
+		return err
+	}
+	_ = s.auditor.Record(shared.WithTenant(ctx, rt.TenantID), shared.AuditEntry{
+		TenantID: rt.TenantID, ActorID: rt.UserID, ActorType: shared.ActorTypeUser,
+		Action: "auth.logout", ResourceType: "user", ResourceID: rt.UserID,
+	})
+	return nil
 }
 
 // issue resolves the user's effective permissions and mints the token pair,

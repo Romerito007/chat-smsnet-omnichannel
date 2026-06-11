@@ -32,6 +32,15 @@ type Service struct {
 	sla           contracts.SLAHook
 	notifier      shared.Notifier
 	csat          contracts.CSATTrigger
+	auditor       shared.Auditor
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, conversation closes are
+// not audited.
+func (s *Service) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // SetNotifier wires the user notifier. Optional: when unset, mentions do not
@@ -110,6 +119,7 @@ func New(
 		sla:           contracts.NoopSLAHook{},
 		notifier:      shared.NoopNotifier{},
 		csat:          contracts.NoopCSATTrigger{},
+		auditor:       shared.NoopAuditor{},
 	}
 }
 
@@ -383,6 +393,10 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
 	s.sla.OnResolved(ctx, conv, now)
 	s.csat.OnConversationClosed(ctx, conv)
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "conversation.closed", ResourceType: "conversation", ResourceID: conv.ID,
+		Data: map[string]any{"close_reason_id": cmd.CloseReasonID},
+	})
 	return conv, nil
 }
 

@@ -26,6 +26,7 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 	svc.SetCloseReasonPolicy(ConversationToolsCloseReasonService(c))
 	svc.SetSLAHook(SLAService(c))
 	svc.SetNotifier(NotificationEnqueuer(c))
+	svc.SetAuditor(AuditService(c))
 	return svc
 }
 

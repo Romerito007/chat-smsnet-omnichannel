@@ -158,6 +158,14 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		return privacy.RunExport(ctx, p.RequestID)
 	})
 
+	// reports.export: prepared async report export. The MVP acknowledges and logs
+	// the request (already audited at request time); CSV/XLSX rendering to object
+	// storage is future work.
+	mux.HandleFunc(infraasynq.TaskReportsExport, func(_ context.Context, t *asynq.Task) error {
+		c.Logger.Info("reports.export requested", "payload", string(t.Payload()))
+		return nil
+	})
+
 	registerPeriodicHandlers(mux, c)
 }
 

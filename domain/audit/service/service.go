@@ -8,6 +8,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/audit/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/audit/repository"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
@@ -25,16 +26,25 @@ func NewService(repo repository.Repository, clock shared.Clock) *Service {
 	return &Service{repo: repo, clock: clock}
 }
 
-// Record implements shared.Auditor. The tenant is taken from the entry (the
-// producer reads it from context); the repository scopes the write by it.
+// Record implements shared.Auditor. Tenant, actor (id + type), client ip and
+// user-agent are filled from the request context when the producer leaves them
+// empty, so callers deep in the service layer can audit with a one-liner.
 func (s *Service) Record(ctx context.Context, e shared.AuditEntry) error {
 	if e.TenantID == "" {
-		// Fall back to the request tenant so callers can omit it.
 		tenantID, err := shared.RequireTenant(ctx)
 		if err != nil {
 			return err
 		}
 		e.TenantID = tenantID
+	}
+	s.fillActor(ctx, &e)
+	if ip, ua := shared.AuditMetaFrom(ctx); true {
+		if e.IP == "" {
+			e.IP = ip
+		}
+		if e.UserAgent == "" {
+			e.UserAgent = ua
+		}
 	}
 	at := e.At
 	if at.IsZero() {
@@ -44,13 +54,35 @@ func (s *Service) Record(ctx context.Context, e shared.AuditEntry) error {
 		ID:           shared.NewID(),
 		TenantID:     e.TenantID,
 		ActorID:      e.ActorID,
+		ActorType:    e.ActorType,
 		Action:       e.Action,
 		ResourceType: e.ResourceType,
 		ResourceID:   e.ResourceID,
-		Metadata:     e.Metadata,
+		IP:           e.IP,
+		UserAgent:    e.UserAgent,
+		Data:         e.Data,
 		CreatedAt:    at,
 	}
 	return s.repo.Create(ctx, log)
+}
+
+// fillActor derives the actor id and type from the auth context when unset.
+func (s *Service) fillActor(ctx context.Context, e *shared.AuditEntry) {
+	if ac, ok := authz.FromContext(ctx); ok {
+		if e.ActorID == "" {
+			e.ActorID = ac.UserID
+		}
+		if e.ActorType == "" {
+			if ac.UserID == "system" {
+				e.ActorType = shared.ActorTypeSystem
+			} else {
+				e.ActorType = shared.ActorTypeUser
+			}
+		}
+	}
+	if e.ActorType == "" {
+		e.ActorType = shared.ActorTypePublic
+	}
 }
 
 // List returns the tenant's audit logs (newest first).

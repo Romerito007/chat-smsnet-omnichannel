@@ -39,6 +39,15 @@ type Service struct {
 	clock         shared.Clock
 	webhooks      shared.WebhookEmitter
 	notifier      shared.Notifier
+	auditor       shared.Auditor
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, transfers are not
+// audited.
+func (s *Service) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // SetWebhookEmitter wires the outbound webhook emitter. Optional: when unset,
@@ -92,6 +101,7 @@ func New(
 		clock:         clock,
 		webhooks:      shared.NoopWebhookEmitter{},
 		notifier:      shared.NoopNotifier{},
+		auditor:       shared.NoopAuditor{},
 	}
 }
 
@@ -190,6 +200,13 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 		})
 		s.publishTransferred(ctx, conv, fromSector)
 		s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationTransferred, convcontracts.NewConversationPayload(conv))
+		_ = s.auditor.Record(ctx, shared.AuditEntry{
+			Action: "conversation.transferred", ResourceType: "conversation", ResourceID: conv.ID,
+			Data: map[string]any{
+				"from_sector": fromSector, "to_sector": conv.SectorID,
+				"from_agent": fromAgent, "to_agent": conv.AssignedTo,
+			},
+		})
 		if conv.AssignedTo != "" {
 			s.notifier.Notify(ctx, shared.NotifyInput{
 				TenantID: conv.TenantID, UserID: conv.AssignedTo,

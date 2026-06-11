@@ -46,6 +46,7 @@ type Config struct {
 	CSAT          CSATConfig
 	Maintenance   MaintenanceConfig
 	Privacy       PrivacyConfig
+	Attachments   AttachmentsConfig
 
 	// Seed identifies the bootstrap tenant/owner created on first run.
 	Seed SeedConfig
@@ -63,6 +64,38 @@ type MaintenanceConfig struct {
 	// AuditRetention is how long audit logs are kept
 	// (tenant override: settings.audit_retention_days).
 	AuditRetention time.Duration
+}
+
+// AttachmentsConfig holds the attachments settings: storage backend selection
+// (local | s3), upload validation and signed-URL lifetimes.
+type AttachmentsConfig struct {
+	// Provider selects the storage backend: "local" or "s3".
+	Provider string
+	// MaxSizeBytes caps an uploaded attachment.
+	MaxSizeBytes int64
+	// AllowedContentTypes is the MIME allow-list (supports "image/*"); empty
+	// allows any.
+	AllowedContentTypes []string
+	// UploadTTL / DownloadTTL bound the signed upload and download URLs.
+	UploadTTL   time.Duration
+	DownloadTTL time.Duration
+	// SigningSecret signs local upload tokens.
+	SigningSecret string
+	// LocalDir is the base directory for the local backend.
+	LocalDir string
+	// BaseURL is the public API origin used to build upload/download URLs.
+	BaseURL string
+	// S3 holds the S3-compatible backend settings (used when Provider == "s3").
+	S3 AttachmentsS3Config
+}
+
+// AttachmentsS3Config holds S3-compatible backend settings.
+type AttachmentsS3Config struct {
+	Endpoint  string
+	Region    string
+	Bucket    string
+	AccessKey string
+	SecretKey string
 }
 
 // PrivacyConfig holds the privacy (LGPD) settings: where export files are stored
@@ -271,6 +304,23 @@ func Load() (Config, error) {
 			SigningSecret:   getString("PRIVACY_SIGNING_SECRET", getString("AUTH_JWT_SECRET", "dev-secret-change-me")),
 			DownloadBaseURL: getString("PRIVACY_DOWNLOAD_BASE_URL", "http://localhost:8080"),
 			DownloadTTL:     getDuration("PRIVACY_DOWNLOAD_TTL", 24*time.Hour),
+		},
+		Attachments: AttachmentsConfig{
+			Provider:            getString("ATTACHMENTS_PROVIDER", "local"),
+			MaxSizeBytes:        int64(getInt("ATTACHMENTS_MAX_SIZE_BYTES", 25<<20)),
+			AllowedContentTypes: getList("ATTACHMENTS_ALLOWED_CONTENT_TYPES", nil),
+			UploadTTL:           getDuration("ATTACHMENTS_UPLOAD_TTL", 15*time.Minute),
+			DownloadTTL:         getDuration("ATTACHMENTS_DOWNLOAD_TTL", 5*time.Minute),
+			SigningSecret:       getString("ATTACHMENTS_SIGNING_SECRET", getString("AUTH_JWT_SECRET", "dev-secret-change-me")),
+			LocalDir:            getString("ATTACHMENTS_LOCAL_DIR", "/tmp/chat-attachments"),
+			BaseURL:             getString("ATTACHMENTS_BASE_URL", "http://localhost:8080"),
+			S3: AttachmentsS3Config{
+				Endpoint:  getString("ATTACHMENTS_S3_ENDPOINT", ""),
+				Region:    getString("ATTACHMENTS_S3_REGION", "us-east-1"),
+				Bucket:    getString("ATTACHMENTS_S3_BUCKET", ""),
+				AccessKey: getString("ATTACHMENTS_S3_ACCESS_KEY", ""),
+				SecretKey: getString("ATTACHMENTS_S3_SECRET_KEY", ""),
+			},
 		},
 		Seed: SeedConfig{
 			TenantName:    getString("SEED_TENANT_NAME", "Default Tenant"),

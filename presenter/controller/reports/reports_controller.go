@@ -92,6 +92,27 @@ func (c *Controller) CSAT(w http.ResponseWriter, r *http.Request) {
 	write(w, r, res, err)
 }
 
+// Export handles POST /v1/reports/export?report=overview&format=csv (report.export).
+// It audits and enqueues the export job; file generation is asynchronous.
+func (c *Controller) Export(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	report := q.Get("report")
+	if report == "" {
+		report = "overview"
+	}
+	format := q.Get("format")
+	if format == "" {
+		format = "csv"
+	}
+	if err := c.svc.RequestExport(r.Context(), report, format, filter(r)); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusAccepted, map[string]any{
+		"status": "queued", "report": report, "format": format,
+	})
+}
+
 func write(w http.ResponseWriter, r *http.Request, res any, err error) {
 	if err != nil {
 		middleware.WriteError(w, r, err)

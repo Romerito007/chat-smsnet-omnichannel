@@ -27,6 +27,9 @@ func RequestID(logger shared.Logger) func(http.Handler) http.Handler {
 				rid = uuid.NewString()
 			}
 			ctx := shared.WithRequestID(r.Context(), rid)
+			// Capture client ip + user-agent so the audit recorder can attach them
+			// to entries produced deep in the service layer.
+			ctx = shared.WithAuditMeta(ctx, ClientIP(r), r.UserAgent())
 			w.Header().Set(HeaderRequestID, rid)
 
 			sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}

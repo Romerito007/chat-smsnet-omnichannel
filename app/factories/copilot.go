@@ -13,7 +13,9 @@ import (
 
 // CopilotConfigService builds the per-tenant config service.
 func CopilotConfigService(c *container.Container) *cservice.ConfigService {
-	return cservice.NewConfigService(copilotrepo.NewConfigRepository(c.Mongo.DB), clock)
+	svc := cservice.NewConfigService(copilotrepo.NewConfigRepository(c.Mongo.DB), clock)
+	svc.SetAuditor(AuditService(c))
+	return svc
 }
 
 // copilotRegistry builds the provider registry from the configured API keys.

@@ -19,17 +19,21 @@ var clock = shared.SystemClock{}
 
 // UserService builds the IAM user service.
 func UserService(c *container.Container) *iamservice.UserService {
-	return iamservice.NewUserService(iamrepo.NewUserRepository(c.Mongo.DB), c.Hasher, clock)
+	svc := iamservice.NewUserService(iamrepo.NewUserRepository(c.Mongo.DB), c.Hasher, clock)
+	svc.SetAuditor(AuditService(c))
+	return svc
 }
 
 // RoleService builds the IAM role service.
 func RoleService(c *container.Container) *iamservice.RoleService {
-	return iamservice.NewRoleService(iamrepo.NewRoleRepository(c.Mongo.DB), clock)
+	svc := iamservice.NewRoleService(iamrepo.NewRoleRepository(c.Mongo.DB), clock)
+	svc.SetAuditor(AuditService(c))
+	return svc
 }
 
 // AuthService builds the auth service.
 func AuthService(c *container.Container) *authservice.Service {
-	return authservice.New(
+	svc := authservice.New(
 		iamrepo.NewUserRepository(c.Mongo.DB),
 		iamrepo.NewRoleRepository(c.Mongo.DB),
 		authrepo.NewRefreshTokenRepository(c.Mongo.DB),
@@ -37,6 +41,8 @@ func AuthService(c *container.Container) *authservice.Service {
 		c.Tokens,
 		clock,
 	)
+	svc.SetAuditor(AuditService(c))
+	return svc
 }
 
 // TenantService builds the tenant service.

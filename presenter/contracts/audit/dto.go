@@ -11,10 +11,13 @@ import (
 type AuditLogResponse struct {
 	ID           string         `json:"id"`
 	ActorID      string         `json:"actor_id,omitempty"`
+	ActorType    string         `json:"actor_type,omitempty"`
 	Action       string         `json:"action"`
 	ResourceType string         `json:"resource_type,omitempty"`
 	ResourceID   string         `json:"resource_id,omitempty"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
+	IP           string         `json:"ip,omitempty"`
+	UserAgent    string         `json:"user_agent,omitempty"`
+	Data         map[string]any `json:"data,omitempty"`
 	CreatedAt    time.Time      `json:"created_at"`
 }
 
@@ -23,10 +26,13 @@ func NewAuditLogResponse(l *aentity.AuditLog) AuditLogResponse {
 	return AuditLogResponse{
 		ID:           l.ID,
 		ActorID:      l.ActorID,
+		ActorType:    l.ActorType,
 		Action:       l.Action,
 		ResourceType: l.ResourceType,
 		ResourceID:   l.ResourceID,
-		Metadata:     l.Metadata,
+		IP:           l.IP,
+		UserAgent:    l.UserAgent,
+		Data:         l.Data,
 		CreatedAt:    l.CreatedAt,
 	}
 }

@@ -22,7 +22,7 @@ func ProviderHubConfigService(c *container.Container) *phservice.ConfigService {
 
 // ProviderHubQueryService builds the on-demand query service.
 func ProviderHubQueryService(c *container.Container) *phservice.QueryService {
-	return phservice.NewQueryService(
+	svc := phservice.NewQueryService(
 		providerhubrepo.NewConfigRepository(c.Mongo.DB, c.Cipher),
 		providerhubrepo.NewQueryLogRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),
@@ -31,6 +31,8 @@ func ProviderHubQueryService(c *container.Container) *phservice.QueryService {
 		infraproviderhub.NewRateLimiter(c.Redis, c.Config.ProviderHub.RatePerMinute),
 		clock,
 	)
+	svc.SetAuditor(AuditService(c))
+	return svc
 }
 
 // ProviderHubController builds the providerhub controller.

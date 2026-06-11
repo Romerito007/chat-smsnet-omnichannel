@@ -28,4 +28,11 @@ func registerReportRoutes(r chi.Router, c *container.Container) {
 		p.Get("/reports/sla", ctl.SLA)
 		p.Get("/reports/csat", ctl.CSAT)
 	})
+
+	// Report export is a stronger capability than viewing.
+	r.Group(func(p chi.Router) {
+		p.Use(middleware.AuthContext(c.Tokens))
+		p.Use(middleware.RequirePermission(authz.ReportExport))
+		p.Post("/reports/export", ctl.Export)
+	})
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/reports/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/reports/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
@@ -17,8 +18,10 @@ const defaultPeriod = 30 * 24 * time.Hour
 
 // Service is the Mongo-backed ReportService.
 type Service struct {
-	repo  repository.Repository
-	clock shared.Clock
+	repo    repository.Repository
+	clock   shared.Clock
+	auditor shared.Auditor
+	export  contracts.ExportEnqueuer
 }
 
 // NewService builds the service.
@@ -26,7 +29,50 @@ func NewService(repo repository.Repository, clock shared.Clock) *Service {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, clock: clock}
+	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}}
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, report exports are not
+// audited.
+func (s *Service) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
+}
+
+// SetExportEnqueuer wires the async report-export enqueuer. Optional: when unset,
+// RequestExport audits the request but does not enqueue a job.
+func (s *Service) SetExportEnqueuer(e contracts.ExportEnqueuer) {
+	if e != nil {
+		s.export = e
+	}
+}
+
+// RequestExport audits a report-export request ("exportação de relatório") and
+// enqueues the (prepared) reports.export job. The file generation is future work.
+func (s *Service) RequestExport(ctx context.Context, report, format string, f contracts.Filter) error {
+	if err := s.guard(ctx); err != nil {
+		return err
+	}
+	f = s.normalize(f)
+	actor := ""
+	if ac, ok := authz.FromContext(ctx); ok {
+		actor = ac.UserID
+	}
+	if err := s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "report.export", ResourceType: "report", ResourceID: report,
+		Data: map[string]any{"format": format, "sector_id": f.SectorID, "channel": f.Channel},
+	}); err != nil {
+		return err
+	}
+	if s.export != nil {
+		tenantID, _ := shared.TenantFrom(ctx)
+		return s.export.EnqueueExport(contracts.ExportTask{
+			TenantID: tenantID, ActorID: actor, Report: report, Format: format,
+			From: f.From.UnixMilli(), To: f.To.UnixMilli(), SectorID: f.SectorID, Channel: f.Channel,
+		})
+	}
+	return nil
 }
 
 // normalize fills a missing period with the last 30 days (To defaults to now).

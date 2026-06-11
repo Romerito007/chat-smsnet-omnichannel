@@ -31,10 +31,13 @@ type auditDoc struct {
 	ID           string         `bson:"_id"`
 	TenantID     string         `bson:"tenant_id"`
 	ActorID      string         `bson:"actor_id,omitempty"`
+	ActorType    string         `bson:"actor_type,omitempty"`
 	Action       string         `bson:"action"`
 	ResourceType string         `bson:"resource_type,omitempty"`
 	ResourceID   string         `bson:"resource_id,omitempty"`
-	Metadata     map[string]any `bson:"metadata,omitempty"`
+	IP           string         `bson:"ip,omitempty"`
+	UserAgent    string         `bson:"user_agent,omitempty"`
+	Data         map[string]any `bson:"data,omitempty"`
 	CreatedAt    time.Time      `bson:"created_at"`
 }
 
@@ -47,10 +50,13 @@ func (r *Repository) Create(ctx context.Context, l *entity.AuditLog) error {
 		ID:           l.ID,
 		TenantID:     tenantID,
 		ActorID:      l.ActorID,
+		ActorType:    l.ActorType,
 		Action:       l.Action,
 		ResourceType: l.ResourceType,
 		ResourceID:   l.ResourceID,
-		Metadata:     l.Metadata,
+		IP:           l.IP,
+		UserAgent:    l.UserAgent,
+		Data:         l.Data,
 		CreatedAt:    l.CreatedAt,
 	}
 	_, err = r.coll.InsertOne(ctx, doc)
@@ -90,10 +96,13 @@ func (r *Repository) List(ctx context.Context, f repository.Filter, page shared.
 			ID:           d.ID,
 			TenantID:     d.TenantID,
 			ActorID:      d.ActorID,
+			ActorType:    d.ActorType,
 			Action:       d.Action,
 			ResourceType: d.ResourceType,
 			ResourceID:   d.ResourceID,
-			Metadata:     d.Metadata,
+			IP:           d.IP,
+			UserAgent:    d.UserAgent,
+			Data:         d.Data,
 			CreatedAt:    d.CreatedAt,
 		})
 	}

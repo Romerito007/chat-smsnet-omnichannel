@@ -24,10 +24,14 @@ type Server struct {
 func New(cfg config.HTTPConfig, handler http.Handler, logger shared.Logger) *Server {
 	return &Server{
 		http: &http.Server{
-			Addr:         fmt.Sprintf(":%d", cfg.Port),
-			Handler:      handler,
-			ReadTimeout:  cfg.ReadTimeout,
-			WriteTimeout: cfg.WriteTimeout,
+			Addr:        fmt.Sprintf(":%d", cfg.Port),
+			Handler:     handler,
+			ReadTimeout: cfg.ReadTimeout,
+			// ReadHeaderTimeout bounds slow-header (Slowloris) attacks independently
+			// of the body read timeout.
+			ReadHeaderTimeout: cfg.ReadTimeout,
+			WriteTimeout:      cfg.WriteTimeout,
+			IdleTimeout:       2 * cfg.ReadTimeout,
 		},
 		shutdown: cfg.ShutdownTimeout,
 		logger:   logger,

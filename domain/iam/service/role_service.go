@@ -16,8 +16,9 @@ import (
 
 // RoleService manages tenant roles.
 type RoleService struct {
-	roles repository.RoleRepository
-	clock shared.Clock
+	roles   repository.RoleRepository
+	clock   shared.Clock
+	auditor shared.Auditor
 }
 
 // NewRoleService builds the service.
@@ -25,7 +26,15 @@ func NewRoleService(roles repository.RoleRepository, clock shared.Clock) *RoleSe
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &RoleService{roles: roles, clock: clock}
+	return &RoleService{roles: roles, clock: clock, auditor: shared.NoopAuditor{}}
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, role/permission changes
+// are not audited.
+func (s *RoleService) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // Create validates and persists a new role within the current tenant.
@@ -58,6 +67,10 @@ func (s *RoleService) Create(ctx context.Context, cmd contracts.CreateRole) (*en
 	if err := s.roles.Create(ctx, role); err != nil {
 		return nil, err
 	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "role.created", ResourceType: "role", ResourceID: role.ID,
+		Data: map[string]any{"name": role.Name, "permissions": role.Permissions},
+	})
 	return role, nil
 }
 
@@ -90,6 +103,15 @@ func (s *RoleService) Update(ctx context.Context, id string, cmd contracts.Updat
 	if err := s.roles.Update(ctx, role); err != nil {
 		return nil, err
 	}
+	data := map[string]any{"name": role.Name}
+	if cmd.Permissions != nil {
+		// Editing a role's permission set is a permission change.
+		data["permissions_changed"] = true
+		data["permissions"] = role.Permissions
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "role.updated", ResourceType: "role", ResourceID: role.ID, Data: data,
+	})
 	return role, nil
 }
 
@@ -98,7 +120,13 @@ func (s *RoleService) Delete(ctx context.Context, id string) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
 	}
-	return s.roles.Delete(ctx, id)
+	if err := s.roles.Delete(ctx, id); err != nil {
+		return err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "role.deleted", ResourceType: "role", ResourceID: id,
+	})
+	return nil
 }
 
 // Get returns a role by id.

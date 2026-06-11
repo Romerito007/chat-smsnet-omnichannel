@@ -10,9 +10,12 @@ type AuditLog struct {
 	ID           string
 	TenantID     string
 	ActorID      string
+	ActorType    string
 	Action       string
 	ResourceType string
 	ResourceID   string
-	Metadata     map[string]any
+	IP           string
+	UserAgent    string
+	Data         map[string]any
 	CreatedAt    time.Time
 }
