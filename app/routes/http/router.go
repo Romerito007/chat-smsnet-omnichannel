@@ -9,6 +9,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/policy"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
+	"github.com/romerito007/chat-smsnet-omnichannel/presenter/openapi"
 )
 
 // NewRouter assembles the full HTTP router with the global middleware chain and
@@ -26,6 +27,14 @@ func NewRouter(c *container.Container) *chi.Mux {
 	health := factories.HealthHandler(c)
 	r.Get("/healthz", health.Live)
 	r.Get("/readyz", health.Ready)
+
+	// Machine-readable API contract. Public in development; behind HTTP basic auth
+	// in production (the frontend generates a typed client from this).
+	r.Get("/openapi.json", openapi.Handler(openapi.Config{
+		Public:    c.Config.AppEnv != "production",
+		BasicUser: c.Config.HTTP.OpenAPIBasicUser,
+		BasicPass: c.Config.HTTP.OpenAPIBasicPass,
+	}))
 
 	// Versioned API surface. Rate limit + idempotency apply to everything; the
 	// tenant is derived per-request from the access token (never a header), so

@@ -173,6 +173,9 @@ type HTTPConfig struct {
 	WriteTimeout    time.Duration
 	ShutdownTimeout time.Duration
 	AllowedOrigins  []string
+	// OpenAPIBasicUser/Pass gate GET /openapi.json in production (public in dev).
+	OpenAPIBasicUser string
+	OpenAPIBasicPass string
 }
 
 // MongoConfig holds MongoDB connection settings.
@@ -254,11 +257,13 @@ func Load() (Config, error) {
 		LogLevel: getString("LOG_LEVEL", "info"),
 		RunRole:  Role(getString("RUN_ROLE", string(RoleAll))),
 		HTTP: HTTPConfig{
-			Port:            getInt("HTTP_PORT", 8080),
-			ReadTimeout:     getDuration("HTTP_READ_TIMEOUT", 15*time.Second),
-			WriteTimeout:    getDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
-			ShutdownTimeout: getDuration("HTTP_SHUTDOWN_TIMEOUT", 20*time.Second),
-			AllowedOrigins:  getList("HTTP_ALLOWED_ORIGINS", []string{"*"}),
+			Port:             getInt("HTTP_PORT", 8080),
+			ReadTimeout:      getDuration("HTTP_READ_TIMEOUT", 15*time.Second),
+			WriteTimeout:     getDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
+			ShutdownTimeout:  getDuration("HTTP_SHUTDOWN_TIMEOUT", 20*time.Second),
+			AllowedOrigins:   getList("HTTP_ALLOWED_ORIGINS", []string{"*"}),
+			OpenAPIBasicUser: getString("OPENAPI_BASIC_USER", ""),
+			OpenAPIBasicPass: getString("OPENAPI_BASIC_PASS", ""),
 		},
 		Mongo: MongoConfig{
 			URI:      getString("MONGO_URI", "mongodb://localhost:27017"),

@@ -2,68 +2,85 @@
 
 Tempo real via **WebSocket** com fan-out entre nós por **Redis Pub/Sub**.
 Servido pelo papel **`ws`** (compartilha listener com `api` quando `RUN_ROLE`
-inclui ambos). Infra em `infra/realtime` (`Hub` + `PubSub` + `Manager`).
+inclui ambos). Infra em `infra/realtime` (`Hub` + `PubSub` + `Manager`);
+handshake em `presenter/websocket/handler.go`.
 
-## Conexão
+## Handshake / conexão
 
 ```
-GET /realtime/ws        (Upgrade: websocket)
-Authorization: Bearer <jwt>     # ou token de query assinado para browsers
+GET /realtime/ws            (Upgrade: websocket)
+Authorization: Bearer <jwt>          # access token JWT
+# — ou, para browsers que não setam headers no handshake —
+GET /realtime/ws?token=<jwt>
 ```
 
-- A conexão é **autenticada** no upgrade; o `tenant_id` e o `user_id` saem do
-  token. Conexões herdam o escopo do tenant.
-- Keepalive: ping/pong (servidor envia ping ~a cada 54s; cliente responde).
-- Limite de leitura por frame; back-pressure: cliente lento tem entrega
-  best-effort (buffer com descarte) para não travar o fan-out.
+- **Autenticação** no upgrade: o token é verificado (`VerifyAccess`); sem token
+  válido → `401`. O `tenant_id`, o `user_id`, os papéis/permissões e os setores
+  saem **do token** (nunca de header). A conexão herda o escopo do tenant.
+- **Rooms automáticas** (entrada no connect, não controláveis pelo cliente):
+  - `t:{tenant}:tenant` — broadcast do tenant;
+  - `t:{tenant}:user:{userId}` — notificações/atribuições/presença pessoal;
+  - `t:{tenant}:presence` — quadro de presença da equipe;
+  - `t:{tenant}:inbox:{sectorId}` — uma por setor que o ator pode ver.
+- **Keepalive:** o servidor envia `ping` a cada ~54s (`pongWait` 60s); o cliente
+  deve responder `pong`. Limite de leitura de **4096 bytes/frame**.
+- **Back-pressure:** buffer de envio por cliente (64); cliente lento tem entrega
+  best-effort (descarte) para não travar o fan-out.
+- **Multi-aba:** várias conexões por usuário (limite opcional
+  `REALTIME_MAX_CONN_PER_USER`); cada conexão assina o que precisa.
 
 ## Protocolo (frames cliente → servidor)
 
-Frames de controle em JSON:
+O cliente só pode **assinar/desassinar uma conversa** (as demais rooms são
+automáticas). Frame de controle em JSON:
 
 ```json
-{ "action": "subscribe",   "topic": "t:{tenant}:conversation:{id}" }
-{ "action": "unsubscribe", "topic": "t:{tenant}:inbox:{sector}" }
-{ "action": "typing",      "topic": "t:{tenant}:conversation:{id}", "data": { "on": true } }
-{ "action": "presence",    "data": { "status": "online" } }     # heartbeat
+{ "action": "subscribe",   "conversation_id": "conv_123" }
+{ "action": "unsubscribe", "conversation_id": "conv_123" }
 ```
 
-- O servidor **valida** que o `topic` pertence ao tenant da conexão e que o ator
-  tem permissão de ver aquele recurso (ex.: agente só assina conversas que pode
-  ver). Tópicos não autorizados são ignorados.
+- `subscribe` exige a permissão **`conversation.read`**; o servidor monta a room
+  a partir do **tenant da conexão** (`t:{tenant}:conversation:{id}`), então um
+  cliente nunca assina fora do seu tenant.
+- Comandos sem `conversation_id`, com `action` desconhecida ou não autorizados são
+  **ignorados silenciosamente**.
 
 ## Tópicos (rooms)
 
-Sempre **tenant-scoped**. Convenção `t:{tenant_id}:{escopo}[:{id}]`:
+Sempre **tenant-scoped**. Convenção `t:{tenant_id}:{escopo}[:{id}]`
+(`domain/shared/topics.go`):
 
 | Tópico | Quem assina | Conteúdo |
 |---|---|---|
-| `t:{tenant}:user:{userId}` | o próprio agente | notificações, atribuições, presença pessoal |
-| `t:{tenant}:conversation:{id}` | participantes/observadores | mensagens, status, typing, SLA |
-| `t:{tenant}:inbox:{sectorId}` | agentes do setor | novas conversas, lifecycle, `queue.stats` |
-| `t:{tenant}:queue:{queueId}` | supervisores | reservado (futuro) |
-| `t:{tenant}:presence` | quem precisa | mudanças de presença agregadas |
+| `t:{tenant}:tenant` | toda conexão do tenant | broadcasts do tenant |
+| `t:{tenant}:user:{userId}` | o próprio agente (auto) | notificações, atribuições, presença pessoal |
+| `t:{tenant}:presence` | toda conexão (auto) | mudanças de presença agregadas |
+| `t:{tenant}:inbox:{sectorId}` | agentes do setor (auto) | novas conversas, lifecycle, `queue.stats` |
+| `t:{tenant}:conversation:{id}` | sob demanda (`subscribe`) | mensagens, status, typing, SLA, aprovações |
 
 ## Envelope (servidor → cliente)
 
+Cada frame entregue ao socket é o JSON (`infra/realtime/publisher.go`):
+
 ```json
 {
-  "topic": "t:acme:conversation:123",
-  "event": "message.created",
-  "id": "evt_...",          // id do evento (dedupe no cliente)
-  "ts": 1718000000000,      // epoch ms
+  "event": "message.created",   // nome do evento (ver catálogo)
+  "ts": 1718000000000,          // epoch ms da publicação
   "data": { /* payload do evento */ }
 }
 ```
 
+> O frame **não** carrega `topic` nem um `id` de evento: o cliente sabe a room
+> pela assinatura e deduplica pelo id de domínio dentro de `data` (ex.:
+> `message_id`, `conversation_id`).
+
 ## Catálogo de eventos
 
-> Esta tabela reflete **exatamente** os nomes emitidos pelo backend (constantes em
-> `domain/<x>/contracts`). Os eventos de **ciclo de vida** da conversa são
+> Esta tabela reflete **exatamente** os nomes emitidos pelo backend (constantes
+> em `domain/<x>/contracts`). Os eventos de **ciclo de vida** da conversa são
 > publicados com nome próprio **e** acompanhados de `conversation.updated` (para
-> clientes que só assinam o evento genérico de mudança). Os eventos de mensagem
-> são **granulares** (`message.sent/delivered/read/failed`), não um `message.status`
-> genérico.
+> clientes que só assinam o evento genérico). Os eventos de mensagem são
+> **granulares** (`message.sent/delivered/read/failed`), não um `message.status`.
 
 ### Conversas (`conversations`) — lifecycle
 Publicados nos tópicos `conversation:{id}` **e** `inbox:{sectorId}`.
@@ -96,15 +113,17 @@ Publicados no tópico `conversation:{id}` (`message.created` também em `inbox`)
 | `message.failed` | falha de entrega (após retries) | `MessageStatusPayload` |
 | `typing.started` / `typing.stopped` | digitação | `TypingPayload` |
 
-`MessageRefPayload` = `{ message_id, conversation_id }` (sem corpo: a mensagem
-excluída fica oculta das listagens, preservada no banco).
-
+`MessagePayload` = a `Message` REST (ver `openapi.yaml`): `{ id, conversation_id,
+sender_type, sender_id, direction, message_type, text, attachments, metadata,
+delivery_status, external_message_id, created_at, edited_at }`.
+`MessageRefPayload` = `{ message_id, conversation_id }` (sem corpo).
 `MessageStatusPayload` = `{ message_id, conversation_id, delivery_status, error? }`.
+`TypingPayload` = `{ conversation_id, user_id }`.
 
 ### Presença (`presence`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `presence.changed` | presence, user | `{ user_id, status, ... }` |
+| `agent.presence_changed` | `presence`, `user` | `{ tenant_id, user_id, status, current_load, max_concurrent_chats, last_seen_at }` |
 
 ### Filas (`queues`)
 | Evento | Tópico | Payload |
@@ -117,36 +136,57 @@ saída (fechamento) ou atribuição (`assign`/`transfer`).
 ### SLA (`sla`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `sla.warning` | conversation | `{ conversation_id, target, ... }` |
-| `sla.breached` | conversation (+ webhook `sla.breached`) | `{ conversation_id, target, ... }` |
+| `sla.warning` | `conversation` | `{ conversation_id, policy_id, target, due_at }` |
+| `sla.breached` | `conversation` (+ webhook `sla.breached`) | `{ conversation_id, policy_id, target, breached_at }` |
+
+`target` ∈ `first_response` | `resolution`.
 
 ### Copilot (`copilot`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `copilot.suggestion_completed` | conversation, user | `{ run_id, action, output, ... }` |
+| `copilot.suggestion_completed` | `conversation`, `user` | `CopilotResult` |
+
+`CopilotResult` = `{ action, provider, model, text, categories, tokens_input,
+tokens_output, estimated_cost, requires_approval, proposed_actions }` (ver
+`openapi.yaml`). Quando a IA propõe uma ação de **escrita**, `proposed_actions`
+traz os cards e segue um `mcp.approval_requested`.
+
+### Ferramentas externas / MCP (`mcp`)
+| Evento | Tópico | Payload |
+|---|---|---|
+| `mcp.approval_requested` | `conversation` | `{ approval_id, conversation_id, server, tool, args, proposed_by }` |
+
+Emitido quando uma ferramenta **write** é proposta (pela IA ou por um run manual)
+e aguarda aprovação explícita do atendente. A execução só ocorre via
+`POST /v1/conversations/{id}/copilot/approvals/{approvalId}`.
 
 ### Notificações (`notifications`)
 | Evento | Tópico | Payload |
 |---|---|---|
-| `notification.created` | user | notificação |
+| `notification.created` | `user` | `{ id, type, title, body, link, read, created_at }` |
+
+`type` inclui, entre outros: `conversation.assigned_to_you`,
+`conversation.transferred_to_you`, `mention.internal_note`,
+`channel.connection_error`.
 
 ## Como os eventos são publicados
 
 1. Um **serviço de domínio** conclui uma mudança de estado.
-2. Chama `realtime.Manager.Publish(topic, payload)`.
-3. O `Manager` publica no canal Redis `realtime:fanout`.
+2. Chama `EventPublisher.Publish(ctx, topic, event, data)` (o `Manager`).
+3. O `Manager` serializa o envelope e publica no canal Redis `realtime:fanout`.
 4. **Todos** os nós `ws` recebem via Pub/Sub e entregam aos clientes locais
-   assinantes daquele tópico (`Hub.Deliver`).
+   assinantes daquele tópico (`Hub`).
 
-Isso desacopla o nó que originou a mudança (pode ser `api` ou `worker`) do nó
-que mantém a conexão WS do cliente.
+Isso desacopla o nó que originou a mudança (pode ser `api` ou `worker`) do nó que
+mantém a conexão WS do cliente.
 
 ## Garantias e padrões
 
-- **At-most-once** na entrega WS (tempo real, não fonte de verdade). O estado
+- **At-most-once** na entrega WS (tempo real, não é fonte de verdade). O estado
   canônico está no Mongo; o cliente reconcilia via REST ao (re)conectar.
-- **Reconexão:** ao reconectar, o cliente re-assina tópicos e busca o delta via
-  REST (último `cursor`/`last_message_at`).
-- **Dedupe:** `event.id` permite ignorar duplicados.
-- **Autorização contínua:** revogação de acesso encerra/limpa assinaturas.
-- **Multi-aba:** várias conexões por usuário; cada uma assina o que precisa.
+- **Reconexão:** ao reconectar, o cliente re-assina as conversas abertas e busca
+  o delta via REST (último `cursor`/`last_message_at`).
+- **Dedupe:** sem id de envelope; o cliente ignora duplicados pelo id de domínio
+  no `data` (ex.: `message_id`).
+- **Autorização:** `subscribe` é checado contra `conversation.read`; rooms padrão
+  refletem os setores do token.

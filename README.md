@@ -152,3 +152,18 @@ go test -tags e2e ./...
 ```
 
 Exemplos de uso da API (curl) em [`docs/api-examples.md`](docs/api-examples.md).
+
+## Contrato da API (OpenAPI)
+
+O contrato de **todas** as rotas `/v1` (request/response reais, enums, envelope
+de erro, paginação por cursor, auth Bearer JWT) é descrito em **OpenAPI 3.1**:
+
+- **`GET /openapi.json`** — servido pelo backend (público em dev; atrás de HTTP
+  basic auth em produção via `OPENAPI_BASIC_USER`/`OPENAPI_BASIC_PASS`).
+- **[`docs/openapi.yaml`](docs/openapi.yaml)** — cópia versionada, fonte para o
+  frontend gerar um cliente tipado.
+
+A fonte única é Go (`presenter/openapi`); regenere a cópia com
+`go run ./cmd/openapigen` (o teste `TestDocsCopyInSync` falha se ficar
+desatualizada). Eventos WebSocket e handshake em
+[`docs/realtime-events.md`](docs/realtime-events.md).
