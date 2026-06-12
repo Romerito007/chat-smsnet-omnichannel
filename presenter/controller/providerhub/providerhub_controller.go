@@ -28,12 +28,12 @@ func NewController(config *phservice.ConfigService, queries *phservice.QueryServ
 
 // GetConfig handles GET /v1/providerhub/config.
 func (c *Controller) GetConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, err := c.config.Current(r.Context())
+	cfg, source, err := c.config.Resolved(r.Context())
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, dto.NewConfigResponse(cfg))
+	middleware.WriteJSON(w, http.StatusOK, dto.NewConfigStatusResponse(cfg, source))
 }
 
 // CreateConfig handles POST /v1/providerhub/config.

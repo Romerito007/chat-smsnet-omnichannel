@@ -191,6 +191,9 @@ func schemas() M {
 			"bot_id": str(), "has_api_key": boolean(), "isp_credential_keys": arr(str()),
 			"usa_pegar_fatura_atrasada": boolean(), "usa_extrair_linha_digitavel_pdf": boolean(),
 			"enabled": boolean(), "timeout_ms": integer(), "created_at": dateTime(), "updated_at": dateTime(),
+			// source: "tenant" | "env" | "none". For "env" the host/key are never
+			// returned — only that the integration is configured in the backend.
+			"source": enum("tenant", "env", "none"), "configured": boolean(),
 		}),
 		"CreateProviderHubConfigRequest": object(M{
 			"name": str(), "smsnet_base_url": str(), "smsnet_api_key": str(), "isp_type": str(),

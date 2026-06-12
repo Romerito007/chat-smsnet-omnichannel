@@ -21,10 +21,17 @@ func MCPServerService(c *container.Container) *mcpservice.ServerService {
 }
 
 // MCPToolService builds the tool execution + approval service (also the copilot
-// tool broker).
+// tool broker). The server repository is augmented with the env-default SMSNET
+// servers (CONSULTAS read / OPERACOES write), each overridable by a tenant's own
+// DB registration. The admin server CRUD (MCPServerService) keeps the plain repo,
+// so env URLs are never exposed through the management API.
 func MCPToolService(c *container.Container) *mcpservice.ToolService {
-	svc := mcpservice.NewToolService(
+	serverRepo := inframcp.NewEnvServerRepository(
 		mcprepo.NewServerRepository(c.Mongo.DB, c.Cipher),
+		c.Config.MCP.ConsultasURL, c.Config.MCP.OperacoesURL,
+	)
+	svc := mcpservice.NewToolService(
+		serverRepo,
 		mcprepo.NewApprovalRepository(c.Mongo.DB),
 		mcprepo.NewCallLogRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),

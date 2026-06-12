@@ -29,6 +29,8 @@ type ConfigService struct {
 	logs    repository.QueryLogRepository
 	gateway contracts.Gateway
 	clock   shared.Clock
+	envHost string
+	envKey  string
 }
 
 // NewConfigService builds the service.
@@ -37,6 +39,41 @@ func NewConfigService(repo repository.ConfigRepository, logs repository.QueryLog
 		clock = shared.SystemClock{}
 	}
 	return &ConfigService{repo: repo, logs: logs, gateway: gateway, clock: clock}
+}
+
+// SetEnvDefault wires the env-default gateway host/key used when a tenant has no
+// DB config. Optional; when unset only tenant configs resolve.
+func (s *ConfigService) SetEnvDefault(host, key string) {
+	s.envHost, s.envKey = host, key
+}
+
+// Resolved returns the effective config and its source ("tenant"|"env"|"none").
+func (s *ConfigService) Resolved(ctx context.Context) (*entity.ProviderIntegrationConfig, string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, "", err
+	}
+	return resolveConfig(ctx, s.repo, s.envHost, s.envKey)
+}
+
+// resolveConfig returns the effective provider config and its source: the tenant's
+// DB config wins; otherwise the env-default gateway (host+key); a nil config with
+// source "none" means unconfigured. The env key is never persisted nor returned.
+func resolveConfig(ctx context.Context, repo repository.ConfigRepository, envHost, envKey string) (*entity.ProviderIntegrationConfig, string, error) {
+	cfg, err := repo.FindEnabled(ctx)
+	if err == nil {
+		return cfg, "tenant", nil
+	}
+	if apperror.From(err).Code != apperror.CodeNotFound {
+		return nil, "", err
+	}
+	if envHost == "" {
+		return nil, "none", nil
+	}
+	tenantID, _ := shared.TenantFrom(ctx)
+	return &entity.ProviderIntegrationConfig{
+		TenantID: tenantID, Name: "env-default", SMSNetBaseURL: envHost, SMSNetAPIKey: envKey,
+		Enabled: true, TimeoutMs: defaultTimeoutMs,
+	}, "env", nil
 }
 
 // Create registers the config.
@@ -147,23 +184,18 @@ func (s *ConfigService) Update(ctx context.Context, cmd contracts.UpdateConfig) 
 	return cfg, nil
 }
 
-// Current returns the tenant's enabled config.
-func (s *ConfigService) Current(ctx context.Context) (*entity.ProviderIntegrationConfig, error) {
-	if _, err := shared.RequireTenant(ctx); err != nil {
-		return nil, err
-	}
-	return s.repo.FindEnabled(ctx)
-}
-
 // Test pings the smsnet-integrations API and records a minimal query log.
 func (s *ConfigService) Test(ctx context.Context) (TestResult, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return TestResult{}, err
 	}
-	cfg, err := s.repo.FindEnabled(ctx)
+	cfg, _, err := resolveConfig(ctx, s.repo, s.envHost, s.envKey)
 	if err != nil {
 		return TestResult{}, err
+	}
+	if cfg == nil {
+		return TestResult{}, apperror.Integration("provider integration is not configured")
 	}
 
 	start := s.clock.Now()

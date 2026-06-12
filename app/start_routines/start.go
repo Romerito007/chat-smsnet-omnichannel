@@ -60,6 +60,8 @@ func Start(ctx context.Context, cfg config.Config) error {
 		if err := SeedDemoData(ctx, c); err != nil {
 			c.Logger.Warn("demo seed failed (continuing); set SEED_DEMO_RESET=true to retry clean", "error", err)
 		}
+		// Best-effort, non-blocking reachability log for the SMSNET integrations.
+		go logIntegrationsHealth(ctx, c)
 	}
 
 	g, gctx := errgroup.WithContext(ctx)

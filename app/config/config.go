@@ -40,6 +40,7 @@ type Config struct {
 	Channels      ChannelsConfig
 	Automation    AutomationConfig
 	ProviderHub   ProviderHubConfig
+	MCP           MCPConfig
 	Copilot       CopilotConfig
 	Notifications NotificationsConfig
 	Email         EmailConfig
@@ -231,6 +232,19 @@ type AutomationConfig struct {
 type ProviderHubConfig struct {
 	// RatePerMinute caps outbound provider queries per tenant per minute.
 	RatePerMinute int
+	// GatewayAPIHost / GatewayAPIKey are the env-default SMSNET Integrations HTTP
+	// gateway, used when a tenant has no DB config of its own. The key is read
+	// only in the backend and never returned to clients.
+	GatewayAPIHost string
+	GatewayAPIKey  string
+}
+
+// MCPConfig holds the env-default SMSNET MCP server URLs (read/write). A tenant
+// DB-registered server overrides these. The MCP hosts run on a private network
+// without auth and must never be exposed to the internet.
+type MCPConfig struct {
+	ConsultasURL string // read tools (no approval)
+	OperacoesURL string // write tools (always human-approval)
 }
 
 // CopilotConfig holds legacy, environment-level copilot keys. Deprecated: real
@@ -320,7 +334,13 @@ func Load() (Config, error) {
 			CallbackBaseURL: getString("AUTOMATION_CALLBACK_BASE_URL", "http://localhost:8080"),
 		},
 		ProviderHub: ProviderHubConfig{
-			RatePerMinute: getInt("PROVIDERHUB_RATE_PER_MINUTE", 60),
+			RatePerMinute:  getInt("PROVIDERHUB_RATE_PER_MINUTE", 60),
+			GatewayAPIHost: getString("ISP_GATEWAY_API_HOST", ""),
+			GatewayAPIKey:  getString("ISP_GATEWAY_API_KEY", ""),
+		},
+		MCP: MCPConfig{
+			ConsultasURL: getString("SMSNET_MCP_CONSULTAS_URL", ""),
+			OperacoesURL: getString("SMSNET_MCP_OPERACOES_URL", ""),
 		},
 		Copilot: CopilotConfig{
 			OpenAIKey:    getString("COPILOT_OPENAI_API_KEY", ""),

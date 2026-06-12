@@ -27,6 +27,14 @@ type QueryService struct {
 	limiter       phcontracts.RateLimiter
 	clock         shared.Clock
 	auditor       shared.Auditor
+	envHost       string
+	envKey        string
+}
+
+// SetEnvDefault wires the env-default gateway host/key used when a tenant has no
+// DB config.
+func (s *QueryService) SetEnvDefault(host, key string) {
+	s.envHost, s.envKey = host, key
 }
 
 // NewQueryService builds the service.
@@ -173,8 +181,8 @@ func execute[T any](
 		}
 	}
 
-	cfg, err := s.config.FindEnabled(ctx)
-	if err != nil {
+	cfg, _, rerr := resolveConfig(ctx, s.config, s.envHost, s.envKey)
+	if rerr != nil || cfg == nil {
 		s.log(ctx, conv, qtype, phentity.StatusError, 0, "no provider config")
 		return zero, apperror.Integration("provider integration is not configured")
 	}

@@ -1611,6 +1611,8 @@ components:
             properties:
                 bot_id:
                     type: string
+                configured:
+                    type: boolean
                 created_at:
                     format: date-time
                     type: string
@@ -1629,6 +1631,12 @@ components:
                 name:
                     type: string
                 smsnet_base_url:
+                    type: string
+                source:
+                    enum:
+                        - tenant
+                        - env
+                        - none
                     type: string
                 tenant_id:
                     type: string

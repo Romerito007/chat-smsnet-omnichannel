@@ -12,12 +12,14 @@ import (
 
 // ProviderHubConfigService builds the config service.
 func ProviderHubConfigService(c *container.Container) *phservice.ConfigService {
-	return phservice.NewConfigService(
+	svc := phservice.NewConfigService(
 		providerhubrepo.NewConfigRepository(c.Mongo.DB, c.Cipher),
 		providerhubrepo.NewQueryLogRepository(c.Mongo.DB),
 		infraproviderhub.NewGateway(),
 		clock,
 	)
+	svc.SetEnvDefault(c.Config.ProviderHub.GatewayAPIHost, c.Config.ProviderHub.GatewayAPIKey)
+	return svc
 }
 
 // ProviderHubQueryService builds the on-demand query service.
@@ -31,6 +33,7 @@ func ProviderHubQueryService(c *container.Container) *phservice.QueryService {
 		infraproviderhub.NewRateLimiter(c.Redis, c.Config.ProviderHub.RatePerMinute),
 		clock,
 	)
+	svc.SetEnvDefault(c.Config.ProviderHub.GatewayAPIHost, c.Config.ProviderHub.GatewayAPIKey)
 	svc.SetAuditor(AuditService(c))
 	return svc
 }

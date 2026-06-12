@@ -95,6 +95,27 @@ type ConfigResponse struct {
 	TimeoutMs                   int       `json:"timeout_ms"`
 	CreatedAt                   time.Time `json:"created_at"`
 	UpdatedAt                   time.Time `json:"updated_at"`
+	// Source is where the effective config comes from: "tenant" (DB), "env"
+	// (backend default) or "none". Configured is true for tenant/env. For "env"
+	// the host/key are never returned — only that it is configured.
+	Source     string `json:"source"`
+	Configured bool   `json:"configured"`
+}
+
+// NewConfigStatusResponse builds the GET /v1/providerhub/config response from the
+// resolved config and its source, never leaking the env-default host or key.
+func NewConfigStatusResponse(c *phentity.ProviderIntegrationConfig, source string) ConfigResponse {
+	switch source {
+	case "tenant":
+		resp := NewConfigResponse(c)
+		resp.Source = "tenant"
+		resp.Configured = true
+		return resp
+	case "env":
+		return ConfigResponse{Source: "env", Configured: true, HasAPIKey: c.SMSNetAPIKey != "", Enabled: true}
+	default:
+		return ConfigResponse{Source: "none", Configured: false}
+	}
 }
 
 // NewConfigResponse maps a config entity, masking secrets.
