@@ -51,18 +51,20 @@ type ReadPayload struct {
 
 // ConversationPayload is the realtime/event representation of a conversation.
 type ConversationPayload struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	ContactID     string    `json:"contact_id"`
-	Channel       string    `json:"channel"`
-	SectorID      string    `json:"sector_id,omitempty"`
-	QueueID       string    `json:"queue_id,omitempty"`
-	Status        string    `json:"status"`
-	AssignedTo    string    `json:"assigned_to,omitempty"`
-	Priority      string    `json:"priority"`
-	Tags          []string  `json:"tags,omitempty"`
-	LastMessageAt time.Time `json:"last_message_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            string     `json:"id"`
+	TenantID      string     `json:"tenant_id"`
+	ContactID     string     `json:"contact_id"`
+	Channel       string     `json:"channel"`
+	SectorID      string     `json:"sector_id,omitempty"`
+	QueueID       string     `json:"queue_id,omitempty"`
+	Status        string     `json:"status"`
+	AssignedTo    string     `json:"assigned_to,omitempty"`
+	Priority      string     `json:"priority"`
+	Tags          []string   `json:"tags,omitempty"`
+	LastMessageAt time.Time  `json:"last_message_at"`
+	UnreadCount   int        `json:"unread_count"`
+	LastReadAt    *time.Time `json:"last_read_at,omitempty"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // NewConversationPayload builds the payload from a conversation entity.
@@ -79,6 +81,8 @@ func NewConversationPayload(c *entity.Conversation) ConversationPayload {
 		Priority:      string(c.Priority),
 		Tags:          c.Tags,
 		LastMessageAt: c.LastMessageAt,
+		UnreadCount:   c.UnreadCount,
+		LastReadAt:    c.LastReadAt,
 		UpdatedAt:     c.UpdatedAt,
 	}
 }

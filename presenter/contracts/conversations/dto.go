@@ -132,6 +132,8 @@ type ConversationResponse struct {
 	Priority      string     `json:"priority"`
 	Tags          []string   `json:"tags,omitempty"`
 	LastMessageAt time.Time  `json:"last_message_at"`
+	UnreadCount   int        `json:"unread_count"`
+	LastReadAt    *time.Time `json:"last_read_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	ClosedAt      *time.Time `json:"closed_at,omitempty"`
@@ -151,6 +153,8 @@ func NewConversationResponse(c *entity.Conversation) ConversationResponse {
 		Priority:      string(c.Priority),
 		Tags:          c.Tags,
 		LastMessageAt: c.LastMessageAt,
+		UnreadCount:   c.UnreadCount,
+		LastReadAt:    c.LastReadAt,
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     c.UpdatedAt,
 		ClosedAt:      c.ClosedAt,
@@ -162,6 +166,40 @@ func NewConversationResponses(items []*entity.Conversation) []ConversationRespon
 	out := make([]ConversationResponse, len(items))
 	for i, c := range items {
 		out[i] = NewConversationResponse(c)
+	}
+	return out
+}
+
+// EventResponse is a conversation timeline event (lifecycle/automation), stored
+// separately from chat messages.
+type EventResponse struct {
+	ID             string         `json:"id"`
+	ConversationID string         `json:"conversation_id"`
+	Type           string         `json:"type"`
+	ActorType      string         `json:"actor_type,omitempty"`
+	ActorID        string         `json:"actor_id,omitempty"`
+	Data           map[string]any `json:"data,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+}
+
+// NewEventResponse maps a conversation event entity.
+func NewEventResponse(e *entity.ConversationEvent) EventResponse {
+	return EventResponse{
+		ID:             e.ID,
+		ConversationID: e.ConversationID,
+		Type:           e.Type,
+		ActorType:      string(e.ActorType),
+		ActorID:        e.ActorID,
+		Data:           e.Data,
+		CreatedAt:      e.CreatedAt,
+	}
+}
+
+// NewEventResponses maps a slice.
+func NewEventResponses(items []*entity.ConversationEvent) []EventResponse {
+	out := make([]EventResponse, len(items))
+	for i, e := range items {
+		out[i] = NewEventResponse(e)
 	}
 	return out
 }

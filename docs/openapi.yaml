@@ -269,6 +269,13 @@ components:
                     format: date-time
                     type: string
             type: object
+        Chamado:
+            properties:
+                msg:
+                    type: string
+                protocolo:
+                    type: string
+            type: object
         ChamadoRequest:
             properties:
                 id_cliente:
@@ -372,6 +379,50 @@ components:
                 - conversation_id
                 - categories
             type: object
+        Cliente:
+            properties:
+                contrato_status_display:
+                    type: string
+                cpfcnpj:
+                    type: string
+                faturas:
+                    items:
+                        $ref: '#/components/schemas/Fatura'
+                    type: array
+                nome:
+                    type: string
+                valor_check_out:
+                    type: number
+            type: object
+        ClienteFound:
+            properties:
+                cliente:
+                    $ref: '#/components/schemas/Cliente'
+                needs_selection:
+                    const: false
+                    type: boolean
+            required:
+                - needs_selection
+                - cliente
+            type: object
+        ClienteNeedsSelection:
+            properties:
+                needs_selection:
+                    const: true
+                    type: boolean
+                options:
+                    items:
+                        $ref: '#/components/schemas/ContratoOption'
+                    type: array
+            required:
+                - needs_selection
+                - options
+            type: object
+        ClienteResult:
+            description: When needs_selection is true, render a contract selector from options[].id_cliente; otherwise use cliente.
+            oneOf:
+                - $ref: '#/components/schemas/ClienteFound'
+                - $ref: '#/components/schemas/ClienteNeedsSelection'
         CloseReason:
             properties:
                 created_at:
@@ -407,6 +458,44 @@ components:
             required:
                 - attachment_id
             type: object
+        Contact:
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                document:
+                    type: string
+                external_ids:
+                    items:
+                        $ref: '#/components/schemas/ContactExternalID'
+                    type: array
+                id:
+                    type: string
+                name:
+                    type: string
+                notes:
+                    type: string
+                phones:
+                    items:
+                        type: string
+                    type: array
+                tags:
+                    items:
+                        type: string
+                    type: array
+                tenant_id:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+            type: object
+        ContactExternalID:
+            properties:
+                channel:
+                    type: string
+                external_id:
+                    type: string
+            type: object
         ContactHit:
             properties:
                 document:
@@ -417,6 +506,20 @@ components:
                     type: string
                 phone:
                     type: string
+            type: object
+        ContratoOption:
+            properties:
+                endereco:
+                    type: string
+                id_cliente:
+                    type: string
+                label:
+                    type: string
+                status:
+                    type: string
+            required:
+                - id_cliente
+                - label
             type: object
         Conversation:
             properties:
@@ -437,6 +540,9 @@ components:
                 last_message_at:
                     format: date-time
                     type: string
+                last_read_at:
+                    format: date-time
+                    type: string
                 priority:
                     type: string
                 queue_id:
@@ -451,8 +557,35 @@ components:
                     type: array
                 tenant_id:
                     type: string
+                unread_count:
+                    type: integer
                 updated_at:
                     format: date-time
+                    type: string
+            type: object
+        ConversationEvent:
+            properties:
+                actor_id:
+                    type: string
+                actor_type:
+                    enum:
+                        - agent
+                        - customer
+                        - system
+                        - automation
+                        - copilot
+                    type: string
+                conversation_id:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                data:
+                    additionalProperties: true
+                    type: object
+                id:
+                    type: string
+                type:
                     type: string
             type: object
         ConversationHit:
@@ -905,6 +1038,21 @@ components:
             required:
                 - email
             type: object
+        Empresa:
+            properties:
+                cnpj:
+                    type: string
+                email:
+                    type: string
+                endereco:
+                    type: string
+                nome:
+                    type: string
+                site:
+                    type: string
+                telefone:
+                    type: string
+            type: object
         EnqueueRequest:
             properties:
                 queue_id:
@@ -938,6 +1086,21 @@ components:
                     type: object
             required:
                 - error
+            type: object
+        Fatura:
+            properties:
+                linha_digitavel:
+                    type: string
+                link:
+                    type: string
+                pix:
+                    type: string
+                valor:
+                    type: number
+                vencimento:
+                    type: string
+            required:
+                - valor
             type: object
         Holiday:
             properties:
@@ -1028,6 +1191,17 @@ components:
                     type: array
             required:
                 - email
+            type: object
+        Liberacao:
+            properties:
+                liberado:
+                    type: boolean
+                liberado_ate:
+                    type: string
+                msg:
+                    type: string
+                protocolo:
+                    type: string
             type: object
         LiberacaoRequest:
             properties:
@@ -1284,6 +1458,26 @@ components:
                     type: string
             required:
                 - has_more
+            type: object
+        Plano:
+            properties:
+                descricao:
+                    type: string
+                nome:
+                    type: string
+                valor:
+                    type: number
+                velocidade:
+                    type: string
+            required:
+                - nome
+            type: object
+        PlanosResult:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/Plano'
+                    type: array
             type: object
         Presence:
             properties:
@@ -3728,6 +3922,38 @@ paths:
             summary: Update close reason
             tags:
                 - conversationtools
+    /v1/contacts/{id}:
+        get:
+            operationId: getContactsById
+            parameters:
+                - description: contact id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Contact'
+                    description: Contact
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get a contact (tenant-scoped)
+            tags:
+                - contacts
     /v1/conversations:
         get:
             operationId: getConversations
@@ -4036,6 +4262,57 @@ paths:
             summary: Enqueue for distribution
             tags:
                 - routing
+    /v1/conversations/{id}/events:
+        get:
+            operationId: getConversationsByIdEvents
+            parameters:
+                - description: conversation id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/ConversationEvent'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Event page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List the lifecycle/automation timeline (separate from chat messages)
+            tags:
+                - conversations
     /v1/conversations/{id}/external/chamado:
         post:
             operationId: postConversationsByIdExternalChamado
@@ -4057,8 +4334,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                additionalProperties: true
-                                type: object
+                                $ref: '#/components/schemas/Chamado'
                     description: Result
                 "400":
                     $ref: '#/components/responses/Error400'
@@ -4083,7 +4359,7 @@ paths:
                   required: true
                   schema:
                     type: string
-                - description: customer id
+                - description: customer id (after a selection)
                   in: query
                   name: id_cliente
                   required: false
@@ -4095,14 +4371,25 @@ paths:
                   required: false
                   schema:
                     type: string
+                - description: phone
+                  in: query
+                  name: phone
+                  required: false
+                  schema:
+                    type: string
+                - description: email
+                  in: query
+                  name: email
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                additionalProperties: true
-                                type: object
-                    description: Customer data
+                                $ref: '#/components/schemas/ClienteResult'
+                    description: Customer (or a contract-selection prompt)
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
@@ -4113,7 +4400,7 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Customer lookup (read)
+            summary: Customer lookup (read); may need a contract selection
             tags:
                 - providerhub
     /v1/conversations/{id}/external/empresa:
@@ -4131,8 +4418,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                additionalProperties: true
-                                type: object
+                                $ref: '#/components/schemas/Empresa'
                     description: Company
                 "400":
                     $ref: '#/components/responses/Error400'
@@ -4168,8 +4454,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                additionalProperties: true
-                                type: object
+                                $ref: '#/components/schemas/Liberacao'
                     description: Result
                 "400":
                     $ref: '#/components/responses/Error400'
@@ -4199,8 +4484,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                additionalProperties: true
-                                type: object
+                                $ref: '#/components/schemas/PlanosResult'
                     description: Plans
                 "400":
                     $ref: '#/components/responses/Error400'
@@ -8112,8 +8396,10 @@ tags:
       name: queues
     - description: Agent presence and load.
       name: presence
-    - description: Conversations, messages, notes and lifecycle.
+    - description: Conversations, messages, notes, lifecycle and the events timeline.
       name: conversations
+    - description: Read contacts (CRM-style profile).
+      name: contacts
     - description: Assignment, transfer and queue distribution.
       name: routing
     - description: Channel connections and inbound ingestion.

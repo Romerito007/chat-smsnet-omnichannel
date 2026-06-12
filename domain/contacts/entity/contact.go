@@ -18,8 +18,12 @@ type Contact struct {
 	Phone      string
 	Document   string
 	Identities []ChannelIdentity
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Tags are free-form labels applied by agents (CRM-style).
+	Tags []string
+	// Notes is a free-text agent note about the contact.
+	Notes     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // HasIdentity reports whether the contact already carries the given channel

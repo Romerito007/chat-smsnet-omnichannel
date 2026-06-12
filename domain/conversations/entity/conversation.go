@@ -68,7 +68,13 @@ type Conversation struct {
 	Priority      Priority
 	Tags          []string
 	LastMessageAt time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	ClosedAt      *time.Time
+	// UnreadCount is the number of inbound (customer) messages since an agent last
+	// read the conversation. Bumped on each inbound message; zeroed by MarkRead
+	// (POST /read).
+	UnreadCount int
+	// LastReadAt is when an agent last read the conversation (nil if never).
+	LastReadAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	ClosedAt   *time.Time
 }

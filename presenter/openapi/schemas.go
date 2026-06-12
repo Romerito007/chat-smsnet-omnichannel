@@ -89,7 +89,13 @@ func schemas() M {
 			"id": str(), "tenant_id": str(), "contact_id": str(), "channel": str(),
 			"sector_id": str(), "queue_id": str(), "status": str(), "assigned_to": str(),
 			"priority": str(), "tags": arr(str()), "last_message_at": dateTime(),
+			"unread_count": integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
+		}),
+		"ConversationEvent": object(M{
+			"id": str(), "conversation_id": str(), "type": str(),
+			"actor_type": enum("agent", "customer", "system", "automation", "copilot"),
+			"actor_id":   str(), "data": freeObject(), "created_at": dateTime(),
 		}),
 		"CreateConversationRequest": object(M{
 			"contact_id": str(), "channel": str(), "sector_id": str(), "queue_id": str(),
@@ -186,6 +192,53 @@ func schemas() M {
 		}),
 		"LiberacaoRequest": object(M{"id_cliente": str()}, "id_cliente"),
 		"ChamadoRequest":   object(M{"id_cliente": str(), "subject": str(), "message": str()}, "id_cliente"),
+
+		// ── Customer 360 (smsnet-integrations on-demand results) ────────────────
+		"Fatura": object(M{
+			"valor": number(), "vencimento": str(), "link": str(),
+			"linha_digitavel": str(), "pix": str(),
+		}, "valor"),
+		"Cliente": object(M{
+			"nome": str(), "cpfcnpj": str(), "contrato_status_display": str(),
+			"valor_check_out": number(), "faturas": arr(ref("Fatura")),
+		}),
+		"ContratoOption": object(M{
+			"id_cliente": str(), "label": str(), "endereco": str(), "status": str(),
+		}, "id_cliente", "label"),
+		// ClienteResult is a single object whose `needs_selection` flag drives a
+		// oneOf: when true the customer has multiple contracts and `options` holds
+		// the choices (the frontend renders a contract selector and re-queries with
+		// id_cliente); otherwise `cliente` is populated.
+		"ClienteResult": M{
+			"oneOf":       []any{ref("ClienteFound"), ref("ClienteNeedsSelection")},
+			"description": "When needs_selection is true, render a contract selector from options[].id_cliente; otherwise use cliente.",
+		},
+		"ClienteFound": object(M{
+			"needs_selection": M{"type": "boolean", "const": false},
+			"cliente":         ref("Cliente"),
+		}, "needs_selection", "cliente"),
+		"ClienteNeedsSelection": object(M{
+			"needs_selection": M{"type": "boolean", "const": true},
+			"options":         arr(ref("ContratoOption")),
+		}, "needs_selection", "options"),
+		"Plano": object(M{
+			"nome": str(), "valor": number(), "velocidade": str(), "descricao": str(),
+		}, "nome"),
+		"PlanosResult": object(M{"data": arr(ref("Plano"))}),
+		"Empresa": object(M{
+			"nome": str(), "cnpj": str(), "telefone": str(), "email": str(),
+			"endereco": str(), "site": str(),
+		}),
+		"Liberacao": object(M{"liberado": boolean(), "protocolo": str(), "liberado_ate": str(), "msg": str()}),
+		"Chamado":   object(M{"protocolo": str(), "msg": str()}),
+
+		// ── contacts ───────────────────────────────────────────────────────────
+		"ContactExternalID": object(M{"channel": str(), "external_id": str()}),
+		"Contact": object(M{
+			"id": str(), "tenant_id": str(), "name": str(), "phones": arr(str()),
+			"document": str(), "external_ids": arr(ref("ContactExternalID")),
+			"tags": arr(str()), "notes": str(), "created_at": dateTime(), "updated_at": dateTime(),
+		}),
 
 		// ── webhooks ───────────────────────────────────────────────────────────
 		"Webhook": object(M{

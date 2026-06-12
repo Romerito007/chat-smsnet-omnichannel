@@ -45,6 +45,8 @@ func (r *Repository) Update(ctx context.Context, c *entity.Contact) error {
 			"phone":      c.Phone,
 			"document":   c.Document,
 			"identities": toIdentityModels(c.Identities),
+			"tags":       c.Tags,
+			"notes":      c.Notes,
 			"updated_at": c.UpdatedAt,
 		}},
 	)
@@ -121,6 +123,8 @@ func toModel(c *entity.Contact) models.Contact {
 		Phone:      c.Phone,
 		Document:   c.Document,
 		Identities: toIdentityModels(c.Identities),
+		Tags:       c.Tags,
+		Notes:      c.Notes,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -141,6 +145,8 @@ func toEntity(m *models.Contact) *entity.Contact {
 		Phone:      m.Phone,
 		Document:   m.Document,
 		Identities: ids,
+		Tags:       m.Tags,
+		Notes:      m.Notes,
 		CreatedAt:  m.CreatedAt,
 		UpdatedAt:  m.UpdatedAt,
 	}

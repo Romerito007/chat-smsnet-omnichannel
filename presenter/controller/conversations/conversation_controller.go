@@ -209,3 +209,18 @@ func (c *Controller) ListMessages(w http.ResponseWriter, r *http.Request) {
 	})
 	middleware.WriteJSON(w, http.StatusOK, resp)
 }
+
+// ListEvents handles GET /v1/conversations/{id}/events — the lifecycle/automation
+// timeline, persisted separately from chat messages.
+func (c *Controller) ListEvents(w http.ResponseWriter, r *http.Request) {
+	page := middleware.PageFromRequest(r)
+	items, err := c.svc.ListEvents(r.Context(), chi.URLParam(r, "id"), page)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	resp := shared.NewPage(dto.NewEventResponses(items), page.Limit, func(e dto.EventResponse) shared.Cursor {
+		return shared.Cursor{CreatedAt: e.CreatedAt.UnixMilli(), ID: e.ID}
+	})
+	middleware.WriteJSON(w, http.StatusOK, resp)
+}

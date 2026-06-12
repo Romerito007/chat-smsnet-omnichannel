@@ -620,6 +620,15 @@ func (s *Service) ListMessages(ctx context.Context, conversationID string, page 
 	return s.messages.ListByConversation(ctx, conversationID, page.Normalize())
 }
 
+// ListEvents returns the conversation timeline (lifecycle/automation events),
+// which are persisted separately from chat messages. Cursor-paginated.
+func (s *Service) ListEvents(ctx context.Context, conversationID string, page shared.PageRequest) ([]*entity.ConversationEvent, error) {
+	if _, _, err := s.loadVisible(ctx, conversationID); err != nil {
+		return nil, err
+	}
+	return s.events.ListByConversation(ctx, conversationID, page.Normalize())
+}
+
 // SetTyping publishes a typing.started/stopped event to the conversation room.
 // Typing is ephemeral (not persisted); it only requires the actor to see the
 // conversation.
@@ -636,15 +645,26 @@ func (s *Service) SetTyping(ctx context.Context, conversationID string, on bool)
 		contracts.TypingPayload{ConversationID: conv.ID, UserID: ac.UserID})
 }
 
-// MarkRead records that the actor read the conversation and publishes a
-// message.read event to the conversation room.
+// MarkRead records that the actor read the conversation: it zeroes the unread
+// counter, stamps last_read_at, and publishes both a message.read receipt and a
+// conversation.updated (so the inbox reflects the cleared badge).
 func (s *Service) MarkRead(ctx context.Context, conversationID string) error {
 	conv, ac, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return err
 	}
+	now := s.clock.Now()
+	if conv.UnreadCount != 0 || conv.LastReadAt == nil {
+		conv.UnreadCount = 0
+		conv.LastReadAt = &now
+		conv.UpdatedAt = now
+		if err := s.conversations.Update(ctx, conv); err != nil {
+			return err
+		}
+		s.publishConversation(ctx, conv)
+	}
 	return s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID), contracts.RealtimeMessageRead,
-		contracts.ReadPayload{ConversationID: conv.ID, UserID: ac.UserID, ReadAt: s.clock.Now()})
+		contracts.ReadPayload{ConversationID: conv.ID, UserID: ac.UserID, ReadAt: now})
 }
 
 // EditMessage edits a message's text (soft edit). It sets edited_at and keeps the

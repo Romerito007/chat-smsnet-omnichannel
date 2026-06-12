@@ -229,6 +229,9 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 
 	conv.LastMessageAt = createdAt
 	conv.UpdatedAt = createdAt
+	// A new customer message increments the unread counter for agents; reset by
+	// MarkRead (POST /read).
+	conv.UnreadCount++
 	if err := s.conversations.Update(ctx, conv); err != nil {
 		return nil, err
 	}

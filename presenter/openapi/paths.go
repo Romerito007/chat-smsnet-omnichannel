@@ -67,6 +67,8 @@ func registerConversations(p *paths) {
 		params: idp, reqBody: body(ref("UpdateConversationRequest")), responses: M{"200": jsonResp("Updated", ref("Conversation"))}}))
 	p.add("GET", "/v1/conversations/{id}/messages", op(opConfig{tag: "conversations", summary: "List messages",
 		params: append([]M{pathParam("id", "conversation id")}, paginationParams()...), responses: M{"200": jsonResp("Message page", pageOf(ref("Message")))}}))
+	p.add("GET", "/v1/conversations/{id}/events", op(opConfig{tag: "conversations", summary: "List the lifecycle/automation timeline (separate from chat messages)",
+		params: append([]M{pathParam("id", "conversation id")}, paginationParams()...), responses: M{"200": jsonResp("Event page", pageOf(ref("ConversationEvent")))}}))
 	p.add("POST", "/v1/conversations/{id}/messages", op(opConfig{tag: "conversations", summary: "Send a message",
 		params: idp, reqBody: body(ref("SendMessageRequest")), responses: M{"201": jsonResp("Sent", ref("Message"))}}))
 	midp := []M{pathParam("id", "conversation id"), pathParam("mid", "message id")}
@@ -104,6 +106,10 @@ func registerConversations(p *paths) {
 	// conversation SLA
 	p.add("GET", "/v1/conversations/{id}/sla", op(opConfig{tag: "sla", summary: "SLA tracking for a conversation",
 		params: idp, responses: M{"200": jsonResp("Tracking", ref("SLATracking"))}}))
+
+	// contacts
+	p.add("GET", "/v1/contacts/{id}", op(opConfig{tag: "contacts", summary: "Get a contact (tenant-scoped)",
+		params: []M{pathParam("id", "contact id")}, responses: M{"200": jsonResp("Contact", ref("Contact")), "404": respRef("Error404")}}))
 }
 
 func registerChannels(p *paths) {
@@ -150,17 +156,17 @@ func registerIntegrations(p *paths) {
 
 	// external on-demand queries (smsnet-integrations) under a conversation
 	cidp := []M{pathParam("id", "conversation id")}
-	p.add("GET", "/v1/conversations/{id}/external/cliente", op(opConfig{tag: "providerhub", summary: "Customer lookup (read)",
-		params:    append([]M{pathParam("id", "conversation id")}, queryParam("id_cliente", "customer id"), queryParam("cpfcnpj", "document")),
-		responses: M{"200": jsonResp("Customer data", freeObject())}}))
+	p.add("GET", "/v1/conversations/{id}/external/cliente", op(opConfig{tag: "providerhub", summary: "Customer lookup (read); may need a contract selection",
+		params:    append([]M{pathParam("id", "conversation id")}, queryParam("id_cliente", "customer id (after a selection)"), queryParam("cpfcnpj", "document"), queryParam("phone", "phone"), queryParam("email", "email")),
+		responses: M{"200": jsonResp("Customer (or a contract-selection prompt)", ref("ClienteResult"))}}))
 	p.add("GET", "/v1/conversations/{id}/external/planos", op(opConfig{tag: "providerhub", summary: "Plans (read)",
-		params: cidp, responses: M{"200": jsonResp("Plans", freeObject())}}))
+		params: cidp, responses: M{"200": jsonResp("Plans", ref("PlanosResult"))}}))
 	p.add("GET", "/v1/conversations/{id}/external/empresa", op(opConfig{tag: "providerhub", summary: "Company info (read)",
-		params: cidp, responses: M{"200": jsonResp("Company", freeObject())}}))
+		params: cidp, responses: M{"200": jsonResp("Company", ref("Empresa"))}}))
 	p.add("POST", "/v1/conversations/{id}/external/liberacao", op(opConfig{tag: "providerhub", summary: "Trust-release a customer (write)",
-		params: cidp, reqBody: body(ref("LiberacaoRequest")), responses: M{"200": jsonResp("Result", freeObject())}}))
+		params: cidp, reqBody: body(ref("LiberacaoRequest")), responses: M{"200": jsonResp("Result", ref("Liberacao"))}}))
 	p.add("POST", "/v1/conversations/{id}/external/chamado", op(opConfig{tag: "providerhub", summary: "Open a support ticket (write)",
-		params: cidp, reqBody: body(ref("ChamadoRequest")), responses: M{"200": jsonResp("Result", freeObject())}}))
+		params: cidp, reqBody: body(ref("ChamadoRequest")), responses: M{"200": jsonResp("Result", ref("Chamado"))}}))
 
 	// webhooks
 	p.add("GET", "/v1/webhooks", op(opConfig{tag: "webhooks", summary: "List webhook subscriptions", params: paginationParams(),

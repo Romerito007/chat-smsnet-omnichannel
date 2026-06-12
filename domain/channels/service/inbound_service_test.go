@@ -267,6 +267,9 @@ func TestInbound_CreatesAndQueuesIntoDefaultSector(t *testing.T) {
 	if !fx.pub.has(convcontracts.RealtimeMessageCreated) || !fx.pub.has(convcontracts.RealtimeConversationUpdated) {
 		t.Error("expected realtime events")
 	}
+	if fx.convs.items[res.ConversationID].UnreadCount != 1 {
+		t.Errorf("inbound message should bump unread_count to 1, got %d", fx.convs.items[res.ConversationID].UnreadCount)
+	}
 }
 
 func TestInbound_AutomationChannel(t *testing.T) {

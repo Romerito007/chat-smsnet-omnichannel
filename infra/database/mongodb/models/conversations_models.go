@@ -14,6 +14,8 @@ type Conversation struct {
 	Priority      string     `bson:"priority"`
 	Tags          []string   `bson:"tags,omitempty"`
 	LastMessageAt time.Time  `bson:"last_message_at"`
+	UnreadCount   int        `bson:"unread_count,omitempty"`
+	LastReadAt    *time.Time `bson:"last_read_at,omitempty"`
 	ClosedAt      *time.Time `bson:"closed_at,omitempty"`
 }
 

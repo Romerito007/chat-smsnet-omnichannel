@@ -197,6 +197,53 @@ func TestCreate_DefaultsAndEvent(t *testing.T) {
 	}
 }
 
+func TestMarkRead_ResetsUnreadAndPublishesUpdate(t *testing.T) {
+	svc, cr, _, _, pub := newService(map[string]string{"s1": "t1"})
+	cr.items["conv1"] = &entity.Conversation{ID: "conv1", TenantID: "t1", SectorID: "s1", UnreadCount: 3}
+
+	if err := svc.MarkRead(adminCtx(), "conv1"); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+	got := cr.items["conv1"]
+	if got.UnreadCount != 0 {
+		t.Errorf("unread_count = %d, want 0", got.UnreadCount)
+	}
+	if got.LastReadAt == nil {
+		t.Error("last_read_at should be set")
+	}
+	var sawUpdated, sawRead bool
+	for _, e := range pub.events {
+		switch e.event {
+		case contracts.RealtimeConversationUpdated:
+			sawUpdated = true
+		case contracts.RealtimeMessageRead:
+			sawRead = true
+		}
+	}
+	if !sawUpdated {
+		t.Error("expected a conversation.updated publish reflecting the cleared badge")
+	}
+	if !sawRead {
+		t.Error("expected a message.read receipt publish")
+	}
+}
+
+func TestListEvents_ReturnsTimeline(t *testing.T) {
+	svc, cr, _, er, _ := newService(map[string]string{"s1": "t1"})
+	cr.items["conv1"] = &entity.Conversation{ID: "conv1", TenantID: "t1", SectorID: "s1"}
+	er.items = []*entity.ConversationEvent{
+		{ID: "e1", TenantID: "t1", ConversationID: "conv1", Type: entity.EventConversationAssigned},
+		{ID: "e2", TenantID: "t1", ConversationID: "conv1", Type: entity.EventAutomationDecision},
+	}
+	events, err := svc.ListEvents(adminCtx(), "conv1", shared.PageRequest{})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 timeline events, got %d", len(events))
+	}
+}
+
 func TestCreate_UnknownSector(t *testing.T) {
 	svc, _, _, _, _ := newService(map[string]string{})
 	_, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "ghost"})

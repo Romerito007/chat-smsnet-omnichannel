@@ -97,7 +97,25 @@ Publicados nos tópicos `conversation:{id}` **e** `inbox:{sectorId}`.
 | `conversation.tagged` | aplicação de tags | `{ conversation_id, tags }` |
 
 `ConversationPayload` = `{ id, tenant_id, contact_id, channel, sector_id, queue_id,
-status, assigned_to, priority, tags, last_message_at, updated_at }`.
+status, assigned_to, priority, tags, last_message_at, unread_count, last_read_at,
+updated_at }`.
+
+**Não-lido por conversa:** `unread_count` é incrementado a cada mensagem
+**inbound** (cliente) e **zerado** em `POST /v1/conversations/{id}/read` (que
+também grava `last_read_at`). Ambas as transições publicam `conversation.updated`,
+então o badge da inbox reflete em tempo real. (Alternativa equivalente para o
+cliente: comparar `last_read_at` com `last_message_at`.)
+
+### Timeline de ciclo de vida/automação — **não** são mensagens
+Os eventos estruturados de ciclo de vida (`conversation.assigned/transferred/
+enqueued/...`) e de automação (`automation.decision`, `automation.escalated`) são
+persistidos numa coleção **separada** (`conversation_events`, entidade
+`ConversationEvent`) — **não** como mensagens de sistema — e portanto **não**
+aparecem em `GET /v1/conversations/{id}/messages`. Eles são lidos por
+**`GET /v1/conversations/{id}/events`** (paginado por cursor). As *mensagens de
+sistema* visíveis no fio (ex.: avisos enviados via `SendSystemMessage`) são
+mensagens reais (`sender_type=system`, `message_type=system`) e **aparecem** em
+`GET messages`. Decisão registrada também em `docs/api-design.md`.
 
 ### Mensagens (`conversations`)
 Publicados no tópico `conversation:{id}` (`message.created` também em `inbox`).

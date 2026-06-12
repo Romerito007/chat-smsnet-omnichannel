@@ -14,4 +14,6 @@ type Contact struct {
 	Phone      string            `bson:"phone,omitempty"`
 	Document   string            `bson:"document,omitempty"`
 	Identities []ChannelIdentity `bson:"identities,omitempty"`
+	Tags       []string          `bson:"tags,omitempty"`
+	Notes      string            `bson:"notes,omitempty"`
 }

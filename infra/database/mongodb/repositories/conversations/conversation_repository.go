@@ -52,6 +52,8 @@ func (r *ConversationRepository) Update(ctx context.Context, c *entity.Conversat
 			"priority":        string(c.Priority),
 			"tags":            c.Tags,
 			"last_message_at": c.LastMessageAt,
+			"unread_count":    c.UnreadCount,
+			"last_read_at":    c.LastReadAt,
 			"updated_at":      c.UpdatedAt,
 			"closed_at":       c.ClosedAt,
 		}},
@@ -206,6 +208,8 @@ func convToModel(c *entity.Conversation) models.Conversation {
 		Priority:      string(c.Priority),
 		Tags:          c.Tags,
 		LastMessageAt: c.LastMessageAt,
+		UnreadCount:   c.UnreadCount,
+		LastReadAt:    c.LastReadAt,
 		ClosedAt:      c.ClosedAt,
 	}
 	m.ID = c.ID
@@ -228,6 +232,8 @@ func convToEntity(m *models.Conversation) *entity.Conversation {
 		Priority:      entity.Priority(m.Priority),
 		Tags:          m.Tags,
 		LastMessageAt: m.LastMessageAt,
+		UnreadCount:   m.UnreadCount,
+		LastReadAt:    m.LastReadAt,
 		CreatedAt:     m.CreatedAt,
 		UpdatedAt:     m.UpdatedAt,
 		ClosedAt:      m.ClosedAt,

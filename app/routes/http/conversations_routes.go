@@ -23,6 +23,7 @@ func registerConversationRoutes(r chi.Router, c *container.Container) {
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/", ctl.List)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}", ctl.Get)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}/messages", ctl.ListMessages)
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}/events", ctl.ListEvents)
 
 			// Create + manage.
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/", ctl.Create)

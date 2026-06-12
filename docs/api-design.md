@@ -115,11 +115,17 @@ GET    /tenant                     PATCH  /tenant            # settings do tenan
 
 ### contacts
 ```
-GET    /contacts                   POST   /contacts
-GET    /contacts/{id}              PATCH  /contacts/{id}     DELETE /contacts/{id}
-POST   /contacts/{id}/merge        # dedupe/merge
-GET    /contacts/{id}/conversations
+GET    /contacts/{id}              # implementado — leitura (contact.read), tenant-scoped
+GET    /contacts                   POST   /contacts        # design futuro
+PATCH  /contacts/{id}              DELETE /contacts/{id}    # design futuro
+POST   /contacts/{id}/merge        GET /contacts/{id}/conversations   # design futuro
 ```
+`GET /v1/contacts/{id}` → `Contact { id, tenant_id, name, phones[], document,
+external_ids[]{channel, external_id}, tags[], notes, created_at, updated_at }`.
+Só campos **locais** (nunca dados enriquecidos do provider). `phones[]` deriva do
+telefone primário hoje; `external_ids[]` vem das identidades por canal. Resumo do
+contato pode ser embutido na `Conversation` no futuro (`contact_summary`,
+opcional).
 
 ### sectors / queues
 ```
@@ -140,12 +146,23 @@ POST   /conversations/{id}/transfer         # transferir setor/fila/agente
 POST   /conversations/{id}/resolve          # resolver (+ reason)
 POST   /conversations/{id}/close            # fechar
 POST   /conversations/{id}/reopen
-GET    /conversations/{id}/messages          # timeline (keyset)
+GET    /conversations/{id}/messages          # mensagens do fio (keyset)
+GET    /conversations/{id}/events             # timeline de ciclo de vida/automação (keyset)
 POST   /conversations/{id}/messages          # enviar (text/template/attachment)
-POST   /conversations/{id}/messages/{mid}/read
+POST   /conversations/{id}/read              # marca lida → zera unread_count, grava last_read_at
 POST   /conversations/{id}/typing            # (também via WS)
-POST   /conversations/{id}/notes             # nota interna
+POST   /conversations/{id}/internal-notes    # nota interna
 ```
+**Não-lido:** `Conversation` expõe `unread_count` (incrementado por mensagem
+inbound do cliente) e `last_read_at` (gravado no `POST /read`); ambos refletem em
+`conversation.updated`.
+
+**Timeline vs mensagens (decisão):** eventos estruturados de ciclo de
+vida/automação/conexão são persistidos como `ConversationEvent` na coleção
+`conversation_events` — **não** como mensagens — e lidos por
+`GET /conversations/{id}/events`. *Mensagens de sistema* (`sender_type=system`,
+`message_type=system`), quando enviadas ao fio, são mensagens reais e aparecem em
+`GET /messages`. Ver também `docs/realtime-events.md`.
 
 ### conversationtools
 ```
@@ -199,6 +216,18 @@ GET    /conversations/{id}/external/empresa   # integration.read
 POST   /conversations/{id}/external/liberacao # {id_cliente} (integration.execute_action; auditado)
 POST   /conversations/{id}/external/chamado   # {id_cliente, subject, message} (integration.execute_action; auditado)
 ```
+**Customer 360 (tipado no OpenAPI):** as respostas têm schemas reais —
+`Cliente { nome, cpfcnpj, contrato_status_display, valor_check_out, faturas[] }`,
+`Fatura { valor, vencimento, link, linha_digitavel, pix }`,
+`Plano { nome, valor, velocidade, descricao }`,
+`Empresa { nome, cnpj, telefone, email, endereco, site }`.
+
+`external/cliente` retorna **`ClienteResult`**, modelado como **`oneOf`** para o
+front gerar o seletor de contrato:
+- `{ needs_selection: true, options: [{ id_cliente, label, endereco?, status? }] }`
+  → o cliente tem mais de um contrato; renderize um seletor e **re-consulte** com
+  `?id_cliente=<options[].id_cliente>` (este é o caso “needs_input”);
+- `{ needs_selection: false, cliente: Cliente }` → cliente resolvido.
 
 ### copilot
 ```

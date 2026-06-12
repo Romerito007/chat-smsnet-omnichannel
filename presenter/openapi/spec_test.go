@@ -127,6 +127,7 @@ func TestSpec_CoversEveryDomain(t *testing.T) {
 		{"/v1/sectors", "get"}, {"/v1/queues", "post"},
 		{"/v1/agents/presence", "get"}, {"/v1/agents/presence/status", "post"},
 		{"/v1/conversations", "get"}, {"/v1/conversations/{id}/messages", "post"},
+		{"/v1/conversations/{id}/events", "get"}, {"/v1/contacts/{id}", "get"},
 		{"/v1/conversations/{id}/messages/{mid}", "delete"}, {"/v1/conversations/{id}/close", "post"},
 		{"/v1/conversations/{id}/assign", "post"}, {"/v1/conversations/{id}/transfer", "post"},
 		{"/v1/conversations/{id}/tags", "post"}, {"/v1/conversations/{id}/sla", "get"},
@@ -162,6 +163,38 @@ func TestSpec_CoversEveryDomain(t *testing.T) {
 		if _, ok := item[w.method]; !ok {
 			t.Errorf("missing %s %s", strings.ToUpper(w.method), w.path)
 		}
+	}
+}
+
+// TestSpec_ContractAdditions verifies this change's new shapes are typed.
+func TestSpec_ContractAdditions(t *testing.T) {
+	doc := Build()
+	comps, _ := doc["components"].(M)
+	schemas, _ := comps["schemas"].(M)
+
+	// Contact + Customer-360 are typed (no longer additionalProperties:true).
+	for _, name := range []string{"Contact", "ContactExternalID", "Cliente", "Fatura", "Plano", "Empresa", "ClienteResult", "ConversationEvent"} {
+		if _, ok := schemas[name]; !ok {
+			t.Errorf("missing schema %q", name)
+		}
+	}
+	// Cliente carries faturas[]; ClienteResult is a oneOf (contract selector).
+	cliente, _ := schemas["Cliente"].(M)
+	props, _ := cliente["properties"].(M)
+	if _, ok := props["faturas"]; !ok {
+		t.Error("Cliente must include faturas[]")
+	}
+	if _, ok := schemas["ClienteResult"].(M)["oneOf"]; !ok {
+		t.Error("ClienteResult must be modeled as a oneOf")
+	}
+	// Conversation exposes unread_count + last_read_at.
+	conv, _ := schemas["Conversation"].(M)
+	cprops, _ := conv["properties"].(M)
+	if _, ok := cprops["unread_count"]; !ok {
+		t.Error("Conversation must expose unread_count")
+	}
+	if _, ok := cprops["last_read_at"]; !ok {
+		t.Error("Conversation must expose last_read_at")
 	}
 }
 
