@@ -1,8 +1,7 @@
 // Package mcp is the Model Context Protocol client over the Streamable HTTP
 // transport (JSON-RPC 2.0 over HTTP POST, JSON or SSE responses). It discovers a
 // server's tools and invokes them generically — it never knows any tool name, so
-// adding a new MCP server (smsnet queries/operations, a future OLT/monitoring
-// system) is pure configuration.
+// adding a new MCP server is pure configuration.
 package mcp
 
 import (
