@@ -53,6 +53,7 @@ func AttachmentService(c *container.Container) *aservice.Service {
 			UploadTTL:           cfg.UploadTTL,
 			DownloadTTL:         cfg.DownloadTTL,
 			DownloadBaseURL:     cfg.BaseURL,
+			SigningSecret:       cfg.SigningSecret,
 		},
 	)
 }

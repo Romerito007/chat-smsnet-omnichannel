@@ -353,4 +353,10 @@ func registerPrivacyAttachments(p *paths) {
 		public: true, params: []M{pathParam("token", "signed upload token")},
 		reqBody:   M{"required": true, "content": M{"application/octet-stream": M{"schema": M{"type": "string", "format": "binary"}}}},
 		responses: M{"200": emptyResp("Stored")}}))
+	// Integration rail: public, JWT-less, signed media download (the data_url in
+	// the outbound ChannelOutboundMessage points here). Token is the only credential.
+	p.add("GET", "/v1/channel-media/{token}", op(opConfig{tag: "channels",
+		summary: "Download outbound media via a signed token (integration rail; no JWT)",
+		public:  true, params: []M{pathParam("token", "signed, expiring media token")},
+		responses: M{"200": M{"description": "The file"}, "302": emptyResp("Redirect to storage")}}))
 }

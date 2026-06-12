@@ -3803,6 +3803,31 @@ paths:
             summary: Update canned response
             tags:
                 - conversationtools
+    /v1/channel-media/{token}:
+        get:
+            operationId: getChannelMediaByToken
+            parameters:
+                - description: signed, expiring media token
+                  in: path
+                  name: token
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: The file
+                "302":
+                    description: Redirect to storage
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            security: []
+            summary: Download outbound media via a signed token (integration rail; no JWT)
+            tags:
+                - channels
     /v1/channels:
         get:
             operationId: getChannels

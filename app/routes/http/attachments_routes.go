@@ -29,4 +29,9 @@ func registerAttachmentRoutes(r chi.Router, c *container.Container) {
 
 	// Public, signed-token blob sink for the local backend ("direct upload").
 	r.Put("/attachments/blobs/{token}", ctl.BlobUpload)
+
+	// Public, signed-token media download for the INTEGRATION rail (an external
+	// system fetching outbound media with no JWT). The HMAC-signed, expiring token
+	// is the only credential — strictly separate from the JWT-gated download above.
+	r.Get("/channel-media/{token}", ctl.ChannelMedia)
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,6 +184,40 @@ func TestConfirm_LinksMessageAndMarksReady(t *testing.T) {
 	}
 	if att.SignedURL != "http://api/v1/attachments/a1/download" {
 		t.Errorf("unexpected download url: %q", att.SignedURL)
+	}
+}
+
+func TestIntegrationMediaURL_SignedRoundTrip(t *testing.T) {
+	repo := newRepo()
+	repo.items["a1"] = &entity.Attachment{
+		ID: "a1", TenantID: "t1", ConversationID: "cv1", Status: entity.StatusReady,
+		StorageKey: "attachments/t1/cv1/a1/nota.ogg", ContentType: "audio/ogg", Filename: "nota.ogg",
+	}
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, &fakeStorage{provider: "local"},
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t"})
+
+	url, err := svc.IntegrationMediaURL(ctxAuth(authz.ScopeAll, nil, "u1"), "a1")
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	const prefix = "http://api/v1/channel-media/"
+	if !strings.HasPrefix(url, prefix) {
+		t.Fatalf("integration url = %q, want %s...", url, prefix)
+	}
+	token := strings.TrimPrefix(url, prefix)
+
+	// Valid token serves the bytes with NO JWT and NO tenant context.
+	res, err := svc.DownloadSigned(token)
+	if err != nil {
+		t.Fatalf("download signed: %v", err)
+	}
+	if string(res.Data) != "filebytes" || res.ContentType != "audio/ogg" {
+		t.Errorf("unexpected download: data=%q content_type=%q", res.Data, res.ContentType)
+	}
+	// A tampered signature is rejected.
+	if _, err := svc.DownloadSigned(token + "x"); apperror.From(err).Code != apperror.CodeForbidden {
+		t.Errorf("tampered token must be forbidden, got %v", err)
 	}
 }
 

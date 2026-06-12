@@ -5,8 +5,13 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +34,11 @@ type Config struct {
 	// DownloadBaseURL is the public API origin used to build the stable, access-
 	// gated download URL stored on the record.
 	DownloadBaseURL string
+	// SigningSecret signs the public, JWT-less channel-media URLs used on the
+	// INTEGRATION rail (outbound delivery to an external system).
+	SigningSecret string
+	// MediaURLTTL bounds the signed channel-media URL lifetime.
+	MediaURLTTL time.Duration
 }
 
 // Service implements the attachments use cases.
@@ -55,7 +65,95 @@ func NewService(repo repository.Repository, storage contracts.Storage, conversat
 	if cfg.DownloadTTL <= 0 {
 		cfg.DownloadTTL = 5 * time.Minute
 	}
+	if cfg.MediaURLTTL <= 0 {
+		cfg.MediaURLTTL = 24 * time.Hour
+	}
 	return &Service{repo: repo, storage: storage, conversations: conversations, messages: messages, clock: clock, cfg: cfg}
+}
+
+// ── integration rail: signed, JWT-less channel-media URL ───────────────────────
+
+// IntegrationMediaURL builds a signed, public channel-media URL for an attachment,
+// for delivery to an EXTERNAL system on the integration rail (the internal
+// download URL is JWT-gated and unusable by an integrator). The token encodes the
+// storage key + content-type + filename + expiry, HMAC-signed, so the public
+// handler serves the object without a JWT or DB lookup. Tenant-scoped lookup.
+func (s *Service) IntegrationMediaURL(ctx context.Context, attachmentID string) (string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return "", err
+	}
+	att, err := s.repo.FindByID(ctx, strings.TrimSpace(attachmentID))
+	if err != nil {
+		return "", err
+	}
+	if att.Status != entity.StatusReady {
+		return "", apperror.Conflict("attachment upload not confirmed")
+	}
+	exp := s.clock.Now().Add(s.cfg.MediaURLTTL).UnixMilli()
+	token := s.signMediaToken(att.StorageKey, att.ContentType, att.Filename, exp)
+	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token, nil
+}
+
+// DownloadSigned resolves a signed channel-media token (no JWT, no tenant): it
+// verifies the signature + expiry and serves the object from storage.
+func (s *Service) DownloadSigned(token string) (contracts.DownloadResult, error) {
+	key, contentType, filename, err := s.verifyMediaToken(token)
+	if err != nil {
+		return contracts.DownloadResult{}, err
+	}
+	res, err := s.storage.Download(key, filename, s.cfg.DownloadTTL)
+	if err != nil {
+		return contracts.DownloadResult{}, err
+	}
+	if res.ContentType == "" {
+		res.ContentType = contentType
+	}
+	if res.Filename == "" {
+		res.Filename = filename
+	}
+	return res, nil
+}
+
+func (s *Service) signMediaToken(key, contentType, filename string, expMillis int64) string {
+	payload := fmt.Sprintf("%d|%s|%s|%s", expMillis,
+		base64.RawURLEncoding.EncodeToString([]byte(contentType)),
+		base64.RawURLEncoding.EncodeToString([]byte(filename)),
+		base64.RawURLEncoding.EncodeToString([]byte(key)))
+	b64 := base64.RawURLEncoding.EncodeToString([]byte(payload))
+	return b64 + "." + s.hmacHex(b64)
+}
+
+func (s *Service) verifyMediaToken(token string) (key, contentType, filename string, err error) {
+	bad := apperror.Forbidden("invalid or expired media token")
+	parts := strings.SplitN(token, ".", 2)
+	if len(parts) != 2 || !hmac.Equal([]byte(parts[1]), []byte(s.hmacHex(parts[0]))) {
+		return "", "", "", bad
+	}
+	raw, derr := base64.RawURLEncoding.DecodeString(parts[0])
+	if derr != nil {
+		return "", "", "", bad
+	}
+	f := strings.SplitN(string(raw), "|", 4)
+	if len(f) != 4 {
+		return "", "", "", bad
+	}
+	expMillis, perr := strconv.ParseInt(f[0], 10, 64)
+	if perr != nil || s.clock.Now().After(time.UnixMilli(expMillis)) {
+		return "", "", "", bad
+	}
+	ct, _ := base64.RawURLEncoding.DecodeString(f[1])
+	fn, _ := base64.RawURLEncoding.DecodeString(f[2])
+	k, kerr := base64.RawURLEncoding.DecodeString(f[3])
+	if kerr != nil {
+		return "", "", "", bad
+	}
+	return string(k), string(ct), string(fn), nil
+}
+
+func (s *Service) hmacHex(payload string) string {
+	mac := hmac.New(sha256.New, []byte(s.cfg.SigningSecret))
+	_, _ = mac.Write([]byte(payload))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // RequestUploadURL validates the request, reserves a pending attachment and

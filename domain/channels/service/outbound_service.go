@@ -32,6 +32,7 @@ type OutboundService struct {
 	clock         shared.Clock
 	maxAttempts   int
 	notifier      shared.Notifier
+	media         chcontracts.IntegrationMediaURLBuilder
 }
 
 // SetNotifier wires the user notifier. Optional: when unset, channel delivery
@@ -40,6 +41,34 @@ func (s *OutboundService) SetNotifier(n shared.Notifier) {
 	if n != nil {
 		s.notifier = n
 	}
+}
+
+// SetMediaURLBuilder wires the integration-rail signed media URL builder, so
+// outbound attachments are delivered as JWT-less, signed/public URLs an external
+// system can fetch. Optional: when unset, the attachment URL is sent as-is.
+func (s *OutboundService) SetMediaURLBuilder(b chcontracts.IntegrationMediaURLBuilder) {
+	if b != nil {
+		s.media = b
+	}
+}
+
+// integrationAttachments swaps each hosted attachment's URL (internal, JWT-gated)
+// for a signed, public channel-media URL the external system can fetch. External
+// (non-hosted, id-less) attachments keep their original URL.
+func (s *OutboundService) integrationAttachments(ctx context.Context, atts []conventity.Attachment) []conventity.Attachment {
+	if s.media == nil {
+		return atts
+	}
+	out := make([]conventity.Attachment, len(atts))
+	for i, a := range atts {
+		if a.ID != "" {
+			if u, err := s.media.IntegrationMediaURL(ctx, a.ID); err == nil && u != "" {
+				a.URL = u
+			}
+		}
+		out[i] = a
+	}
+	return out
 }
 
 // NewOutboundService builds the service.
@@ -136,7 +165,7 @@ func (s *OutboundService) Deliver(ctx context.Context, deliveryID string) error 
 		ExternalContactID: recipient.ExternalID,
 		Contact:           recipient,
 		Text:              message.Text,
-		Attachments:       message.Attachments,
+		Attachments:       s.integrationAttachments(ctx, message.Attachments),
 		Metadata:          message.Metadata,
 	})
 	if err != nil {

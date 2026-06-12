@@ -68,6 +68,8 @@ func OutboundService(c *container.Container) *channelservice.OutboundService {
 		clock,
 	)
 	svc.SetNotifier(NotificationEnqueuer(c))
+	// Outbound integration media is delivered as signed, public (JWT-less) URLs.
+	svc.SetMediaURLBuilder(AttachmentService(c))
 	return svc
 }
 

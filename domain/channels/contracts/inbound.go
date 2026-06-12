@@ -41,6 +41,14 @@ type InboundAttachmentStore interface {
 	StoreInbound(ctx context.Context, conversationID, filename, contentType string, data []byte) (entity.Attachment, error)
 }
 
+// IntegrationMediaURLBuilder resolves a signed, JWT-less public URL for an
+// attachment, used on the INTEGRATION rail (outbound delivery to an external
+// system, which cannot use the internal JWT-gated download URL). Implemented by
+// the attachments service.
+type IntegrationMediaURLBuilder interface {
+	IntegrationMediaURL(ctx context.Context, attachmentID string) (string, error)
+}
+
 // InboundResult is returned by the inbound handler.
 type InboundResult struct {
 	ConversationID string `json:"conversation_id"`

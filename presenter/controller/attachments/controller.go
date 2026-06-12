@@ -82,18 +82,36 @@ func (c *Controller) Download(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	if res.RedirectURL != "" {
-		http.Redirect(w, r, res.RedirectURL, http.StatusFound)
+	serveDownload(w, r, res.RedirectURL, res.ContentType, res.Filename, res.Data)
+}
+
+// ChannelMedia handles the public, JWT-less GET /v1/channel-media/{token}: it
+// serves an attachment to an EXTERNAL integration system via a signed,
+// time-limited token (the integration rail — no JWT, no conversation-access
+// check; the signature is the credential).
+func (c *Controller) ChannelMedia(w http.ResponseWriter, r *http.Request) {
+	res, err := c.svc.DownloadSigned(chi.URLParam(r, "token"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
 		return
 	}
-	if res.ContentType != "" {
-		w.Header().Set("Content-Type", res.ContentType)
+	serveDownload(w, r, res.RedirectURL, res.ContentType, res.Filename, res.Data)
+}
+
+// serveDownload streams bytes or 302-redirects to a presigned URL.
+func serveDownload(w http.ResponseWriter, r *http.Request, redirectURL, contentType, filename string, data []byte) {
+	if redirectURL != "" {
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
 	}
-	if res.Filename != "" {
-		w.Header().Set("Content-Disposition", "attachment; filename=\""+res.Filename+"\"")
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	if filename != "" {
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(res.Data)
+	_, _ = w.Write(data)
 }
 
 // BlobUpload handles PUT /v1/attachments/blobs/{token} for the local backend. The
