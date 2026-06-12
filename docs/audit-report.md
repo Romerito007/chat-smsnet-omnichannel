@@ -1,447 +1,264 @@
-# Relatório de Auditoria — Backend `chat-smsnet-omnichannel`
+# Auditoria de backend — chat-smsnet-omnichannel
 
-> **Papel:** Auditor backend sênior Go. **Escopo:** conformidade com a arquitetura
-> e os contratos em `/docs`; **nenhuma regra de negócio foi alterada**. Este
-> documento é a única escrita produzida pela auditoria.
->
-> **Data:** 2026-06-11 · **Commit/branch:** `claude/admiring-knuth-2wk8xd`
->
-> **Legenda de status:** `OK` · `PARCIAL` · `FALTANDO`
-> **Severidade:** crítico · alto · médio · baixo
+> Auditoria recurso-por-recurso contra `/docs` e contra o código real.
+> Metodologia: leitura/grep do código-fonte (a documentação **não** foi tomada
+> como verdade — onde diverge, o código prevalece e a divergência virou achado).
+> Nenhum arquivo de código foi alterado; o único arquivo escrito é este relatório.
+> Data: 2026-06-12. Branch: `claude/admiring-knuth-2wk8xd`.
 
 ---
 
-## 0. Veredito executivo
+## 1. Veredito executivo
 
-| Eixo | Status | Severidade do gap |
-|------|--------|-------------------|
-| Build / vet / testes | **OK** (0 falhas) | — |
-| Arquitetura em camadas (domain/infra/presenter/app) | **OK** (desvios menores) | baixo |
-| Isolamento por `tenant_id` (sempre do JWT) | **OK** | — |
-| RBAC + escopo de setor nas rotas | **OK** | baixo |
-| Asynq (handlers, periódicos, retry/backoff/dead-letter) | **OK** | baixo |
-| Constraints providerhub/monitoring (sem payload externo, segredos cifrados) | **OK** | — |
-| Sem chatbot / flow builder; automation só integra flow externo | **OK** | — |
-| Copilot: provider por tenant + gates `allow_*_data` + AILog | **OK** | — |
-| Inbound: idempotência + sem enriquecimento por provedor | **OK** | — |
-| Padrões transversais (cursor, envelope, idempotency, OTel, seed) | **OK** | — |
-| Eventos realtime vs `docs/realtime-events.md` | **PARCIAL** | médio |
-| Mensagens: soft-delete operável | **PARCIAL** | médio |
-| Testes de controllers/presenters | **PARCIAL** (ausentes) | médio |
-| Domínio `contacts` sem camada presenter (sem API REST própria) | **PARCIAL** | baixo |
+| # | Eixo | Status | Severidade do gap |
+|---|------|--------|-------------------|
+| 1 | Build / vet / test / lint verdes | **OK** | — |
+| 1b | Cobertura por pacote (serviços/controllers) | **PARCIAL** | médio (16 controllers sem teste) |
+| 2 | Camadas (domain puro, repo iface em domain, BSON em models) | **OK** | baixo (2 ressalvas pontuais) |
+| 3 | Isolamento multi-tenant + RBAC | **OK** | — (exceções todas legítimas) |
+| 4 | Auth/conta (signup→owner, reconcile aditivo, refresh rotativo, /me) | **OK** | — |
+| 5 | Conversas/mensagens (lifecycle, nota interna, soft edit/delete, unread, timeline) | **OK** | — |
+| 6 | Realtime (eventos 1:1 com doc, handshake /realtime/ws + /ws, subscribe gated) | **OK** | — |
+| 7 | Canais sem JWT (inbound_token hash, rotate, X-Inbound-Token const-time, rate limit) | **OK** | — |
+| 8 | providerhub (on-demand, has_*, ClienteResult oneOf, ações auditadas) | **OK** | — |
+| 9 | MCP/copilot (tools dinâmicas, write→approval, gate antes do provider, AILog limpo) | **OK** | baixo (superfície monitoring/financial morta) |
+| 10 | contacts (CRM tenant-scoped, dedup→409, auditado, campos locais) | **OK** | — |
+| 11 | Asynq (handlers/periódicos, retry/backoff/dead-letter, multi-tenant) | **OK** | — |
+| 12 | Segredos (AES-GCM, nada de plaintext/decrypt em presenter, exibido 1x) | **OK** | — |
+| 13 | Transversais (cursor, envelope, Idempotency-Key, request_id, rate limit, OTel, CORS, RUN_ROLE) | **OK** | baixo (CORS expõe header legado) |
+| 14 | LGPD/auditoria (export/anonymize/retention, audit com actor/ip/request_id) | **OK** | — |
+| L | **Resquícios legados** | **PARCIAL** | médio (4 itens acionáveis) |
 
-**Conclusão:** a implementação adere fortemente à arquitetura e às restrições de
-segurança mais sensíveis (multi-tenant, RBAC, segredos, providerhub/monitoring,
-LGPD, automação externa). Os achados abertos são de **conformidade funcional e
-cobertura de testes**, não há gap **crítico/alto** de segurança.
-
----
-
-## 1. Build & Testes (execução obrigatória)
-
-| Comando | Resultado | Observação |
-|---------|-----------|------------|
-| `go build ./...` | **OK** — exit 0, sem saída | Compila inteiro |
-| `go vet ./...` | **OK** — exit 0, sem saída | Sem diagnósticos |
-| `go test ./...` | **OK** — **0 FAIL**, 36 pacotes com testes `ok` | Sem falhas |
-| Linter dedicado | **N/A** | Não há config `golangci-lint`/`.golangci.yml` nem alvo no `Makefile` |
-
-**Cobertura de testes (item 14):**
-- 33 arquivos `_test.go` em `domain/`, cobrindo praticamente todos os serviços:
-  auth, iam, contacts, sectors, queues, presence, conversations, conversationtools,
-  routing, channels, automation, providerhub, monitoring, copilot, sla, csat,
-  webhooks, notifications, businesshours, search, privacy, attachments, reports +
-  `shared`, `apperror`, `maintenance`, `businesshours/entity`.
-- Testes de integração ao vivo (Mongo) sob a tag `e2e`: `privacy` e `attachments`.
-- **Gaps:** `domain/audit` **sem teste de serviço**; **nenhum** teste em
-  `presenter/controller/*` (apenas `presenter/middleware/auth_context_test.go`,
-  `presenter/http/health_handler_test.go`, `presenter/websocket/handler_test.go`).
-  → Severidade **médio**: o enunciado pede testes em "serviços/controllers
-  principais"; os serviços estão cobertos, os controllers não.
+**Resumo:** o backend está sólido, coeso e alinhado com a documentação nos 14
+eixos. **Não há falhas de build/test/lint e nenhuma falha crítica de segurança
+multi-tenant.** Os achados são: (a) **legado morto** (middleware `tenant_context`
+que confia em `X-Tenant-Id`, env `MONITORING_RATE_PER_MINUTE` órfã, header
+`X-Tenant-Id` no CORS, superfície de copilot `monitoring/financial` desconectada);
+(b) **deriva de documentação** em `api-design.md` (endpoints aspiracionais que não
+existem no router); (c) **cobertura de teste** ausente em 16 controllers.
 
 ---
 
-## 2. Camadas por domínio (item 1)
+## 2. Saída literal de build / vet / test / lint
 
-Matriz de presença de camadas (`Y` presente, `—` ausente; notas corrigem
-falsos-negativos de nomenclatura de arquivo):
-
-| Domínio | entity | contracts | repo iface | service | model BSON | repo Mongo | DTO | controller | rotas | Status |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|---|
-| tenant | Y | — | Y | Y | inline | Y | Y | Y | Y | OK |
-| auth | Y | Y | Y | Y | `auth_models.go` | Y | Y | Y | Y | OK |
-| iam | Y | Y | Y | Y | `identity_models.go` | Y | Y | Y | Y | OK |
-| contacts | Y | Y | Y | Y | `contacts_models.go` | Y | **—** | **—** | **—** | PARCIAL |
-| sectors | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| queues | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| presence | Y | Y | Y | Y | Redis | Y | Y | Y | Y | OK |
-| conversations | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| conversationtools | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| routing | n/a | Y | n/a | Y | n/a | n/a | Y | Y | Y | OK (opera sobre conversations) |
-| channels | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| automation | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| providerhub | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| monitoring | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| copilot | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| sla | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| csat | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| webhooks | Y | Y | Y | Y | `webhook_models.go` | Y | Y | Y | `webhook_routes.go` | OK |
-| notifications | Y | Y | Y | Y | `notification_models.go` | Y | Y | Y | Y | OK |
-| businesshours | Y | Y | Y | Y | Y | Y | Y | Y | Y | OK |
-| search | n/a | Y | Y | Y | n/a | Y | Y | Y | Y | OK (indexa dados de outros) |
-| privacy | Y | Y | Y | Y | inline no repo | Y | Y | Y | Y | OK |
-| audit | Y | — | Y | Y | inline no repo | Y | Y | Y | em `privacy_routes.go` | OK |
-| attachments | Y | Y | Y | Y | inline no repo | Y | Y | Y | Y | OK |
-| realtime | infra (`infra/realtime`) + WS (`presenter/websocket`) | — | — | — | — | — | — | — | — | OK (camada de transporte) |
-
-**Achados:**
-- **`contacts` sem camada presenter** (`presenter/contracts/contacts`,
-  `presenter/controller/contacts`, `app/routes/http/contacts_routes.go` ausentes).
-  Contatos são criados via `UpsertFromInbound` (channels/inbound) e lidos via
-  `search` e no contexto da conversa; **não há CRUD REST de contato** apesar de
-  existirem permissões `contact.read`/`contact.view_*`. → **PARCIAL / baixo**
-  (decisão de design plausível, mas diverge do molde por-domínio).
-- **BSON inline** em `privacy`, `audit`, `attachments` e `tenant`: a struct BSON
-  vive no arquivo do repositório em vez de `models/<X>_models.go`. → **baixo**
-  (consistência de convenção; sem impacto funcional).
-- Nomes de arquivo no singular (`webhook_*`, `notification_*`, `identity_*`) e
-  rota de `audit` montada em `privacy_routes.go` — **conformes**, apenas fora do
-  padrão `<X>_…`.
-
----
-
-## 3. Isolamento multi-tenant (item 2) — **OK**
-
-- **Tenant sempre do JWT, nunca do cliente.**
-  `presenter/middleware/auth_context.go:19-20,44` — "tenant taken exclusively from
-  the signed token — never from a client header"; `ctx = shared.WithTenant(ctx,
-  claims.TenantID)`. `app/routes/http/router.go:31-32` confirma que não há
-  middleware global de tenant por header.
-- `presenter/middleware/tenant_context.go` (header `X-Tenant-Id`) é **legado
-  pré-auth e NÃO é usado nas rotas protegidas**; documentado como substituído pela
-  claim verificada.
-- **Todos os repositórios de produção filtram por `tenant_id`** via
-  `shared.RequireTenant(ctx)`/`TenantFrom(ctx)` (≈37 repos verificados).
-  Exceções legítimas, não-multi-tenant:
-  - `repositories/auth/refresh_token_repository.go` — `FindByHash` é lookup
-    pré-auth por hash não-adivinhável (comentado); `RevokeAllForUser` filtra tenant.
-  - `repositories/tenant/tenant_repository.go` — registro de tenants (sistema).
-  - `repositories/search/mappers.go` — só funções de mapeamento, sem query.
-
-> Sem brechas de isolamento. Índices `(tenant_id, …)` reforçam o filtro
-> (`migrations/0001_baseline_indexes.go`).
-
----
-
-## 4. RBAC + escopo de setor (item 3) — **OK**
-
-- **20 de 23** grupos de rotas aplicam `middleware.AuthContext` **e**
-  `middleware.RequirePermission(...)`. Exemplos: iam→`UserManage`,
-  sectors/businesshours/conversationtools(writes)→`SectorManage`,
-  conversations→por ação (`ConversationRead/Assign/Close`, `MessageSend`),
-  routing→`ConversationAssign`/`Transfer`, channels→`ChannelManage`,
-  webhooks→`WebhookManage`, copilot→`CopilotConfigure`/`CopilotUse`,
-  reports→`ReportView`/`ReportExport`, privacy→`PrivacyManage`, audit→`AuditView`.
-- **3 grupos** (`presence`, `notifications`, `attachments`) usam só `AuthContext`
-  e impõem a autorização na camada de serviço (recursos do próprio usuário /
-  acesso à conversa). Documentado em comentário. → **OK / baixo** (aceitável;
-  recomendável tornar explícito).
-- **Endpoints públicos** propositais com credencial alternativa: inbound/receipts
-  (assinatura), submissão CSAT (token), download de privacy e blob de attachments
-  (token HMAC assinado).
-- **Escopo de setor** aplicado no serviço: `domain/authz/context.go`
-  (`CanAccessSector`, `ScopeAll`/`ScopeOwn`); `conversations` usa `visibleTo`/
-  `loadVisible` retornando **404** (evita vazamento de existência). Papéis padrão:
-  owner/admin=`ScopeAll`, agent=`ScopeOwn` (`domain/authz/authz.go`).
-
----
-
-## 5. Eventos realtime (item 4) — **PARCIAL** · médio
-
-Publicados a partir de 8+ serviços (conversations, channels, routing, sla,
-presence, copilot, notifications, inbound). Constantes em
-`domain/conversations/contracts/events.go`.
-
-Comparação com `docs/realtime-events.md`:
-
-| Evento (doc) | Publicado? | Evidência / observação |
-|---|---|---|
-| `conversation.created` | **—** | criação publica `conversation.updated` |
-| `conversation.updated` | ✅ | `conversation_service.go` (RealtimeConversationUpdated, 10 usos) |
-| `conversation.assigned` | ✅ | `routing_service.go` |
-| `conversation.transferred` | ✅ | `routing_service.go` |
-| `conversation.resolved` | **—** | fecha emitindo `conversation.updated` |
-| `conversation.closed` | **—** | idem |
-| `conversation.reopened` | **—** | idem |
-| `message.created` | ✅ | conversations/inbound |
-| `message.read` | ✅ | conversations + receipt |
-| `message.status` | ⚠️ | dividido em `message.sent/delivered/read/failed` (mais granular que o doc) |
-| `typing` | ✅ | `typing.started/stopped` |
-| `presence.changed` | ✅ | `presence_service.go` |
-| `queue.stats` | **—** | nenhum publisher em `domain/queues` |
-| `sla.warning` / `sla.breached` | ✅ | `sla_service.go` |
-| `copilot.suggestion` | ⚠️ | código emite `copilot.suggestion_completed` (nome divergente) |
-| `automation.updated` | **—** | automação reusa `conversation.updated`/`message.created` |
-| `notification.created` | ✅ | `notifications/service.go` |
-
-**Achado:** eventos de ciclo de vida de conversa (`created/closed/resolved/
-reopened`), `queue.stats` e `automation.updated` **não são emitidos com os nomes
-especificados** — um frontend que assine esses nomes não os receberá. Sem impacto
-de segurança; **conformidade de contrato realtime**. → **médio**.
-
----
-
-## 6. Jobs Asynq (item 5) — **OK**
-
-**Handlers** (`app/start_routines/bootstrap_workers.go`): `automation.invoke`,
-`automation.timeout`, `channel.deliver`, `channel.retry`, `webhook.deliver`,
-`webhook.retry`, `notification.send`, `notification.email`, `csat.send`,
-`csat.expire`, `privacy.export`. Periódicos:
-`chat.close_inactive_conversations`, `notifications.cleanup`,
-`channels.health_check`, `audit.compact`, `privacy.retention`, `reports.snapshot`,
-`sla.check`.
-
-**Scheduler** (`bootstrap_scheduler.go`): os 7 crons exigidos +
-`notifications.cleanup` e `privacy.retention`. → **OK** (cobre o conjunto pedido:
-chat.close_inactive_conversations, sla.check, reports.snapshot, audit.compact,
-channels.health_check).
-
-**Retry / backoff / dead-letter:**
-- Canais: `domain/channels/service/outbound_service.go` — `defaultMaxAttempts=5`,
-  backoff exponencial `1<<attempt` cap 300s (`backoff.go`); Asynq com
-  `MaxRetry(0)` (o domínio é dono do retry, reagenda via `ProcessIn`). Esgotado →
-  `DeliveryFailed` + evento `message.failed` (sem fila DLQ; estado terminal).
-- Webhooks: `delivery_service.go` — `defaultMaxAttempts=6`, backoff exponencial
-  cap 300s; **dead-letter** explícito (`status = DeliveryDead`, `LastError`,
-  `NextRetryAt` limpo). Rate-limit reagenda sem consumir tentativa.
-
-> Observação (baixo): canais não têm DLQ formal — usam status `failed` terminal +
-> evento. Aceitável; webhooks têm o `dead` state mais completo.
-
----
-
-## 7. Canais — delivery_status (item 6) — **OK**
-
-`domain/channels/entity/outbound_delivery.go`: enum `pending/sent/delivered/read/
-failed` com `deliveryRank` garantindo transições **forward-only** e idempotentes.
-`outbound_service.go`: `pending→sent` no envio (publica `message.sent`);
-`sent→delivered`/`read` via receipt (`Advances` guarda ordem); `→failed` após
-máx. tentativas ou receipt de erro (publica `message.failed`). Receipts
-idempotentes por `FindByExternalMessageID`.
-
----
-
-## 8. Mensagens (item 7) — **PARCIAL** · médio
-
-- **Nota interna não vai ao cliente:** `AddInternalNote` cria mensagem com
-  `Direction = DirectionInternal`; webhook outbound exclui notas
-  (`conversation_service.go:309-344,639`). → **OK**.
-- **Fechamento com `close_reason.requires_note=true` exige `note`:**
-  `conversation_service.go:361-371` consulta `closeReasons.RequiresNote` e retorna
-  `validation` se a nota faltar; política em
-  `conversationtools/service/close_reason_service.go`. → **OK**.
-- **Soft-delete (`edited_at`/`deleted_at`):** o modelo suporta — campos
-  `EditedAt`/`DeletedAt` + `IsDeleted()` (`entity/message.go:86-91`), o repo
-  persiste `deleted_at` (`message_repository.go:50`) e `ListByConversation` filtra
-  `deleted_at: nil` (`:86`). **Porém não há operação de editar/excluir mensagem**
-  (nenhum método de serviço `EditMessage`/`DeleteMessage`, nenhuma rota
-  `PATCH/DELETE /conversations/{id}/messages/{mid}`). → **PARCIAL / médio**:
-  capacidade modelada e leitura correta, mas **não há caminho para soft-deletar**.
-
----
-
-## 9. Inbound (item 8) — **OK**
-
-- **Idempotência** por `tenant_id + channel + external_message_id`: índice único
-  `uniq_tenant_channel_external_msg` (`migrations/0005:46-52`) + checagem
-  `FindByExternalID` e lock (`inbound_service.go:98-107,137-149`); duplicado →
-  resultado idempotente / `Conflict` sob corrida.
-- **Sem consulta automática ao providerhub** e **sem enriquecimento por provedor**:
-  zero referência a `providerhub`/`monitoring` no inbound; contato via
-  `UpsertFromInbound` apenas com dados locais (channel, external_id, nome, telefone,
-  documento). → **OK**.
-
----
-
-## 10. ProviderHub / Monitoring (item 9) — **OK**
-
-- **Sem persistir payload externo:** `models/providerhub_models.go` e
-  `monitoring_models.go` — query log contém apenas
-  `query_type, status, latency_ms, error_summary, user/contact/conversation, created_at`.
-  **Não há `response_body`/payload.** Sem job de sync no scheduler.
-- **Segredos cifrados e mascarados:** AES-256-GCM em `infra/secrets/cipher.go`;
-  repos cifram `EncryptedSecret` (providerhub/monitoring/channels); DTOs expõem
-  `HasSecret bool` **sem** campo `Secret` (`contracts/providerhub/dto.go`,
-  `channels/dto.go`, `webhooks/dto.go`). Webhook secret retornado **uma única vez**
-  no create.
-- **Permissões** `contact.view_financial` / `contact.view_connection_status`
-  aplicadas nas rotas externas (`app/routes/http/external_routes.go:33-45`).
-
----
-
-## 11. SLA (item 10) — **OK**
-
-`BusinessHoursOnly` na política (`sla/entity/policy.go`) e o serviço usa
-`bizClock` (relógio de business hours) na avaliação (`sla_service.go:93`). Breach
-via scheduler (`sla.check`) → `fire()` publica realtime `sla.breached`
-**e** emite webhook `s.webhooks.Emit(...)` (`sla_service.go:200-237`). → **OK**.
-
----
-
-## 12. Copilot (item 11) — **OK**
-
-- Provider configurável por tenant (`copilot/entity/config.go`: Provider, Model,
-  Temperature, MaxTokens).
-- Gates `allow_*_data` aplicados na montagem de contexto
-  (`context_builder.go:47/53/59`): cliente/financeiro/monitoramento só entram
-  quando o flag é `true` → **não envia financeiro com `allow_financial_data=false`**.
-- **AILog persistido por inferência** (`entity/log.go`, `repositories/copilot/
-  log_repository.go`, coleção `copilot_logs`); `input_summary` registra os flags,
-  não o dado bruto.
-
----
-
-## 13. Padrões transversais (item 12) — **OK**
-
-| Padrão | Evidência |
-|---|---|
-| Paginação por cursor (keyset) | `domain/shared/pagination.go` + `ApplyKeyset`/`KeysetSort` nos repos |
-| Envelope de erro padrão | `domain/apperror` + `presenter/middleware/response.go` (`WriteError`) |
-| Idempotency-Key em POST | `presenter/middleware/idempotency.go`, aplicado em `/v1` (`router.go:35`) |
-| Rate limit tenant/IP | `presenter/middleware/ratelimit.go` (`ratelimit:<tenant>:<ip>`) |
-| OpenTelemetry | `app/providers/observability.go` + `presenter/middleware/telemetry.go` (gated por `OTEL_ENABLED`) |
-| Recover / request_id / CORS / timeouts | `recover.go`, `request_id.go`, `cors.go`, `app/server/server.go` |
-| Seed idempotente | `app/start_routines/bootstrap_seeds.go` (upserts por chave natural) |
-| Binário único `RUN_ROLE` | `app/config` (`all|api|ws|worker|scheduler`) + start routines |
-
----
-
-## 14. Segurança / Auditoria / LGPD (item 13) — **OK**
-
-- **Audit log** nas ações sensíveis via porta `shared.Auditor`: `auth.login/logout`,
-  `user.*`, `role.*` (alteração de permissões), `webhook.*`,
-  `conversation.closed`/`transferred`, `providerhub.financial_status.viewed`/
-  `ticket.opened`, `ai.config.updated`, `privacy.*`, `report.export`. `AuditLog`
-  carrega `actor_type`, `ip`, `user_agent` (capturados na borda). Consulta
-  `GET /v1/audit` (`audit.view`).
-- **Privacy (LGPD)** presente: export (job + URL assinada temporária), anonimização
-  (remove PII mantendo integridade, recusa sob legal hold), retenção configurável
-  por tenant aplicada pelo scheduler (`privacy.retention`).
-
----
-
-## 15. Pendências priorizadas
-
-| # | Severidade | Achado | Local | Recomendação (não aplicada) |
-|---|---|---|---|---|
-| 1 | **médio** | Testes de **controllers/presenters** ausentes; `domain/audit` sem teste de serviço | `presenter/controller/*` (0 testes); `domain/audit` | Adicionar testes de controller (tabela request→status/JSON) e de `audit/service`. |
-| 2 | **médio** | Eventos realtime de ciclo de vida (`conversation.created/closed/resolved/reopened`), `queue.stats` e `automation.updated` não emitidos com os nomes do doc; `copilot.suggestion` vs `copilot.suggestion_completed` | `domain/conversations/contracts/events.go`, `domain/queues`, `docs/realtime-events.md` | Emitir os eventos nominais **ou** atualizar `docs/realtime-events.md` para refletir `conversation.updated`/eventos granulares. |
-| 3 | **médio** | Soft-delete de mensagem modelado mas **sem operação** (não há editar/excluir) | `domain/conversations/service`, rotas de conversas | Implementar `EditMessage`/`DeleteMessage` (soft) com permissão, ou documentar que está fora do MVP. |
-| 4 | **baixo** | `contacts` sem camada presenter (sem CRUD/leitura REST próprios) apesar de `contact.read`/`contact.view_*` | `presenter/*/contacts`, `app/routes/http` | Expor `GET /v1/contacts` (lista/detalhe) respeitando visibilidade, se for requisito de produto. |
-| 5 | **baixo** | BSON inline (fora de `models/<X>_models.go`) em privacy/audit/attachments/tenant | repos correspondentes | Mover structs BSON para `models/` por consistência. |
-| 6 | **baixo** | `presence`/`notifications`/`attachments` sem `RequirePermission` (autorização só no serviço) | rotas correspondentes | Manter, mas tornar a regra explícita/coberta por teste. |
-| 7 | **baixo** | Canais sem DLQ formal (usam status `failed` terminal) | `domain/channels/service/outbound_service.go` | Opcional: espelhar o `dead` state dos webhooks para inspeção. |
-| 8 | **info** | Sem linter configurado | repo | Adicionar `golangci-lint` + alvo `make lint` no CI. |
-
-> Nenhum item **crítico** ou **alto**. Os achados são de conformidade funcional,
-> cobertura de testes e consistência de convenção.
-
----
-
-## 16. Build & Testes — saída resumida
-
-```text
+```
 $ go build ./...
-# (sem saída) — exit 0
+(sem saída — exit 0)
 
 $ go vet ./...
-# (sem saída) — exit 0
-
-$ go test ./...
-# 0 FAIL; 36 pacotes "ok" (demais: "no test files")
-# domínios com teste de serviço: auth, iam, contacts, sectors, queues, presence,
-#   conversations, conversationtools, routing, channels, automation, providerhub,
-#   monitoring, copilot, sla, csat, webhooks, notifications, businesshours, search,
-#   privacy, attachments, reports (+ shared, apperror, maintenance, businesshours/entity)
-# sem teste: domain/audit (serviço) e presenter/controller/* (todos)
-# integração viva (tag e2e): privacy, attachments  [requer Mongo:27017 + Redis:6379]
+(sem saída — exit 0)
 
 $ golangci-lint run
-# N/A — nenhum linter configurado no projeto
+0 issues.
+
+$ go test ./...
+(sem FAIL; sem panic)
+pacotes com teste OK : 54
+pacotes sem teste    : 168   ([no test files])
+pacotes com FAIL     : 0
 ```
 
-— Fim do relatório.
+Linters habilitados (`.golangci.yml`): conjunto `standard` (errcheck, govet,
+ineffassign, staticcheck, **unused**) + `misspell` + `unconvert`. O `unused`
+verde garante ausência de **símbolos não-exportados** mortos; símbolos
+**exportados** sem chamador não são cobertos por esse linter (ver achado L-1).
 
 ---
 
-## 17. Verificação manual de segurança (spot-check)
+## 3. Resquícios legados encontrados
 
-> **Data:** 2026-06-11 · **Commit verificado:** `7a82d07`
-> (*audit: record AuditLog on message soft-delete*) · branch
-> `claude/admiring-knuth-2wk8xd`.
->
-> Inspeção **direta de código** (não confiando no "OK" de seções anteriores) dos
-> três pontos de maior risco. Os três passaram. **Nenhum código foi alterado** —
-> é registro de auditoria.
+| # | Item | Caminho:linha | Tipo | Sev. | Recomendação (NÃO aplicada) |
+|---|------|---------------|------|------|------------------------------|
+| L-1 | Middleware `TenantContext` + `HeaderTenantID` confiando no header `X-Tenant-Id` | `presenter/middleware/tenant_context.go:9-25` | Middleware legado / código morto (0 chamadores) | **Médio** | Remover o arquivo. O comentário ("until real auth is wired") é da fundação; o auth real (`auth_context.go`) já substituiu. Perigoso se religado: permitiria spoof de tenant via header. |
+| L-2 | `X-Tenant-Id` ainda na allow-list de CORS | `presenter/middleware/cors.go:33` | Config legada | **Baixo** | Remover `"X-Tenant-Id"` dos `AllowedHeaders` (o tenant vem do JWT). |
+| L-3 | Env `MONITORING_RATE_PER_MINUTE=60` sem leitor no código | `.env.example:66` | Config legada (domínio monitoring removido) | **Médio** | Remover do `.env.example` (nenhum `getString/getInt` lê essa chave em `app/config/config.go`). |
+| L-4 | Superfície de copilot "monitoring"/"financial" desconectada: sources `nil` no factory, porém gate `allow_monitoring_data`/`allow_financial_data` + campo `Monitoring` no prompt permanecem | `app/factories/copilot.go:36-37`; `presenter/contracts/copilot/dto.go:21,56`; `infra/copilot/provider/prompt.go:46-48`; `infra/database/mongodb/models/copilot_models.go:16`; `presenter/openapi/schemas.go:282,289` | Superfície morta / forward-looking | **Baixo-Médio** | Decidir: ou conectar as fontes, ou remover o gate `allow_monitoring_data` e o ramo `Monitoring` do prompt. (`allow_financial_data` pode ser intencional, já que faturas vêm do providerhub/Customer360 por outra via — confirmar com produto.) |
+| L-5 | Comentário "future OLT/monitoring" | `infra/mcp/client.go:4` | Comentário (menção a sistema futuro) | **Info** | Opcional: remover a menção para não sugerir domínio inexistente. |
 
-### 17.1 Filtro `tenant_id` em todos os repositórios — **APROVADO**
+### Itens verificados e considerados **legítimos** (não-legado)
 
-Varridos os 136 métodos de leitura/escrita em
-`infra/database/mongodb/repositories/`. Todo filtro de query de domínio
-(`Find/List/Get/Count/Update/Delete`) inclui `"tenant_id"` derivado de
-`shared.RequireTenant(ctx)` / `TenantFrom(ctx)` — **nunca** de um parâmetro
-vindo do corpo/query do request. Filtros de escopo adicional (visibilidade por
-setor, `user_id` em notificações) e documentos `$set` / pipelines `$group` são
-aplicados **por cima** do `tenant_id`, sem substituí-lo.
+- **`smsnet-integrations`** (dezenas de ocorrências em `domain/providerhub/*`,
+  `infra/providerhub/*`, `presenter/openapi/*`): **não é legado** — é a API
+  externa real que o providerhub consulta sob demanda (Customer 360). Integração
+  viva e documentada.
+- **Sem ocorrências** de `clickhouse`, `nats`, `outbox` em todo o código.
+- **`auth_service.go:74`** (`dummy hash`): mitigação de timing-attack legítima,
+  não é stub.
+- **Nenhum** `mock`/`fake`/`echo`/`stub` adapter fora de `_test.go`.
+- **Sem** `TODO`/`FIXME`/`HACK`/`XXX` no código de produção.
 
-**Exceções intencionais sem `tenant_id` — NÃO "corrigir" no futuro:**
+---
 
-| Local | Por que é legítimo |
-|---|---|
-| `repositories/auth/refresh_token_repository.go` → `FindByHash` | Lookup **pré-autenticação** por hash não-adivinhável do refresh token; ainda não há tenant no contexto. O registro encontrado carrega o `tenant_id` autoritativo. `RevokeAllForUser` filtra por tenant. |
-| `repositories/csat/response_repository.go` → `FindByToken` | O endpoint **público** de resposta da pesquisa (cliente final) só tem o token; sem contexto de tenant. O token é a credencial e o registro carrega o tenant. |
-| `repositories/channels/connection_repository.go` → `FindByWebhookVerifyToken` | **Pré-auth** de webhook de entrada do canal: o provedor externo posta sem tenant; resolve-se a conexão pelo verify token e o registro carrega o `tenant_id`. |
-| `repositories/tenant/tenant_repository.go` (todo) | É o **registro de tenants do próprio sistema** (metadados), não uma coleção multi-tenant. `ListActive` é usado pelos jobs para iterar tenants. |
-| `repositories/sla/tracking_repository.go` → `ListRunningAcrossTenants` | **Intencionalmente cross-tenant** — alimenta o job `sla.check`, que avalia trackings de todos os tenants e depois opera por tenant. Comentado no código (`intentionally NOT tenant-scoped`). |
+## 4. Achados por eixo (evidência + recomendação)
 
-Jobs de sistema que rodam por-tenant (`maintenance.DayCounts`,
-`privacy.ApplyRetention`/`heldConversationIDs`) **mantêm** `tenant_id` no filtro —
-o "system actor" injeta o tenant no contexto antes de chamar o repositório.
+### Eixo 1 — Build/test/lint e cobertura
+- **OK:** build, vet, lint (0 issues) e test todos verdes (§2).
+- **PARCIAL (cobertura):** **todos os 25 serviços de domínio têm teste**; mas
+  **16 controllers não têm** nenhum teste:
+  `attachments, audit, automation, businesshours, conversationtools, csat, iam,
+  mcp, notifications, presence, providerhub, queues, search, sectors, sla, tenant`.
+  - *Severidade:* médio. *Recomendação:* adicionar testes de stack HTTP
+    (status/authz/envelope) ao menos para `iam` (users/roles — superfície de
+    segurança), `providerhub` e `sla`.
 
-### 17.2 Mascaramento de segredo nos DTOs — **APROVADO**
+### Eixo 2 — Camadas / dependências
+- **OK:** `domain/` não importa driver Mongo/Redis/Asynq; interfaces de repo em
+  `domain/*/repository` e implementações em `infra/database/mongodb/repositories`;
+  BSON concentrado em `models/`.
+- **Ressalva (info):** `domain/apperror/apperror.go:13` importa `net/http`
+  apenas para o mapa código→status (`httpStatus`, L33). Acoplamento deliberado e
+  aceitável.
+- **Ressalva (baixo):** `app/start_routines/bootstrap_seeds.go` usa `bson` direto
+  (upserts de seed). Aceitável por ser rotina de bootstrap, mas é o único ponto
+  fora de `infra/` que toca BSON — manter isolado.
 
-- `EncryptedSecret` / `encrypted_secret`: **zero** ocorrências em `presenter/` —
-  o segredo cifrado nunca cruza a camada de apresentação.
-- Structs de **response** verificadas (`ConnectionResponse` de channels,
-  `ConfigResponse` de providerhub/monitoring, `IntegrationResponse` de
-  automation, `SubscriptionResponse` de webhooks, `UserResponse` de iam) **não
-  têm campo de segredo** — expõem apenas `HasSecret bool`. Os campos
-  `Secret`/`Password` que existem estão em **requests** (entrada).
-- **Webhook secret**: exposto **uma única vez** na criação
-  (`CreatedResponse{ SubscriptionResponse; Secret }`) e nunca mais —
-  `SubscriptionResponse` subsequente só reporta `HasSecret`.
-- `webhook_verify_token` na `ConnectionResponse` é um **identificador público de
-  verificação** (o admin com `channel.manage` precisa copiá-lo para configurar o
-  webhook no provedor externo), não uma credencial cifrada. **Exposição
-  intencional**, não é vazamento.
+### Eixo 3 — Multi-tenant + RBAC
+- **OK (tenant):** toda query de lista/CRUD filtra `tenant_id` derivado do token
+  (`shared.RequireTenant`). As **exceções sem tenant** são todas legítimas e
+  pré-auth por natureza:
+  - `tenant/tenant_repository.go:42,50,61` (coleção do próprio tenant; List ativo é cross-tenant intencional para jobs);
+  - `auth/refresh_token_repository.go:35` (FindByHash) e `auth/account_token_repository.go:38,89,141` (verify/reset/invite por hash de token);
+  - `csat/response_repository.go:76` (resposta pública por token);
+  - `channels/connection_repository.go:121` `FindByInboundTokenHash` (inbound pré-auth);
+  - `iam/user_repository.go:104` `FindByEmailAnyTenant` (idempotência de signup) — note que `FindByEmail` (L95) **é** tenant-scoped.
+  - *Obs.:* o nome citado nas regras (`FindByWebhookVerifyToken`) foi **renomeado**
+    para `FindByInboundTokenHash` (token agora é hash). A lista de exceções
+    "permitidas" da regra está desatualizada; o código está correto.
+- **OK (RBAC):** todas as rotas protegidas usam `AuthContext` + `RequirePermission`
+  com **constantes do catálogo** (24 constantes distintas em uso; **zero** strings
+  literais — `grep RequirePermission("` vazio). Escopo `ScopeOwn/ScopeAll` aplicado
+  no serviço (`ResolveEffective`, `routing`/visibilidade).
+- **OK (não-vazamento):** padrão "neutro" em auth (`auth_service.go:23`) e
+  respostas de signup/forgot sempre neutras.
 
-### 17.3 Gate `allow_*_data` do copiloto — **APROVADO**
+### Eixo 4 — Auth / conta
+- **OK:** `Signup` cria tenant + owner com o papel **owner = `AllPermissions()`**
+  (`account_service.go:160` `ownerRoleIDs` → `role_service.go:80` `SeedDefaults`
+  → `authz.DefaultRoles()` owner = `AllPermissions()`).
+- **OK (reconcile aditivo/idempotente):** `bootstrap_seeds.go` reconcilia o owner
+  de **todos** os tenants para o catálogo completo (`reconcileOwnerRoles`,
+  `UpdateMany name="owner"`), e `SeedDefaults` reconcilia o owner em conflito —
+  aditivo, nunca destrutivo (admin/agent preservados).
+- **OK:** login/refresh **rotacionam** o refresh (`auth_service.go:118` `Revoke`
+  do antigo antes de emitir novo par); logout revoga (L150).
+- **OK:** `/me` resolve permissões pela **união dos papéis filtrada pelo catálogo**
+  (`ResolveEffective`, `user_service.go:254` — só inclui `p` se `p ∈ AllPermissions()`).
 
-`domain/copilot/service/context_builder.go` → `Build()`: cada categoria de dado
-sensível está guardada **pelo próprio flag**, e o `if` envolve **a própria
-busca** — não há o anti-padrão "montar tudo e filtrar depois" (com o flag off, o
-provedor de dados nem é consultado):
+### Eixo 5 — Conversas / mensagens
+- **OK:** eventos de ciclo de vida em `conversations/entity/event.go:7-20`
+  (created/updated/closed/reopened/assigned/transferred/enqueued/tagged + automation);
+  **nota interna** é evento próprio `internal_note.added` (L11) e nunca é enviada
+  ao cliente; soft edit/delete gated por `MessageSend`/`MessageDelete`
+  (`conversations_routes.go`); `unread_count`/`last_read_at` no schema; timeline
+  (`events`) separada de `messages` (rotas `/events` vs `/messages`).
 
-```go
-if cfg.AllowCustomerData   && b.customer   != nil { pc.Customer   = b.customer.Customer(...) }
-if cfg.AllowFinancialData  && b.financial  != nil { pc.Financial  = b.financial.Financial(...) }
-if cfg.AllowMonitoringData && b.monitoring != nil { pc.Monitoring = b.monitoring.Monitoring(...) }
-```
+### Eixo 6 — Realtime
+- **OK:** nomes de evento batem com `docs/realtime-events.md` (definidos em
+  `conversations/entity/event.go`, `queues/contracts/events.go:7` `queue.stats`,
+  `sla/contracts/contracts.go:6` `sla.warning`, `copilot/contracts/dtos.go:7`
+  `copilot.suggestion_completed`, `mcp/contracts/contracts.go:13`
+  `mcp.approval_requested`, `notifications/contracts/contracts.go:13`
+  `notification.created`).
+  - *Nuance documentada:* `sla.warning`/`sla.breached` são **eventos realtime**;
+    `sla.at_risk`/`sla.breached` (`notifications/entity/notification.go:15-16`)
+    são **tipos de notificação**. São conceitos distintos, ambos legítimos.
+- **OK:** handshake em `/realtime/ws` **e** alias `/ws`
+  (`app/routes/websocket/router.go:16`); upgrade exige JWT (Bearer ou `?token=`,
+  `presenter/websocket/handler.go:70-77`); **subscribe a sala de conversa é
+  gated por `conversation.read`** (`handler.go:159`); salas montadas
+  server-side a partir do tenant da conexão (L156) — sem cross-tenant.
 
-- **Gate por categoria** (não tudo-ou-nada): `policy_test.go` cobre
-  `allow_financial_data=false` com os outros `true` → financeiro excluído; e os
-  três `false` → contexto sai só com canal + instrução + transcrição do chat.
-- **AILog**: `inputSummary()` grava apenas `action=… customer=t financial=f
-  monitoring=f` (flags), **sem dado bruto** — comentado *"without any raw data"*.
+### Eixo 7 — Canais / integração sem JWT
+- **OK:** `inbound_token` base62 de 32 bytes gerado na criação, guardado **só como
+  hash** (`InboundTokenHash`), exibido 1x; `rotate-inbound-token`; comparação em
+  **tempo constante** (`channel_service.go:281` `subtle.ConstantTimeCompare`);
+  o token **não** abre rotas `/v1` (só é consumido em `ResolveInbound`); HMAC do
+  corpo opcional; rate limit dedicado (`policy.InboundChannelRateLimit`, scope
+  `inbound_channel`).
 
-— Fim do spot-check.
+### Eixo 8 — providerhub
+- **OK:** consultas sob demanda sem persistir payload externo
+  (`query_service.go`); segredo cifrado e **mascarado** via `has_secret`
+  (`schemas.go:164`); `ClienteResult` modelado como **oneOf**
+  (`schemas.go:213-220`, ClienteFound/ClienteNeedsSelection); `liberacao`/`chamado`
+  **auditados** (`query_service.go:123,150` actions `providerhub.liberacao`/
+  `providerhub.chamado`) e atrás de `integration.execute_action`
+  (`external_routes.go`).
+
+### Eixo 9 — MCP / copilot
+- **OK:** tools descobertas dinamicamente (`mcp` tools list); **read executa /
+  write apenas propõe + aprova** (`copilot_service.go:139-140` "a proposed write
+  action always needs approval, regardless of the config flag"); gates
+  `allow_*_data` aplicados **antes do provider** no ponto único
+  (`context_builder.go:17,47`); `AILog` guarda só resumo, **nunca prompt/raw**
+  (`copilot/entity/log.go:26`, `copilot_models.go:22`); `echo` só em testes.
+- **Achado (baixo):** ver L-4 — gate `allow_monitoring_data` (e `financial`) é
+  **inerte** porque as fontes estão `nil` no factory.
+
+### Eixo 10 — contacts (CRM)
+- **OK:** `GET/POST/PATCH /v1/contacts` tenant-scoped (`contacts_routes.go`,
+  perms `contact.read`/`contact.write`); **dedup → 409** por documento e telefone
+  (`contact_service.go:154-165` `apperror.Conflict`); create/update auditados;
+  apenas campos locais (sem dados enriquecidos do provider).
+
+### Eixo 11 — Asynq
+- **OK:** handlers e periódicos registrados (`bootstrap_workers.go`,
+  `bootstrap_scheduler.go`); retry/backoff/dead-letter (`client.go:30`
+  `MaxRetry`; `bootstrap_workers.go:86` "retry/backoff and dead-lettering");
+  retenção por tenant; fan-out multi-tenant (`eachTenant`).
+
+### Eixo 12 — Segredos
+- **OK:** `infra/secrets/cipher.go` usa **AES-GCM** (`crypto/aes` +
+  `cipher.NewGCM`, L25-29; formato `base64(nonce||ciphertext)`); **nenhum**
+  `Decrypt`/`EncryptedSecret` em `presenter/` (as ocorrências de `Secret` em
+  `presenter/contracts/*` são DTOs de request na criação ou respostas one-time —
+  `webhooks/dto.go:112`, rotate de canal); segredo exibido só na criação.
+
+### Eixo 13 — Padrões transversais
+- **OK:** cursor/keyset (`shared.DecodeCursor`/`ApplyKeyset`); envelope de erro
+  `{error:{code,message,details?,request_id?}}`; `Idempotency-Key`
+  (`middleware/idempotency.go`); `request_id` (`middleware/request_id.go`); rate
+  limit (`middleware/ratelimit.go`); **OTel** (`app/providers/observability.go`,
+  `presenter/middleware/telemetry.go`); CORS allow-list (`middleware/cors.go`);
+  seed idempotente; `RUN_ROLE` (`config.RunsRole`).
+- **Achado (baixo):** CORS ainda lista `X-Tenant-Id` (ver L-2).
+
+### Eixo 14 — LGPD / auditoria
+- **OK:** export/anonymize/retention (`/privacy/contacts/{id}/export`,
+  `/privacy/contacts/{id}/anonymize`, `/privacy/retention`; job
+  `privacy.retention` em `bootstrap_scheduler.go:30`); auditoria nas ações
+  sensíveis com `actor/ip/request_id` (`shared.AuditEntry`, preenchido na borda
+  HTTP) — auth, role, canal (token_rotated), providerhub, privacy, contacts.
+
+---
+
+## 5. Deriva de documentação (doc ≠ código)
+
+| Item | Evidência | Sev. | Recomendação |
+|------|-----------|------|--------------|
+| `api-design.md` lista endpoints inexistentes no router | `docs/api-design.md` cita `/privacy/requests`, `/queues/{id}/members`, `/presence/me`; router real tem `/privacy/contacts/{id}/export`, `/privacy/retention`, `/agents/presence/status` etc. | Baixo | Marcar `api-design.md` explicitamente como **referência aspiracional** ou alinhar ao router. O **`openapi.yaml` é o contrato preciso** (gerado do código, em sync via `TestDocsCopyInSync`). |
+| `api-design.md` usa base `/api/v1` | doc §"Convenções"; router real serve sob `/v1` | Baixo | Corrigir a base no doc. |
+
+> Observação: o catálogo de permissões em `docs/security-permissions.md` e o
+> bloco `iam` em `docs/api-design.md` **já foram corrigidos** em commits
+> anteriores desta branch e agora batem com `domain/authz/permission.go`.
+
+---
+
+## 6. Pendências priorizadas (sem aplicar)
+
+1. **(Médio) Remover legado de tenant-por-header** — apagar
+   `presenter/middleware/tenant_context.go` (L-1) e o `X-Tenant-Id` do CORS (L-2).
+   Risco de segurança latente se religado.
+2. **(Médio) Remover env órfã** `MONITORING_RATE_PER_MINUTE` do `.env.example` (L-3).
+3. **(Médio) Cobertura de controllers** — adicionar testes de stack HTTP aos 16
+   controllers sem teste, priorizando `iam`, `providerhub`, `sla`.
+4. **(Baixo-Médio) Decidir sobre a superfície `monitoring`/`financial` do copilot**
+   (L-4): conectar as fontes ou remover gate/prompt mortos.
+5. **(Baixo) Alinhar `api-design.md`** ao router real / marcar como aspiracional (§5).
+6. **(Info) Limpar comentário** "future OLT/monitoring" (`infra/mcp/client.go:4`).
+
+---
+
+*Fim do relatório. Nenhuma alteração de código foi feita; apenas este arquivo
+(`docs/audit-report.md`) foi escrito.*
