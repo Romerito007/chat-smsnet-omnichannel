@@ -41,7 +41,16 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	resp := shared.NewPage(dto.NewConversationResponses(items), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
+	ids := make([]string, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+	}
+	last, err := c.svc.LastMessages(r.Context(), ids)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	resp := shared.NewPage(dto.NewConversationResponsesWithLastMessage(items, last), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
 		return shared.Cursor{CreatedAt: cv.UpdatedAt.UnixMilli(), ID: cv.ID}
 	})
 	middleware.WriteJSON(w, http.StatusOK, resp)

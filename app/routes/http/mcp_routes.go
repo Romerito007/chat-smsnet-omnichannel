@@ -45,10 +45,17 @@ func registerMCPRoutes(r chi.Router, c *container.Container) {
 			m.Post("/run", tools.Run)
 		})
 
-		// Approving/rejecting a proposed write action requires execute_action.
+		// Reading a conversation's tool-call history needs only copilot.use; the
+		// service still enforces conversation visibility. Empty → 200 [].
+		p.Route("/conversations/{id}/copilot/tool-calls", func(tc chi.Router) {
+			tc.With(middleware.RequirePermission(authz.CopilotUse)).Get("/", tools.ListToolCalls)
+		})
+
+		// Approvals: listing (read) requires copilot.use; deciding (approve/reject,
+		// i.e. executing a write) keeps the stricter integration.execute_action gate.
 		p.Route("/conversations/{id}/copilot/approvals", func(a chi.Router) {
-			a.Use(middleware.RequirePermission(authz.IntegrationExecuteAction))
-			a.Post("/{approvalID}", tools.Decide)
+			a.With(middleware.RequirePermission(authz.CopilotUse)).Get("/", tools.ListApprovals)
+			a.With(middleware.RequirePermission(authz.IntegrationExecuteAction)).Post("/{approvalID}", tools.Decide)
 		})
 	})
 }

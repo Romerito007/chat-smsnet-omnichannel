@@ -57,6 +57,29 @@ func (c *ToolController) Run(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, status, res)
 }
 
+// ListToolCalls handles GET /v1/conversations/{id}/copilot/tool-calls. It returns
+// the conversation's payload-free tool-call logs — 200 with an empty list when
+// there are none (no 404), matching the SLA read.
+func (c *ToolController) ListToolCalls(w http.ResponseWriter, r *http.Request) {
+	logs, err := c.tools.ListCallLogs(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{"data": dto.NewCallLogResponses(logs)})
+}
+
+// ListApprovals handles GET /v1/conversations/{id}/copilot/approvals. It returns
+// the conversation's write-action approvals — 200 with an empty list when none.
+func (c *ToolController) ListApprovals(w http.ResponseWriter, r *http.Request) {
+	items, err := c.tools.ListApprovals(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{"data": dto.NewApprovalResponses(items)})
+}
+
 // Decide handles POST /v1/conversations/{id}/copilot/approvals/{approvalID}.
 // Approval triggers execution; rejection records the refusal. Both are audited.
 func (c *ToolController) Decide(w http.ResponseWriter, r *http.Request) {

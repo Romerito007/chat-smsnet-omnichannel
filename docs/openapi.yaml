@@ -81,6 +81,19 @@ components:
                 agent_id:
                     type: string
             type: object
+        AssignableAgent:
+            properties:
+                current_load:
+                    type: integer
+                id:
+                    type: string
+                max_concurrent_chats:
+                    type: integer
+                name:
+                    type: string
+                status:
+                    type: string
+            type: object
         Attachment:
             properties:
                 content_type:
@@ -539,6 +552,8 @@ components:
                     type: string
                 id:
                     type: string
+                last_message:
+                    $ref: '#/components/schemas/LastMessage'
                 last_message_at:
                     format: date-time
                     type: string
@@ -1221,6 +1236,18 @@ components:
             required:
                 - email
             type: object
+        LastMessage:
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                message_type:
+                    type: string
+                preview:
+                    type: string
+                sender_type:
+                    type: string
+            type: object
         Liberacao:
             properties:
                 liberado:
@@ -1302,6 +1329,28 @@ components:
                     type: string
                 tool:
                     type: string
+            type: object
+        McpCallLog:
+            properties:
+                conversation_id:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                error_summary:
+                    type: string
+                id:
+                    type: string
+                latency_ms:
+                    type: integer
+                server_name:
+                    type: string
+                status:
+                    type: string
+                tool:
+                    type: string
+                write:
+                    type: boolean
             type: object
         McpRunResult:
             properties:
@@ -2637,6 +2686,34 @@ info:
     version: 1.0.0
 openapi: 3.1.0
 paths:
+    /v1/agents:
+        get:
+            operationId: getAgents
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/AssignableAgent'
+                                        type: array
+                                type: object
+                    description: Assignable agents
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List assignable agents (id, name, presence) for the assignment selector — conversation.assign
+            tags:
+                - presence
     /v1/agents/presence:
         get:
             operationId: getAgentsPresence
@@ -4395,6 +4472,41 @@ paths:
             summary: Close a conversation
             tags:
                 - conversations
+    /v1/conversations/{id}/copilot/approvals:
+        get:
+            operationId: getConversationsByIdCopilotApprovals
+            parameters:
+                - description: conversation id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/McpApproval'
+                                        type: array
+                                type: object
+                    description: Approvals
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List a conversation's write-action approvals (read) — copilot.use; 200 [] when none
+            tags:
+                - mcp
     /v1/conversations/{id}/copilot/approvals/{approvalID}:
         post:
             operationId: postConversationsByIdCopilotApprovalsByApprovalID
@@ -4435,6 +4547,41 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Approve/reject a proposed write action (approval triggers execution)
+            tags:
+                - mcp
+    /v1/conversations/{id}/copilot/tool-calls:
+        get:
+            operationId: getConversationsByIdCopilotToolCalls
+            parameters:
+                - description: conversation id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/McpCallLog'
+                                        type: array
+                                type: object
+                    description: Tool-call logs
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List a conversation's tool-call history (read) — copilot.use; 200 [] when none
             tags:
                 - mcp
     /v1/conversations/{id}/enqueue:

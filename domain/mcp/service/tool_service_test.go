@@ -85,12 +85,30 @@ func (r *fakeApprovals) FindByID(_ context.Context, id string) (*entity.Approval
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeApprovals) ListByConversation(_ context.Context, convID string) ([]*entity.Approval, error) {
+	out := make([]*entity.Approval, 0)
+	for _, a := range r.byID {
+		if a.ConversationID == convID {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
 
 type fakeCallLogs struct{ entries []*entity.CallLog }
 
 func (r *fakeCallLogs) Create(_ context.Context, l *entity.CallLog) error {
 	r.entries = append(r.entries, l)
 	return nil
+}
+func (r *fakeCallLogs) ListByConversation(_ context.Context, convID string) ([]*entity.CallLog, error) {
+	out := make([]*entity.CallLog, 0)
+	for _, l := range r.entries {
+		if l.ConversationID == convID {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }
 
 type fakeConvRepo struct{ conv *conventity.Conversation }

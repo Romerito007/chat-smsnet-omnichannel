@@ -26,9 +26,13 @@ type ApprovalRepository interface {
 	Create(ctx context.Context, a *entity.Approval) error
 	Update(ctx context.Context, a *entity.Approval) error
 	FindByID(ctx context.Context, id string) (*entity.Approval, error)
+	// ListByConversation returns a conversation's approvals, newest first.
+	ListByConversation(ctx context.Context, conversationID string) ([]*entity.Approval, error)
 }
 
 // CallLogRepository persists payload-free tool-call logs.
 type CallLogRepository interface {
 	Create(ctx context.Context, l *entity.CallLog) error
+	// ListByConversation returns a conversation's tool-call logs, newest first.
+	ListByConversation(ctx context.Context, conversationID string) ([]*entity.CallLog, error)
 }

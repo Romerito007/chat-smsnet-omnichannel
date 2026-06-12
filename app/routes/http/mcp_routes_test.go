@@ -42,7 +42,11 @@ func TestConversationSubrouters_NoMountConflict(t *testing.T) {
 			m.Get("/tools", hit("tools"))
 			m.Post("/run", hit("run"))
 		})
+		p.Route("/conversations/{id}/copilot/tool-calls", func(tc chi.Router) {
+			tc.Get("/", hit("tool-calls"))
+		})
 		p.Route("/conversations/{id}/copilot/approvals", func(a chi.Router) {
+			a.Get("/", hit("approvals"))
 			a.Post("/{approvalID}", hit("decide"))
 		})
 	})
@@ -53,6 +57,8 @@ func TestConversationSubrouters_NoMountConflict(t *testing.T) {
 		{http.MethodGet, "/conversations/c1/external/cliente", "cliente"},
 		{http.MethodGet, "/conversations/c1/mcp/tools", "tools"},
 		{http.MethodPost, "/conversations/c1/mcp/run", "run"},
+		{http.MethodGet, "/conversations/c1/copilot/tool-calls", "tool-calls"},
+		{http.MethodGet, "/conversations/c1/copilot/approvals", "approvals"},
 		{http.MethodPost, "/conversations/c1/copilot/approvals/a1", "decide"},
 	}
 	for _, tc := range cases {

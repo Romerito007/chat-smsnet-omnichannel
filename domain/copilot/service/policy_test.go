@@ -31,6 +31,12 @@ func (r *fakeMessages) ListByConversation(context.Context, string, shared.PageRe
 	// newest-first, as the real repo returns.
 	return r.items, nil
 }
+func (r *fakeMessages) LatestByConversation(context.Context, string) (*conventity.Message, error) {
+	if len(r.items) == 0 {
+		return nil, apperror.NotFound("none")
+	}
+	return r.items[0], nil
+}
 
 type fakeConvRepo struct {
 	items map[string]*conventity.Conversation

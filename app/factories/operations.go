@@ -10,6 +10,7 @@ import (
 	queuerepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/queues"
 	sectorrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/sectors"
 	presencestore "github.com/romerito007/chat-smsnet-omnichannel/infra/presence"
+	agentsctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/agents"
 	presencectl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/presence"
 	queuectl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/queues"
 	sectorctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/sectors"
@@ -53,4 +54,10 @@ func QueueController(c *container.Container) *queuectl.Controller {
 // PresenceController builds the presence controller.
 func PresenceController(c *container.Container) *presencectl.Controller {
 	return presencectl.NewController(PresenceService(c))
+}
+
+// AgentsController builds the assignable-agents directory controller (users +
+// presence), read by the assignment selector under conversation.assign.
+func AgentsController(c *container.Container) *agentsctl.Controller {
+	return agentsctl.NewController(UserService(c), PresenceService(c))
 }

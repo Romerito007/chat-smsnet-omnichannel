@@ -121,22 +121,66 @@ type CloseRequest struct {
 
 // ConversationResponse is the public representation of a conversation.
 type ConversationResponse struct {
-	ID            string     `json:"id"`
-	TenantID      string     `json:"tenant_id"`
-	ContactID     string     `json:"contact_id"`
-	Channel       string     `json:"channel"`
-	SectorID      string     `json:"sector_id,omitempty"`
-	QueueID       string     `json:"queue_id,omitempty"`
-	Status        string     `json:"status"`
-	AssignedTo    string     `json:"assigned_to,omitempty"`
-	Priority      string     `json:"priority"`
-	Tags          []string   `json:"tags,omitempty"`
-	LastMessageAt time.Time  `json:"last_message_at"`
-	UnreadCount   int        `json:"unread_count"`
-	LastReadAt    *time.Time `json:"last_read_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	ClosedAt      *time.Time `json:"closed_at,omitempty"`
+	ID            string       `json:"id"`
+	TenantID      string       `json:"tenant_id"`
+	ContactID     string       `json:"contact_id"`
+	Channel       string       `json:"channel"`
+	SectorID      string       `json:"sector_id,omitempty"`
+	QueueID       string       `json:"queue_id,omitempty"`
+	Status        string       `json:"status"`
+	AssignedTo    string       `json:"assigned_to,omitempty"`
+	Priority      string       `json:"priority"`
+	Tags          []string     `json:"tags,omitempty"`
+	LastMessageAt time.Time    `json:"last_message_at"`
+	UnreadCount   int          `json:"unread_count"`
+	LastReadAt    *time.Time   `json:"last_read_at,omitempty"`
+	CreatedAt     time.Time    `json:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
+	ClosedAt      *time.Time   `json:"closed_at,omitempty"`
+	LastMessage   *LastMessage `json:"last_message,omitempty"`
+}
+
+// LastMessage is a light preview of a conversation's most recent message, used on
+// list items so the inbox can render a snippet without a per-row fetch.
+type LastMessage struct {
+	Preview     string    `json:"preview"`
+	SenderType  string    `json:"sender_type"`
+	MessageType string    `json:"message_type"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func newLastMessage(m *entity.Message) *LastMessage {
+	if m == nil {
+		return nil
+	}
+	return &LastMessage{
+		Preview:     previewText(m.Text, 280),
+		SenderType:  string(m.SenderType),
+		MessageType: string(m.MessageType),
+		CreatedAt:   m.CreatedAt,
+	}
+}
+
+func previewText(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
+// NewConversationResponsesWithLastMessage maps a page of conversations, attaching
+// each one's last-message preview from last (keyed by conversation id).
+func NewConversationResponsesWithLastMessage(items []*entity.Conversation, last map[string]*entity.Message) []ConversationResponse {
+	out := make([]ConversationResponse, len(items))
+	for i, c := range items {
+		r := NewConversationResponse(c)
+		if m, ok := last[c.ID]; ok {
+			r.LastMessage = newLastMessage(m)
+		}
+		out[i] = r
+	}
+	return out
 }
 
 // NewConversationResponse maps a conversation entity to its DTO.

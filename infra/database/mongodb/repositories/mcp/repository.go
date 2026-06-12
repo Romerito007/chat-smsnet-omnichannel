@@ -226,6 +226,28 @@ func (r *ApprovalRepository) FindByID(ctx context.Context, id string) (*entity.A
 	return approvalToEntity(&m), nil
 }
 
+func (r *ApprovalRepository) ListByConversation(ctx context.Context, conversationID string) ([]*entity.Approval, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	cur, err := r.coll.Find(ctx, bson.M{"tenant_id": tenantID, "conversation_id": conversationID}, opts)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	out := make([]*entity.Approval, 0)
+	for cur.Next(ctx) {
+		var m models.McpApproval
+		if err := cur.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, approvalToEntity(&m))
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
 func approvalToModel(a *entity.Approval) models.McpApproval {
 	return models.McpApproval{
 		ID: a.ID, TenantID: a.TenantID, ConversationID: a.ConversationID, ServerID: a.ServerID,
@@ -263,6 +285,33 @@ func (r *CallLogRepository) Create(ctx context.Context, l *entity.CallLog) error
 		Status: string(l.Status), LatencyMs: l.LatencyMs, ErrorSummary: l.ErrorSummary, CreatedAt: l.CreatedAt,
 	})
 	return mongodb.MapError(err)
+}
+
+func (r *CallLogRepository) ListByConversation(ctx context.Context, conversationID string) ([]*entity.CallLog, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	cur, err := r.coll.Find(ctx, bson.M{"tenant_id": tenantID, "conversation_id": conversationID}, opts)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	out := make([]*entity.CallLog, 0)
+	for cur.Next(ctx) {
+		var m models.McpCallLog
+		if err := cur.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, &entity.CallLog{
+			ID: m.ID, TenantID: m.TenantID, UserID: m.UserID, ConversationID: m.ConversationID,
+			ServerID: m.ServerID, ServerName: m.ServerName, Tool: m.Tool, Write: m.Write,
+			Status: entity.CallStatus(m.Status), LatencyMs: m.LatencyMs, ErrorSummary: m.ErrorSummary,
+			CreatedAt: m.CreatedAt,
+		})
+	}
+	return out, mongodb.MapError(cur.Err())
 }
 
 var _ repository.CallLogRepository = (*CallLogRepository)(nil)

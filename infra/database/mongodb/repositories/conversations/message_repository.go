@@ -71,6 +71,25 @@ func (r *MessageRepository) FindByID(ctx context.Context, id string) (*entity.Me
 	return msgToEntity(&m), nil
 }
 
+// LatestByConversation returns the most recent non-deleted message of a
+// conversation (tenant-scoped), or NotFound when there are none.
+func (r *MessageRepository) LatestByConversation(ctx context.Context, conversationID string) (*entity.Message, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var m models.Message
+	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	if err := r.coll.FindOne(ctx, bson.M{
+		"tenant_id":       tenantID,
+		"conversation_id": conversationID,
+		"deleted_at":      bson.M{"$eq": nil},
+	}, opts).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return msgToEntity(&m), nil
+}
+
 func (r *MessageRepository) ListByConversation(ctx context.Context, conversationID string, page shared.PageRequest) ([]*entity.Message, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

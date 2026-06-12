@@ -112,3 +112,57 @@ type DecideRequest struct {
 	Approve bool   `json:"approve"`
 	Reason  string `json:"reason"`
 }
+
+// ApprovalResponse is the read view of a write-action approval.
+type ApprovalResponse struct {
+	ID             string         `json:"id"`
+	ConversationID string         `json:"conversation_id"`
+	ServerName     string         `json:"server_name,omitempty"`
+	Tool           string         `json:"tool"`
+	Args           map[string]any `json:"args,omitempty"`
+	Status         string         `json:"status"`
+	ProposedBy     string         `json:"proposed_by,omitempty"`
+	DecidedBy      string         `json:"decided_by,omitempty"`
+	Reason         string         `json:"reason,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	DecidedAt      *time.Time     `json:"decided_at,omitempty"`
+}
+
+// NewApprovalResponses maps a slice of approvals (empty slice when none).
+func NewApprovalResponses(items []*mcpentity.Approval) []ApprovalResponse {
+	out := make([]ApprovalResponse, 0, len(items))
+	for _, a := range items {
+		out = append(out, ApprovalResponse{
+			ID: a.ID, ConversationID: a.ConversationID, ServerName: a.ServerName, Tool: a.Tool,
+			Args: a.Args, Status: string(a.Status), ProposedBy: a.ProposedBy, DecidedBy: a.DecidedBy,
+			Reason: a.Reason, CreatedAt: a.CreatedAt, DecidedAt: a.DecidedAt,
+		})
+	}
+	return out
+}
+
+// CallLogResponse is the read view of a payload-free tool-call log.
+type CallLogResponse struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversation_id"`
+	ServerName     string    `json:"server_name,omitempty"`
+	Tool           string    `json:"tool"`
+	Write          bool      `json:"write"`
+	Status         string    `json:"status"`
+	LatencyMs      int64     `json:"latency_ms"`
+	ErrorSummary   string    `json:"error_summary,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// NewCallLogResponses maps a slice of call logs (empty slice when none).
+func NewCallLogResponses(items []*mcpentity.CallLog) []CallLogResponse {
+	out := make([]CallLogResponse, 0, len(items))
+	for _, l := range items {
+		out = append(out, CallLogResponse{
+			ID: l.ID, ConversationID: l.ConversationID, ServerName: l.ServerName, Tool: l.Tool,
+			Write: l.Write, Status: string(l.Status), LatencyMs: l.LatencyMs,
+			ErrorSummary: l.ErrorSummary, CreatedAt: l.CreatedAt,
+		})
+	}
+	return out
+}

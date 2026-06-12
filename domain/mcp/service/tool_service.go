@@ -72,6 +72,25 @@ func (s *ToolService) Tools(ctx context.Context, conversationID string) ([]entit
 	return s.aggregate(ctx)
 }
 
+// ListApprovals returns a conversation's write-action approvals (read). Requires
+// the conversation to be visible to the actor; an empty thread yields an empty
+// slice (not an error).
+func (s *ToolService) ListApprovals(ctx context.Context, conversationID string) ([]*entity.Approval, error) {
+	if _, err := s.loadVisible(ctx, conversationID); err != nil {
+		return nil, err
+	}
+	return s.approvals.ListByConversation(ctx, conversationID)
+}
+
+// ListCallLogs returns a conversation's payload-free tool-call logs (read), under
+// the same visibility rule as ListApprovals.
+func (s *ToolService) ListCallLogs(ctx context.Context, conversationID string) ([]*entity.CallLog, error) {
+	if _, err := s.loadVisible(ctx, conversationID); err != nil {
+		return nil, err
+	}
+	return s.callLogs.ListByConversation(ctx, conversationID)
+}
+
 // aggregate discovers tools from every enabled server, annotating write by kind.
 func (s *ToolService) aggregate(ctx context.Context) ([]entity.Tool, error) {
 	servers, err := s.servers.ListEnabled(ctx)

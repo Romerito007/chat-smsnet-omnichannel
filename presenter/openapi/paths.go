@@ -48,6 +48,9 @@ func registerOrg(p *paths) {
 		responses: M{"200": jsonResp("Presence list", arr(ref("Presence")))}}))
 	p.add("POST", "/v1/agents/presence/status", op(opConfig{tag: "presence", summary: "Set own (or an agent's) status",
 		reqBody: body(ref("SetStatusRequest")), responses: M{"200": jsonResp("Presence", ref("Presence"))}}))
+	p.add("GET", "/v1/agents", op(opConfig{tag: "presence",
+		summary:   "List assignable agents (id, name, presence) for the assignment selector — conversation.assign",
+		responses: M{"200": jsonResp("Assignable agents", dataArr(ref("AssignableAgent")))}}))
 
 	p.add("GET", "/v1/sectors/{id}/business-status", op(opConfig{tag: "businesshours", summary: "Sector open/closed status",
 		params: []M{pathParam("id", "sector id")}, responses: M{"200": jsonResp("Business status", ref("BusinessStatus"))}}))
@@ -239,6 +242,12 @@ func registerCopilotMCP(p *paths) {
 		params: cidp, responses: M{"200": jsonResp("Tools", ref("McpToolList"))}}))
 	p.add("POST", "/v1/conversations/{id}/mcp/run", op(opConfig{tag: "mcp", summary: "Run a tool (read executes; write creates a pending approval)",
 		params: cidp, reqBody: body(ref("RunToolRequest")), responses: M{"200": jsonResp("Executed (read)", ref("McpRunResult")), "202": jsonResp("Pending approval (write)", ref("McpRunResult"))}}))
+	p.add("GET", "/v1/conversations/{id}/copilot/tool-calls", op(opConfig{tag: "mcp",
+		summary: "List a conversation's tool-call history (read) — copilot.use; 200 [] when none",
+		params:  cidp, responses: M{"200": jsonResp("Tool-call logs", dataArr(ref("McpCallLog")))}}))
+	p.add("GET", "/v1/conversations/{id}/copilot/approvals", op(opConfig{tag: "mcp",
+		summary: "List a conversation's write-action approvals (read) — copilot.use; 200 [] when none",
+		params:  cidp, responses: M{"200": jsonResp("Approvals", dataArr(ref("McpApproval")))}}))
 	p.add("POST", "/v1/conversations/{id}/copilot/approvals/{approvalID}", op(opConfig{tag: "mcp", summary: "Approve/reject a proposed write action (approval triggers execution)",
 		params: []M{pathParam("id", "conversation id"), pathParam("approvalID", "approval id")}, reqBody: body(ref("DecideRequest")),
 		responses: M{"200": jsonResp("Decision applied", ref("McpRunResult"))}}))

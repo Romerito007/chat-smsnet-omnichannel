@@ -69,6 +69,9 @@ func (fakeMsgRepo) FindByID(context.Context, string) (*entity.Message, error) {
 func (fakeMsgRepo) ListByConversation(context.Context, string, shared.PageRequest) ([]*entity.Message, error) {
 	return nil, nil
 }
+func (fakeMsgRepo) LatestByConversation(context.Context, string) (*entity.Message, error) {
+	return nil, apperror.NotFound("none")
+}
 
 type fakeEventRepo struct{}
 

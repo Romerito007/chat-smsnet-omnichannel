@@ -228,6 +228,27 @@ func (s *Service) List(ctx context.Context, filter contracts.ListFilter, page sh
 	return s.conversations.List(ctx, filter, vis, page.Normalize())
 }
 
+// LastMessages returns the latest non-deleted message per conversation id (for
+// list-item previews). Conversations with an empty thread are absent from the
+// map. Tenant-scoped; the caller already authorized the listing.
+func (s *Service) LastMessages(ctx context.Context, conversationIDs []string) (map[string]*entity.Message, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	out := make(map[string]*entity.Message, len(conversationIDs))
+	for _, id := range conversationIDs {
+		m, err := s.messages.LatestByConversation(ctx, id)
+		if err != nil {
+			if apperror.From(err).Code == apperror.CodeNotFound {
+				continue
+			}
+			return nil, err
+		}
+		out[id] = m
+	}
+	return out, nil
+}
+
 // Update applies the non-nil fields of cmd.
 func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateConversation) (*entity.Conversation, error) {
 	conv, _, err := s.loadVisible(ctx, id)

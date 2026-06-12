@@ -37,6 +37,9 @@ type MessageRepository interface {
 	FindByID(ctx context.Context, id string) (*entity.Message, error)
 	// ListByConversation returns non-deleted messages, newest first (keyset).
 	ListByConversation(ctx context.Context, conversationID string, page shared.PageRequest) ([]*entity.Message, error)
+	// LatestByConversation returns the most recent non-deleted message of a
+	// conversation (for list previews), or NotFound when the thread is empty.
+	LatestByConversation(ctx context.Context, conversationID string) (*entity.Message, error)
 }
 
 // EventRepository persists conversation timeline events.

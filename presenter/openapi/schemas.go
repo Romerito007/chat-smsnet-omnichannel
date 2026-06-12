@@ -91,6 +91,19 @@ func schemas() M {
 			"priority": str(), "tags": arr(str()), "last_message_at": dateTime(),
 			"unread_count": integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
+			"last_message": ref("LastMessage"),
+		}),
+		"LastMessage": object(M{
+			"preview": str(), "sender_type": str(), "message_type": str(), "created_at": dateTime(),
+		}),
+		"AssignableAgent": object(M{
+			"id": str(), "name": str(), "status": str(),
+			"current_load": integer(), "max_concurrent_chats": integer(),
+		}),
+		"McpCallLog": object(M{
+			"id": str(), "conversation_id": str(), "server_name": str(), "tool": str(),
+			"write": boolean(), "status": str(), "latency_ms": integer(),
+			"error_summary": str(), "created_at": dateTime(),
 		}),
 		"ConversationEvent": object(M{
 			"id": str(), "conversation_id": str(), "type": str(),

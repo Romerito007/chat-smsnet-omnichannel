@@ -119,6 +119,20 @@ func (r *fakeMsgRepo) ListByConversation(_ context.Context, convID string, _ sha
 	}
 	return out, nil
 }
+func (r *fakeMsgRepo) LatestByConversation(_ context.Context, convID string) (*entity.Message, error) {
+	var latest *entity.Message
+	for _, m := range r.items {
+		if m.ConversationID == convID && m.DeletedAt == nil {
+			if latest == nil || m.CreatedAt.After(latest.CreatedAt) {
+				latest = m
+			}
+		}
+	}
+	if latest == nil {
+		return nil, apperror.NotFound("nf")
+	}
+	return latest, nil
+}
 
 type fakeEventRepo struct{ items []*entity.ConversationEvent }
 

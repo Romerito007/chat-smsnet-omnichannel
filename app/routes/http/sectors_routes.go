@@ -9,20 +9,25 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
 
-// registerSectorRoutes mounts sector CRUD, gated on sector.manage.
+// registerSectorRoutes mounts sector endpoints: reads (list/get) are available to
+// any authenticated tenant user that can handle conversations (conversation.read),
+// since agents need the sector list for filters and assignment; writes require
+// sector.manage.
 func registerSectorRoutes(r chi.Router, c *container.Container) {
 	ctl := factories.SectorController(c)
 
+	read := middleware.RequirePermission(authz.ConversationRead)
+	manage := middleware.RequirePermission(authz.SectorManage)
+
 	r.Group(func(p chi.Router) {
 		p.Use(middleware.AuthContext(c.Tokens))
-		p.Use(middleware.RequirePermission(authz.SectorManage))
 
 		p.Route("/sectors", func(s chi.Router) {
-			s.Get("/", ctl.List)
-			s.Post("/", ctl.Create)
-			s.Get("/{id}", ctl.Get)
-			s.Patch("/{id}", ctl.Update)
-			s.Delete("/{id}", ctl.Delete)
+			s.With(read).Get("/", ctl.List)
+			s.With(read).Get("/{id}", ctl.Get)
+			s.With(manage).Post("/", ctl.Create)
+			s.With(manage).Patch("/{id}", ctl.Update)
+			s.With(manage).Delete("/{id}", ctl.Delete)
 		})
 	})
 }

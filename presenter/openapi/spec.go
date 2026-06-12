@@ -40,6 +40,11 @@ func pageOf(item M) M {
 	return object(M{"data": arr(item), "page": ref("PageInfo")})
 }
 
+// dataArr is a non-paginated { data: [item] } envelope.
+func dataArr(item M) M {
+	return object(M{"data": arr(item)})
+}
+
 func anySlice(ss []string) []any {
 	out := make([]any, len(ss))
 	for i, s := range ss {
