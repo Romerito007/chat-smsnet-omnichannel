@@ -567,6 +567,17 @@ components:
                 sector_id:
                     type: string
                 status:
+                    enum:
+                        - new
+                        - automation
+                        - queued
+                        - assigned
+                        - waiting_customer
+                        - waiting_agent
+                        - transferred
+                        - resolved
+                        - closed
+                        - archived
                     type: string
                 tags:
                     items:
@@ -2296,6 +2307,17 @@ components:
                 sector_id:
                     type: string
                 status:
+                    enum:
+                        - new
+                        - automation
+                        - queued
+                        - assigned
+                        - waiting_customer
+                        - waiting_agent
+                        - transferred
+                        - resolved
+                        - closed
+                        - archived
                     type: string
                 tags:
                     items:
@@ -4268,11 +4290,22 @@ paths:
                   required: false
                   schema:
                     type: string
-                - description: Filter by status
+                - description: Filter by status (exact match; same vocabulary as the PATCH body).
                   in: query
                   name: status
                   required: false
                   schema:
+                    enum:
+                        - new
+                        - automation
+                        - queued
+                        - assigned
+                        - waiting_customer
+                        - waiting_agent
+                        - transferred
+                        - resolved
+                        - closed
+                        - archived
                     type: string
                 - description: Filter by agent
                   in: query

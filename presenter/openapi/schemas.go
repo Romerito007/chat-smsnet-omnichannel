@@ -87,7 +87,7 @@ func schemas() M {
 		// ── conversations / messages ───────────────────────────────────────────
 		"Conversation": object(M{
 			"id": str(), "tenant_id": str(), "contact_id": str(), "channel": str(),
-			"sector_id": str(), "queue_id": str(), "status": str(), "assigned_to": str(),
+			"sector_id": str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
 			"priority": str(), "tags": arr(str()), "last_message_at": dateTime(),
 			"unread_count": integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
@@ -115,7 +115,7 @@ func schemas() M {
 			"assigned_to": str(), "priority": str(), "tags": arr(str()),
 		}, "contact_id", "channel"),
 		"UpdateConversationRequest": object(M{
-			"sector_id": str(), "queue_id": str(), "status": str(), "assigned_to": str(),
+			"sector_id": str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
 			"priority": str(), "tags": arr(str()),
 		}),
 		"Attachment": object(M{"id": str(), "url": str(), "content_type": str(), "filename": str(), "size": integer()}),

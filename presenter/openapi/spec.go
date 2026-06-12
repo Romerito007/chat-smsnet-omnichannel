@@ -27,6 +27,16 @@ func enum(vals ...string) M {
 	return M{"type": "string", "enum": anySlice(vals)}
 }
 
+// conversationStatusEnum is the single source of truth for the conversation
+// status vocabulary (domain/conversations/entity.Status). The same set is used by
+// the Conversation schema, the PATCH /conversations/{id} body and the
+// GET /conversations ?status= filter, so a client can move a conversation to
+// exactly the values the list filter understands.
+func conversationStatusEnum() M {
+	return enum("new", "automation", "queued", "assigned", "waiting_customer",
+		"waiting_agent", "transferred", "resolved", "closed", "archived")
+}
+
 func object(props M, required ...string) M {
 	o := M{"type": "object", "properties": props}
 	if len(required) > 0 {
