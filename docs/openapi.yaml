@@ -5048,8 +5048,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/SLATracking'
-                    description: Tracking
+                                oneOf:
+                                    - $ref: '#/components/schemas/SLATracking'
+                                    - type: "null"
+                    description: SLA tracking, or null when the conversation has no tracking yet
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":

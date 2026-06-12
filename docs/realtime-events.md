@@ -28,8 +28,17 @@ handshake do WebSocket).
   - `t:{tenant}:user:{userId}` — notificações/atribuições/presença pessoal;
   - `t:{tenant}:presence` — quadro de presença da equipe;
   - `t:{tenant}:inbox:{sectorId}` — uma por setor que o ator pode ver.
-- **Keepalive:** o servidor envia `ping` a cada ~54s (`pongWait` 60s); o cliente
-  deve responder `pong`. Limite de leitura de **4096 bytes/frame**.
+- **Keepalive (dois níveis):**
+  - **Heartbeat de aplicação:** o servidor envia, a cada **20s**, um frame de
+    dados no envelope padrão `{ "event": "ping", "ts": <ms>, "data": {} }`. Como
+    os clientes (browser) só reiniciam o *silence timer* em frames de dados — e
+    **não** em `pong` de protocolo — é este frame que mantém a conexão viva. Não
+    exige `subscribe` a nenhuma conversa.
+  - **Ping de protocolo (WS control):** além do heartbeat, o servidor envia um
+    `PingMessage` a cada ~54s; o cliente responde `pong`, o que renova o
+    *read deadline* (`pongWait` 60s). Ambos os intervalos (20s e 54s) são
+    menores que `pongWait`, então o servidor **nunca** derruba uma conexão
+    ociosa antes do keepalive. Limite de leitura de **4096 bytes/frame**.
 - **Back-pressure:** buffer de envio por cliente (64); cliente lento tem entrega
   best-effort (descarte) para não travar o fan-out.
 - **Multi-aba:** várias conexões por usuário (limite opcional
@@ -192,6 +201,16 @@ e aguarda aprovação explícita do atendente. A execução só ocorre via
 `type` inclui, entre outros: `conversation.assigned_to_you`,
 `conversation.transferred_to_you`, `mention.internal_note`,
 `channel.connection_error`.
+
+### Keepalive (sistema)
+| Evento | Tópico | Payload |
+|---|---|---|
+| `ping` | — (por conexão) | `{}` |
+
+Heartbeat de aplicação enviado pelo próprio pump da conexão
+(`presenter/websocket/handler.go`) a cada **20s**, fora do fluxo
+`EventPublisher`. Não exige `subscribe`. O cliente deve apenas tratá-lo como
+sinal de vida (reiniciar seu *silence timer*); não há ação associada.
 
 ## Como os eventos são publicados
 

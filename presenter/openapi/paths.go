@@ -105,7 +105,8 @@ func registerConversations(p *paths) {
 
 	// conversation SLA
 	p.add("GET", "/v1/conversations/{id}/sla", op(opConfig{tag: "sla", summary: "SLA tracking for a conversation",
-		params: idp, responses: M{"200": jsonResp("Tracking", ref("SLATracking"))}}))
+		params: idp, responses: M{"200": jsonResp("SLA tracking, or null when the conversation has no tracking yet",
+			M{"oneOf": []any{ref("SLATracking"), M{"type": "null"}}})}}))
 
 	// contacts (CRM)
 	p.add("GET", "/v1/contacts", op(opConfig{tag: "contacts", summary: "List contacts (contact.read)",

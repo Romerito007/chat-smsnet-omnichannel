@@ -26,9 +26,26 @@ const (
 	writeWait      = 10 * time.Second
 	pongWait       = 60 * time.Second
 	pingPeriod     = (pongWait * 9) / 10
+	heartbeatWait  = 20 * time.Second // app-level keepalive ({event:"ping"})
 	sendBufferSize = 64
 	maxReadBytes   = 4096
 )
+
+// pingEnvelope is the app-level keepalive frame, sent on the same {event, ts, data}
+// envelope as every other realtime event. Browser clients reset their silence
+// timer on data frames (not on protocol-level pong frames), so this text frame —
+// not just the WS control ping — is what keeps the connection from being torn
+// down. It requires no conversation subscription.
+type pingEnvelope struct {
+	Event string         `json:"event"`
+	Ts    int64          `json:"ts"`
+	Data  map[string]any `json:"data"`
+}
+
+func pingFrame() []byte {
+	b, _ := json.Marshal(pingEnvelope{Event: "ping", Ts: time.Now().UnixMilli(), Data: map[string]any{}})
+	return b
+}
 
 // clientCommand is the inbound control frame a client sends to (un)subscribe to a
 // conversation room.
@@ -166,10 +183,16 @@ func (h *Handler) readPump(conn *websocket.Conn, client *realtime.Client, ac aut
 	}
 }
 
-// writePump delivers Hub messages to the socket and sends periodic pings.
+// writePump delivers Hub messages to the socket and sends two keepalives: a
+// protocol-level WS ping (drives the pong-based read deadline) and an app-level
+// {event:"ping"} text frame every heartbeatWait (resets browser silence timers).
+// Both intervals are shorter than pongWait, so the server never tears down an idle
+// connection before a keepalive is sent.
 func (h *Handler) writePump(conn *websocket.Conn, client *realtime.Client) {
 	ticker := time.NewTicker(pingPeriod)
+	heartbeat := time.NewTicker(heartbeatWait)
 	defer ticker.Stop()
+	defer heartbeat.Stop()
 
 	for {
 		select {
@@ -180,6 +203,11 @@ func (h *Handler) writePump(conn *websocket.Conn, client *realtime.Client) {
 				return
 			}
 			if err := conn.WriteMessage(websocket.TextMessage, msg.Payload); err != nil {
+				return
+			}
+		case <-heartbeat.C:
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteMessage(websocket.TextMessage, pingFrame()); err != nil {
 				return
 			}
 		case <-ticker.C:

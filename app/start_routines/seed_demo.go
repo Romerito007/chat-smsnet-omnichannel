@@ -169,7 +169,56 @@ func (d *demoSeeder) reset() error {
 			return err
 		}
 	}
+	// Belt-and-suspenders: a partial earlier run may have left duplicate tag slugs
+	// that are not in the ledger. Dedupe tags by slug — but ONLY within the target
+	// tenant, never across tenants.
+	if err := d.dedupeTags(); err != nil {
+		return err
+	}
 	_, err = d.db.Collection(demoSeedLedger).DeleteMany(d.ctx, bson.M{"tenant_id": d.tenantID})
+	return err
+}
+
+// tagExists reports whether a tag with the given slug already exists in the tenant.
+func (d *demoSeeder) tagExists(name string) (bool, error) {
+	n, err := d.db.Collection("tags").CountDocuments(d.ctx,
+		bson.M{"tenant_id": d.tenantID, "name": name})
+	return n > 0, err
+}
+
+// dedupeTags removes duplicate tag slugs in the target tenant, keeping one per
+// slug. Scoped strictly to d.tenantID.
+func (d *demoSeeder) dedupeTags() error {
+	cur, err := d.db.Collection("tags").Find(d.ctx, bson.M{"tenant_id": d.tenantID})
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	var dupIDs []string
+	for cur.Next(d.ctx) {
+		var t struct {
+			ID   string `bson:"_id"`
+			Name string `bson:"name"`
+		}
+		if err := cur.Decode(&t); err != nil {
+			_ = cur.Close(d.ctx)
+			return err
+		}
+		if seen[t.Name] {
+			dupIDs = append(dupIDs, t.ID)
+		} else {
+			seen[t.Name] = true
+		}
+	}
+	_ = cur.Close(d.ctx)
+	if err := cur.Err(); err != nil {
+		return err
+	}
+	if len(dupIDs) == 0 {
+		return nil
+	}
+	_, err = d.db.Collection("tags").DeleteMany(d.ctx,
+		bson.M{"_id": bson.M{"$in": dupIDs}, "tenant_id": d.tenantID})
 	return err
 }
 
@@ -368,6 +417,16 @@ func (d *demoSeeder) seedTaxonomyCSAT() error {
 		{"segunda-via", "#14B8A6"}, {"financeiro", "#22C55E"},
 	}
 	for _, t := range tags {
+		d.tagNames = append(d.tagNames, t.name)
+		// Idempotent: never create a second tag with the same slug in the tenant
+		// (a duplicate slug collides on the front's list keys).
+		exists, err := d.tagExists(t.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
 		tag := &ctentity.Tag{
 			ID: shared.NewID(), TenantID: d.tenantID, Name: t.name, Color: t.color,
 			Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
@@ -376,7 +435,6 @@ func (d *demoSeeder) seedTaxonomyCSAT() error {
 			return err
 		}
 		d.mark("tags", tag.ID)
-		d.tagNames = append(d.tagNames, t.name)
 	}
 
 	crepo := ctrepo.NewCannedResponseRepository(d.db)

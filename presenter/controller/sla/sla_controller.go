@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	slaservice "github.com/romerito007/chat-smsnet-omnichannel/domain/sla/service"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/sla"
@@ -90,6 +91,13 @@ func (c *Controller) DeletePolicy(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) ConversationSLA(w http.ResponseWriter, r *http.Request) {
 	t, err := c.tracking.Status(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
+		// A conversation with no SLA tracking yet (e.g. still queued) is a valid,
+		// non-exceptional state: return 200 with null instead of 404 so the client
+		// can tell "no SLA" apart from a real error without a special-case fetch.
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			middleware.WriteJSON(w, http.StatusOK, nil)
+			return
+		}
 		middleware.WriteError(w, r, err)
 		return
 	}
