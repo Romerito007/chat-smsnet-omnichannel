@@ -2,6 +2,7 @@ package factories
 
 import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	copilotentity "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 	cservice "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/service"
 	infracopilot "github.com/romerito007/chat-smsnet-omnichannel/infra/copilot"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/copilot/provider"
@@ -48,6 +49,14 @@ func CopilotService(c *container.Container) *cservice.Service {
 	// Wire the MCP tool broker so suggest_reply runs the agentic read-tool loop and
 	// proposes write actions for approval.
 	svc.SetToolBroker(MCPToolService(c))
+	// Server-side logging of the real provider cause + env-default API keys used
+	// when a tenant has selected a provider but set no key of its own.
+	svc.SetLogger(c.Logger)
+	svc.SetEnvKeys(map[copilotentity.Provider]string{
+		copilotentity.ProviderOpenAI:    c.Config.Copilot.OpenAIKey,
+		copilotentity.ProviderGemini:    c.Config.Copilot.GeminiKey,
+		copilotentity.ProviderAnthropic: c.Config.Copilot.AnthropicKey,
+	})
 	return svc
 }
 

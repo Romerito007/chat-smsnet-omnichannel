@@ -560,9 +560,13 @@ func (d *demoSeeder) seedIntegrations() error {
 	// human approval on). system_prompt/propose-write are not config fields.
 	cpRepo := cprepo.NewConfigRepository(d.db, d.c.Cipher)
 	if _, err := cpRepo.FindByTenant(d.ctx); err != nil {
+		// No placeholder API key: a fake key would make the copilot look configured
+		// but fail every call with a provider auth error. Left empty so has_api_key
+		// is false (the UI prompts to configure) and the env-default key, if set,
+		// is used as the fallback.
 		cfg := &cpentity.AIConfig{
 			ID: shared.NewID(), TenantID: d.tenantID, Provider: cpentity.ProviderOpenAI,
-			Model: "gpt-4o-mini", APIKey: "demo-openai-key-PLACEHOLDER", Temperature: 0.3, MaxTokens: 1024,
+			Model: "gpt-4o-mini", APIKey: "", Temperature: 0.3, MaxTokens: 1024,
 			AllowCustomerData: true, AllowFinancialData: false, AllowMonitoringData: false,
 			HumanApprovalRequired: true, Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
 		}

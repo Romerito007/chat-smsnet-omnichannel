@@ -19,6 +19,12 @@ func logIntegrationsHealth(ctx context.Context, c *container.Container) {
 		{"SMSNET_MCP_CONSULTAS_URL", c.Config.MCP.ConsultasURL},
 		{"SMSNET_MCP_OPERACOES_URL", c.Config.MCP.OperacoesURL},
 	}
+	// Copilot egress: when an OpenAI env key is set, probe the default provider host
+	// so a restricted-egress environment surfaces at boot (the per-tenant base_url
+	// may differ; this is a best-effort default check).
+	if c.Config.Copilot.OpenAIKey != "" {
+		targets = append(targets, struct{ name, url string }{"COPILOT_OPENAI (api.openai.com)", "https://api.openai.com/v1"})
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
 	for _, t := range targets {
 		if t.url == "" {

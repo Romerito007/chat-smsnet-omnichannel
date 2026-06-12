@@ -55,7 +55,7 @@ func (b *fakeBroker) OpenToolSession(context.Context, string) (contracts.ToolSes
 func agenticService(prov *scriptedProvider, session *fakeSession) (*Service, *fakeLogs) {
 	logs := &fakeLogs{}
 	clock := fixedClock{t: time.Unix(1700000000, 0).UTC()}
-	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.ProviderOpenAI, Model: "m", Enabled: true}
+	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.ProviderOpenAI, Model: "m", APIKey: "test-key", Enabled: true}
 	cfgSvc := NewConfigService(&fakeConfigRepo{cfg: cfg}, clock)
 	convs := &fakeConvRepo{items: map[string]*conventity.Conversation{"conv1": conv()}}
 	svc := NewService(cfgSvc, logs, convs, builderWithAllSources(sampleMessages()), spyResolver{p: prov}, shared.NoopPublisher{}, clock)

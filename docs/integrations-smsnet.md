@@ -44,3 +44,55 @@ Configuração por **env default** com **override por tenant** no banco. Nada di
 - **Health no startup:** o backend faz um probe best-effort (não-fatal) de cada
   endpoint configurado e loga em INFO `reachable=true|false` (apenas o nome da env,
   nunca a URL). Inalcançável não impede o boot.
+
+---
+
+# Copiloto (provedor de IA)
+
+Inferência do copiloto (`POST /v1/copilot/suggest-reply` etc.) contra um provedor
+OpenAI-compatível (OpenAI/Mistral/DeepSeek/Perplexity), Anthropic ou Gemini.
+
+## Resolução da API key (precedência)
+
+1. **Config do tenant** (`copilot_config.api_key`, cifrada AES-GCM via
+   `PATCH /v1/copilot/config`) — **vence** se preenchida.
+2. **Env default** por provedor, usada como **fallback** quando a key do tenant
+   está vazia: `COPILOT_OPENAI_API_KEY`, `COPILOT_GEMINI_API_KEY`,
+   `COPILOT_ANTHROPIC_API_KEY`.
+3. **Ambas vazias** → erro acionável `category:"api_key_missing"`
+   ("configure a API key do copiloto"), **não** um 502 genérico.
+
+> O seed demo **não** grava api_key placeholder (ficaria "configurado" mas
+> falharia): cria a config com `api_key` vazia (`has_api_key:false`), então o
+> fallback de env passa a valer. `GET /v1/copilot/config` nunca devolve a key em
+> claro (só `has_api_key`).
+
+## base_url
+
+`copilot_config.base_url` vazio → default do provedor (OpenAI:
+`https://api.openai.com/v1`). Se setado (proxy/gateway corporativo), é usado como
+está; um base_url errado também causa 502.
+
+## Erros do provedor (502)
+
+Toda falha de chamada vira `integration_unavailable` (502) com mensagem amigável
+**+ `details.category`** para a UI orientar:
+
+| category | causa real (logada server-side) | mensagem ao usuário |
+|---|---|---|
+| `api_key` | 401 / `invalid_api_key` | "API key inválida ou ausente — verifique a config" |
+| `model` | 404 / `model_not_found` | "modelo configurado indisponível para esta key" |
+| `quota` | 429 / `insufficient_quota` | "cota/limite do provedor atingido" |
+| `unreachable` | timeout / DNS / conexão recusada | "copiloto temporariamente indisponível" |
+| `api_key_missing` | sem key (tenant nem env) | "configure a API key do copiloto" |
+
+A **causa real** (status HTTP + corpo do erro do provedor) é registrada no log do
+servidor (`copilot provider call failed`, com `provider/model/base_url/cause`) e
+no `AILog`; o corpo bruto **nunca** vai ao cliente.
+
+## Conectividade de saída (egress)
+
+O backend precisa de **egress** para `api.openai.com` (ou o `base_url`
+configurado). Em rede restrita, libere esse destino. No startup, se
+`COPILOT_OPENAI_API_KEY` estiver setada, há um probe best-effort (não-fatal) que
+loga `reachable=true|false` para `api.openai.com`.

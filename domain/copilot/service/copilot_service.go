@@ -35,6 +35,8 @@ type Service struct {
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	tools         contracts.ToolBroker
+	logger        shared.Logger
+	envKeys       map[entity.Provider]string
 }
 
 // SetToolBroker wires the MCP tool broker enabling the agentic loop. Optional:
@@ -43,6 +45,20 @@ func (s *Service) SetToolBroker(b contracts.ToolBroker) {
 	if b != nil {
 		s.tools = b
 	}
+}
+
+// SetLogger wires a server-side logger so a provider failure records its real
+// cause (HTTP status + provider error body) in the logs, not just the AILog.
+func (s *Service) SetLogger(l shared.Logger) {
+	if l != nil {
+		s.logger = l
+	}
+}
+
+// SetEnvKeys wires the env-default provider API keys, used as a fallback when a
+// tenant has selected a provider but set no key of its own.
+func (s *Service) SetEnvKeys(keys map[entity.Provider]string) {
+	s.envKeys = keys
 }
 
 // NewService builds the copilot service.
@@ -112,11 +128,25 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 		return contracts.Result{}, apperror.Integration(friendlyUnavailable)
 	}
 
+	// Key precedence: the tenant config key wins; if it is empty, fall back to the
+	// env-default key for the provider. If both are empty, fail with an actionable
+	// message instead of letting the provider return a generic auth error.
+	apiKey := cfg.APIKey
+	if apiKey == "" {
+		apiKey = s.envKeys[cfg.Provider]
+	}
+	if apiKey == "" {
+		s.log(ctx, conv, cfg, action, "", entity.StatusError, 0, 0, "no api key (tenant or env)")
+		return contracts.Result{}, apperror.Integration(
+			"the copilot API key is not configured — set it in copilot settings or via env").
+			WithDetails(map[string]any{"category": "api_key_missing"})
+	}
+
 	pc := s.builder.Build(ctx, cfg, conv, instruction)
 	base := contracts.Request{
 		Action:      action,
 		Model:       cfg.Model,
-		APIKey:      cfg.APIKey,
+		APIKey:      apiKey,
 		BaseURL:     cfg.BaseURL,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
@@ -132,7 +162,17 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 	}
 	if err != nil {
 		s.log(ctx, conv, cfg, action, "", entity.StatusError, 0, 0, summarize(err))
-		return contracts.Result{}, apperror.Integration(friendlyUnavailable)
+		// Record the real provider cause server-side (status + error body) so the
+		// 502 is diagnosable; the client gets a friendly message + safe category.
+		if s.logger != nil {
+			tenantID, _ := shared.TenantFrom(ctx)
+			s.logger.Error("copilot provider call failed",
+				"tenant_id", tenantID, "provider", string(cfg.Provider), "model", cfg.Model,
+				"action", string(action), "base_url", cfg.BaseURL, "cause", err.Error())
+		}
+		category, message := classifyProviderError(err)
+		return contracts.Result{}, apperror.Integration(message).
+			WithDetails(map[string]any{"category": category})
 	}
 
 	cost := estimateCost(cfg.Provider, resp.TokensInput, resp.TokensOutput)
@@ -302,4 +342,29 @@ func summarize(err error) string {
 		msg = msg[:200]
 	}
 	return msg
+}
+
+// classifyProviderError maps a provider error (which carries the HTTP status and
+// the provider's error body, e.g. "provider returned 401: ...invalid_api_key...")
+// to a safe category and a friendly, actionable message. The raw provider body is
+// never returned to the client — only the category.
+func classifyProviderError(err error) (category, message string) {
+	e := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(e, "401") || strings.Contains(e, "invalid_api_key") ||
+		strings.Contains(e, "invalid api key") || strings.Contains(e, "not configured") ||
+		strings.Contains(e, "no api key") || strings.Contains(e, "incorrect api key"):
+		return "api_key", "the copilot API key appears to be invalid or missing — check the copilot settings"
+	case strings.Contains(e, "model") && (strings.Contains(e, "404") ||
+		strings.Contains(e, "not found") || strings.Contains(e, "does not exist")):
+		return "model", "the configured copilot model is not available for this API key"
+	case strings.Contains(e, "429") || strings.Contains(e, "insufficient_quota") ||
+		strings.Contains(e, "quota") || strings.Contains(e, "rate limit"):
+		return "quota", "the AI provider quota/rate limit was reached — try again shortly"
+	case strings.Contains(e, "timeout") || strings.Contains(e, "deadline") ||
+		strings.Contains(e, "no such host") || strings.Contains(e, "connection refused"):
+		return "unreachable", friendlyUnavailable
+	default:
+		return "unavailable", friendlyUnavailable
+	}
 }
