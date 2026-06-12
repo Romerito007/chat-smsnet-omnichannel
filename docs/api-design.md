@@ -113,19 +113,23 @@ GET    /permissions                # catálogo (read-only)
 GET    /tenant                     PATCH  /tenant            # settings do tenant atual
 ```
 
-### contacts
+### contacts (CRM)
 ```
-GET    /contacts/{id}              # implementado — leitura (contact.read), tenant-scoped
-GET    /contacts                   POST   /contacts        # design futuro
-PATCH  /contacts/{id}              DELETE /contacts/{id}    # design futuro
-POST   /contacts/{id}/merge        GET /contacts/{id}/conversations   # design futuro
+GET    /contacts                   # lista paginada por cursor; ?q= (name/phone/document/email) — contact.read
+POST   /contacts                   # criar — contact.write; dedup por documento/telefone -> 409
+GET    /contacts/{id}              # leitura — contact.read
+PATCH  /contacts/{id}              # editar (parcial) — contact.write; dedup -> 409
+DELETE /contacts/{id}              POST /contacts/{id}/merge   # design futuro
 ```
-`GET /v1/contacts/{id}` → `Contact { id, tenant_id, name, phones[], document,
-external_ids[]{channel, external_id}, tags[], notes, created_at, updated_at }`.
-Só campos **locais** (nunca dados enriquecidos do provider). `phones[]` deriva do
-telefone primário hoje; `external_ids[]` vem das identidades por canal. Resumo do
-contato pode ser embutido na `Conversation` no futuro (`contact_summary`,
-opcional).
+`Contact = { id, tenant_id, name, phones[], document?, email?,
+external_ids[]{channel, external_id}, tags[], notes?, created_at, updated_at }`.
+Só campos **locais** (nunca dados enriquecidos do provider). Tenant do token;
+`create`/`update` auditados (`contact.created`/`contact.updated`).
+
+- **Criar/editar** aceitam `phones[]` (normalizadas para dígitos; a 1ª vira a
+  primária), `document`, `email`, `external_ids[]`, `tags[]`, `notes`.
+- **Histórico do contato:** use `GET /conversations?contact_id={id}`.
+- **Iniciar conversa:** `POST /conversations` aceita o `contact_id` recém-criado.
 
 ### sectors / queues
 ```

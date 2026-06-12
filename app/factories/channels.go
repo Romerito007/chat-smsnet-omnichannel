@@ -18,7 +18,9 @@ func channelRegistry() chcontracts.AdapterRegistry { return infrachannels.NewReg
 
 // ContactService builds the contact service.
 func ContactService(c *container.Container) *contactservice.Service {
-	return contactservice.New(contactrepo.New(c.Mongo.DB), clock)
+	svc := contactservice.New(contactrepo.New(c.Mongo.DB), clock)
+	svc.SetAuditor(AuditService(c))
+	return svc
 }
 
 // ConnectionService builds the channel connection service, wired to the HTTP

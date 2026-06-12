@@ -32,7 +32,7 @@ func DefaultRoles() []DefaultRoleDefinition {
 			Permissions: []Permission{
 				ConversationRead, ConversationAssign, ConversationTransfer, ConversationClose,
 				MessageSend, MessageInternalNote, MessageDelete,
-				ContactRead, ContactViewConnectionStatus,
+				ContactRead, ContactWrite, ContactViewConnectionStatus,
 				SectorManage, QueueManage, UserManage,
 				AutomationManage, CopilotUse, CopilotConfigure,
 				IntegrationRead, IntegrationConfigure,
@@ -46,7 +46,7 @@ func DefaultRoles() []DefaultRoleDefinition {
 			Permissions: []Permission{
 				ConversationRead, ConversationAssign, ConversationClose,
 				MessageSend, MessageInternalNote,
-				ContactRead,
+				ContactRead, ContactWrite,
 				CopilotUse,
 			},
 			SectorScope: ScopeOwn,

@@ -12,11 +12,16 @@ type ChannelIdentity struct {
 // Contact is a person who talks to the operation. Only basic, locally-provided
 // fields are stored — never data fetched/enriched from a provider.
 type Contact struct {
-	ID         string
-	TenantID   string
-	Name       string
-	Phone      string
+	ID       string
+	TenantID string
+	Name     string
+	// Phone is the primary phone (== Phones[0]), kept denormalized for the inbound
+	// upsert, search and dedup paths.
+	Phone string
+	// Phones are all of the contact's phone numbers (CRM).
+	Phones     []string
 	Document   string
+	Email      string
 	Identities []ChannelIdentity
 	// Tags are free-form labels applied by agents (CRM-style).
 	Tags []string
@@ -24,6 +29,30 @@ type Contact struct {
 	Notes     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// SetPhones replaces the phone list (already normalized by the caller) and keeps
+// the primary Phone in sync as the first entry.
+func (c *Contact) SetPhones(phones []string) {
+	c.Phones = phones
+	if len(phones) > 0 {
+		c.Phone = phones[0]
+	} else {
+		c.Phone = ""
+	}
+}
+
+// AddPhone appends a phone if not already present, keeping the primary in sync.
+func (c *Contact) AddPhone(phone string) {
+	if phone == "" {
+		return
+	}
+	for _, p := range c.Phones {
+		if p == phone {
+			return
+		}
+	}
+	c.SetPhones(append(c.Phones, phone))
 }
 
 // HasIdentity reports whether the contact already carries the given channel

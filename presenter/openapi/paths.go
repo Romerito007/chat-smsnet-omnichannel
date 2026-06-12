@@ -107,9 +107,18 @@ func registerConversations(p *paths) {
 	p.add("GET", "/v1/conversations/{id}/sla", op(opConfig{tag: "sla", summary: "SLA tracking for a conversation",
 		params: idp, responses: M{"200": jsonResp("Tracking", ref("SLATracking"))}}))
 
-	// contacts
-	p.add("GET", "/v1/contacts/{id}", op(opConfig{tag: "contacts", summary: "Get a contact (tenant-scoped)",
+	// contacts (CRM)
+	p.add("GET", "/v1/contacts", op(opConfig{tag: "contacts", summary: "List contacts (contact.read)",
+		params:    append(paginationParams(), queryParam("q", "Free-text filter (name/phone/document/email)")),
+		responses: M{"200": jsonResp("Contact page", pageOf(ref("Contact")))}}))
+	p.add("POST", "/v1/contacts", op(opConfig{tag: "contacts", summary: "Create a contact (contact.write)",
+		reqBody:   body(ref("CreateContactRequest")),
+		responses: M{"201": jsonResp("Created", ref("Contact")), "409": respRef("Error409")}}))
+	p.add("GET", "/v1/contacts/{id}", op(opConfig{tag: "contacts", summary: "Get a contact (contact.read, tenant-scoped)",
 		params: []M{pathParam("id", "contact id")}, responses: M{"200": jsonResp("Contact", ref("Contact")), "404": respRef("Error404")}}))
+	p.add("PATCH", "/v1/contacts/{id}", op(opConfig{tag: "contacts", summary: "Update a contact (contact.write, partial)",
+		params: []M{pathParam("id", "contact id")}, reqBody: body(ref("UpdateContactRequest")),
+		responses: M{"200": jsonResp("Updated", ref("Contact")), "404": respRef("Error404"), "409": respRef("Error409")}}))
 }
 
 func registerChannels(p *paths) {

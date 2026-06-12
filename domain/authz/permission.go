@@ -17,6 +17,7 @@ const (
 	MessageDelete       Permission = "message.delete"
 
 	ContactRead                 Permission = "contact.read"
+	ContactWrite                Permission = "contact.write"
 	ContactViewFinancial        Permission = "contact.view_financial"
 	ContactViewConnectionStatus Permission = "contact.view_connection_status"
 
@@ -49,7 +50,7 @@ func AllPermissions() []Permission {
 	return []Permission{
 		ConversationRead, ConversationAssign, ConversationTransfer, ConversationClose,
 		MessageSend, MessageInternalNote, MessageDelete,
-		ContactRead, ContactViewFinancial, ContactViewConnectionStatus,
+		ContactRead, ContactWrite, ContactViewFinancial, ContactViewConnectionStatus,
 		SectorManage, QueueManage, UserManage,
 		AutomationManage,
 		CopilotUse, CopilotConfigure,

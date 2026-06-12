@@ -236,8 +236,16 @@ func schemas() M {
 		"ContactExternalID": object(M{"channel": str(), "external_id": str()}),
 		"Contact": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "phones": arr(str()),
-			"document": str(), "external_ids": arr(ref("ContactExternalID")),
+			"document": str(), "email": str(), "external_ids": arr(ref("ContactExternalID")),
 			"tags": arr(str()), "notes": str(), "created_at": dateTime(), "updated_at": dateTime(),
+		}),
+		"CreateContactRequest": object(M{
+			"name": str(), "phones": arr(str()), "document": str(), "email": str(),
+			"external_ids": arr(ref("ContactExternalID")), "tags": arr(str()), "notes": str(),
+		}, "name"),
+		"UpdateContactRequest": object(M{
+			"name": str(), "phones": arr(str()), "document": str(), "email": str(),
+			"external_ids": arr(ref("ContactExternalID")), "tags": arr(str()), "notes": str(),
 		}),
 
 		// ── webhooks ───────────────────────────────────────────────────────────

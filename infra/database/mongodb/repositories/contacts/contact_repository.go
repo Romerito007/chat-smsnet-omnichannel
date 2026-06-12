@@ -3,8 +3,11 @@ package contacts
 
 import (
 	"context"
+	"regexp"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -43,7 +46,9 @@ func (r *Repository) Update(ctx context.Context, c *entity.Contact) error {
 		bson.M{"$set": bson.M{
 			"name":       c.Name,
 			"phone":      c.Phone,
+			"phones":     c.Phones,
 			"document":   c.Document,
+			"email":      c.Email,
 			"identities": toIdentityModels(c.Identities),
 			"tags":       c.Tags,
 			"notes":      c.Notes,
@@ -90,7 +95,38 @@ func (r *Repository) FindByChannelIdentity(ctx context.Context, channel, externa
 	return toEntity(&m), nil
 }
 
-func (r *Repository) List(ctx context.Context, page shared.PageRequest) ([]*entity.Contact, error) {
+// FindByDocument locates a contact by its (exact) document within the tenant.
+func (r *Repository) FindByDocument(ctx context.Context, document string) (*entity.Contact, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var m models.Contact
+	if err := r.coll.FindOne(ctx, bson.M{"tenant_id": tenantID, "document": document}).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return toEntity(&m), nil
+}
+
+// FindByPhone locates a contact whose primary phone or phones list contains the
+// number, within the tenant.
+func (r *Repository) FindByPhone(ctx context.Context, phone string) (*entity.Contact, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	filter := bson.M{"tenant_id": tenantID, "$or": bson.A{
+		bson.M{"phone": phone},
+		bson.M{"phones": phone},
+	}}
+	var m models.Contact
+	if err := r.coll.FindOne(ctx, filter).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return toEntity(&m), nil
+}
+
+func (r *Repository) List(ctx context.Context, query string, page shared.PageRequest) ([]*entity.Contact, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
@@ -99,7 +135,18 @@ func (r *Repository) List(ctx context.Context, page shared.PageRequest) ([]*enti
 	if err != nil {
 		return nil, err
 	}
-	filter := mongodb.ApplyKeyset(bson.M{"tenant_id": tenantID}, cur)
+	base := bson.M{"tenant_id": tenantID}
+	if q := strings.TrimSpace(query); q != "" {
+		rx := primitive.Regex{Pattern: regexp.QuoteMeta(q), Options: "i"}
+		base["$or"] = bson.A{
+			bson.M{"name": rx},
+			bson.M{"phone": rx},
+			bson.M{"phones": rx},
+			bson.M{"document": rx},
+			bson.M{"email": rx},
+		}
+	}
+	filter := mongodb.ApplyKeyset(base, cur)
 	opts := options.Find().SetSort(mongodb.KeysetSort()).SetLimit(int64(page.Limit) + 1)
 	c, err := r.coll.Find(ctx, filter, opts)
 	if err != nil {
@@ -121,7 +168,9 @@ func toModel(c *entity.Contact) models.Contact {
 	m := models.Contact{
 		Name:       c.Name,
 		Phone:      c.Phone,
+		Phones:     c.Phones,
 		Document:   c.Document,
+		Email:      c.Email,
 		Identities: toIdentityModels(c.Identities),
 		Tags:       c.Tags,
 		Notes:      c.Notes,
@@ -143,7 +192,9 @@ func toEntity(m *models.Contact) *entity.Contact {
 		TenantID:   m.TenantID,
 		Name:       m.Name,
 		Phone:      m.Phone,
+		Phones:     m.Phones,
 		Document:   m.Document,
+		Email:      m.Email,
 		Identities: ids,
 		Tags:       m.Tags,
 		Notes:      m.Notes,

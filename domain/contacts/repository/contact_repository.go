@@ -15,5 +15,12 @@ type ContactRepository interface {
 	FindByID(ctx context.Context, id string) (*entity.Contact, error)
 	// FindByChannelIdentity locates a contact by one of its channel identities.
 	FindByChannelIdentity(ctx context.Context, channel, externalID string) (*entity.Contact, error)
-	List(ctx context.Context, page shared.PageRequest) ([]*entity.Contact, error)
+	// FindByDocument / FindByPhone locate a contact for deduplication; the phone
+	// match covers both the primary phone and the phones array. A not_found error
+	// means there is no duplicate.
+	FindByDocument(ctx context.Context, document string) (*entity.Contact, error)
+	FindByPhone(ctx context.Context, phone string) (*entity.Contact, error)
+	// List returns a page of contacts; a non-empty query filters by name, phone,
+	// document or email (case-insensitive substring).
+	List(ctx context.Context, query string, page shared.PageRequest) ([]*entity.Contact, error)
 }
