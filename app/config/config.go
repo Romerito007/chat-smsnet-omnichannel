@@ -249,6 +249,12 @@ type SeedConfig struct {
 	OwnerEmail    string
 	OwnerName     string
 	OwnerPassword string
+	// Demo data (dev only): when DemoData is true, the boot seeds a rich set of
+	// demo entities into the owner's tenant (see app/start_routines/seed_demo.go).
+	// DemoReset wipes only the previously demo-seeded docs and recreates them.
+	DemoData     bool
+	DemoReset    bool
+	DemoPassword string
 }
 
 // Load reads configuration from the environment. If an .env file exists it is
@@ -380,6 +386,9 @@ func Load() (Config, error) {
 			OwnerEmail:    getString("SEED_OWNER_EMAIL", "owner@example.com"),
 			OwnerName:     getString("SEED_OWNER_NAME", "Owner"),
 			OwnerPassword: getString("SEED_OWNER_PASSWORD", "change-me-now"),
+			DemoData:      getBool("SEED_DEMO_DATA", false),
+			DemoReset:     getBool("SEED_DEMO_RESET", false),
+			DemoPassword:  getString("SEED_DEMO_PASSWORD", "demo1234"),
 		},
 	}
 

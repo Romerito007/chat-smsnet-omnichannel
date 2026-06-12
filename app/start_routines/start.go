@@ -54,6 +54,12 @@ func Start(ctx context.Context, cfg config.Config) error {
 		if err := bootstrapSeeds(ctx, c); err != nil {
 			return err
 		}
+		// Demo data (gated by SEED_DEMO_DATA, dev only). Runs after the real seed
+		// and reconcile, only on api/all (never on every worker). Non-fatal: a
+		// demo-data hiccup must never block API startup.
+		if err := SeedDemoData(ctx, c); err != nil {
+			c.Logger.Warn("demo seed failed (continuing); set SEED_DEMO_RESET=true to retry clean", "error", err)
+		}
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
