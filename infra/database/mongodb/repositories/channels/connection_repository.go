@@ -59,6 +59,7 @@ func (r *ConnectionRepository) Update(ctx context.Context, c *entity.ChannelConn
 			"base_url":           c.BaseURL,
 			"auth_type":          string(c.AuthType),
 			"encrypted_secret":   enc,
+			"inbound_token_hash": c.InboundTokenHash,
 			"default_sector_id":  c.DefaultSectorID,
 			"enabled":            c.Enabled,
 			"automation_enabled": c.AutomationEnabled,
@@ -113,10 +114,11 @@ func (r *ConnectionRepository) FindEnabledByType(ctx context.Context, t entity.T
 	return r.toEntity(&m)
 }
 
-// FindByWebhookVerifyToken is not tenant-scoped (pre-auth inbound/receipts).
-func (r *ConnectionRepository) FindByWebhookVerifyToken(ctx context.Context, token string) (*entity.ChannelConnection, error) {
+// FindByInboundTokenHash is not tenant-scoped (pre-auth inbound/receipts); it
+// matches on the SHA-256 hash of the integration token.
+func (r *ConnectionRepository) FindByInboundTokenHash(ctx context.Context, tokenHash string) (*entity.ChannelConnection, error) {
 	var m models.ChannelConnection
-	if err := r.coll.FindOne(ctx, bson.M{"webhook_verify_token": token}).Decode(&m); err != nil {
+	if err := r.coll.FindOne(ctx, bson.M{"inbound_token_hash": tokenHash}).Decode(&m); err != nil {
 		return nil, mongodb.MapError(err)
 	}
 	return r.toEntity(&m)
@@ -159,16 +161,16 @@ func (r *ConnectionRepository) toModel(c *entity.ChannelConnection) (models.Chan
 		return models.ChannelConnection{}, err
 	}
 	m := models.ChannelConnection{
-		Type:               string(c.Type),
-		Name:               c.Name,
-		Status:             string(c.Status),
-		BaseURL:            c.BaseURL,
-		AuthType:           string(c.AuthType),
-		EncryptedSecret:    enc,
-		WebhookVerifyToken: c.WebhookVerifyToken,
-		DefaultSectorID:    c.DefaultSectorID,
-		Enabled:            c.Enabled,
-		AutomationEnabled:  c.AutomationEnabled,
+		Type:              string(c.Type),
+		Name:              c.Name,
+		Status:            string(c.Status),
+		BaseURL:           c.BaseURL,
+		AuthType:          string(c.AuthType),
+		EncryptedSecret:   enc,
+		InboundTokenHash:  c.InboundTokenHash,
+		DefaultSectorID:   c.DefaultSectorID,
+		Enabled:           c.Enabled,
+		AutomationEnabled: c.AutomationEnabled,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -183,20 +185,20 @@ func (r *ConnectionRepository) toEntity(m *models.ChannelConnection) (*entity.Ch
 		return nil, apperror.Internal("decrypt secret").Wrap(err)
 	}
 	return &entity.ChannelConnection{
-		ID:                 m.ID,
-		TenantID:           m.TenantID,
-		Type:               entity.Type(m.Type),
-		Name:               m.Name,
-		Status:             entity.Status(m.Status),
-		BaseURL:            m.BaseURL,
-		AuthType:           entity.AuthType(m.AuthType),
-		Secret:             secret,
-		WebhookVerifyToken: m.WebhookVerifyToken,
-		DefaultSectorID:    m.DefaultSectorID,
-		Enabled:            m.Enabled,
-		AutomationEnabled:  m.AutomationEnabled,
-		CreatedAt:          m.CreatedAt,
-		UpdatedAt:          m.UpdatedAt,
+		ID:                m.ID,
+		TenantID:          m.TenantID,
+		Type:              entity.Type(m.Type),
+		Name:              m.Name,
+		Status:            entity.Status(m.Status),
+		BaseURL:           m.BaseURL,
+		AuthType:          entity.AuthType(m.AuthType),
+		Secret:            secret,
+		InboundTokenHash:  m.InboundTokenHash,
+		DefaultSectorID:   m.DefaultSectorID,
+		Enabled:           m.Enabled,
+		AutomationEnabled: m.AutomationEnabled,
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
 	}, nil
 }
 

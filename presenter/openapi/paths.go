@@ -135,12 +135,20 @@ func registerChannels(p *paths) {
 		responses: M{"204": emptyResp("Deleted")}}))
 	p.add("POST", "/v1/channels/{id}/test", op(opConfig{tag: "channels", summary: "Test outbound delivery", params: idp,
 		responses: M{"200": jsonResp("Result", ref("TestResult"))}}))
+	p.add("POST", "/v1/channels/{id}/rotate-inbound-token", op(opConfig{tag: "channels",
+		summary:   "Rotate the channel integration token (revokes the prior one; returned once)",
+		params:    idp,
+		responses: M{"200": jsonResp("Rotated", ref("RotatedInboundToken")), "404": respRef("Error404")}}))
 
-	chp := []M{pathParam("channel", "channel type")}
+	// Public inbound endpoints authenticate with the channel integration token via
+	// the X-Inbound-Token header (preferred) or an inbound_token body field — never
+	// the front's Bearer JWT.
+	inboundParams := []M{pathParam("channel", "channel type"),
+		headerParam("X-Inbound-Token", "Channel integration token (preferred over the inbound_token body field).")}
 	p.add("POST", "/v1/inbound/channel/{channel}/messages", op(opConfig{tag: "channels", summary: "Ingest an inbound message (channel-authenticated)",
-		public: true, params: chp, reqBody: body(ref("InboundMessageRequest")), responses: M{"200": jsonResp("Accepted", ref("TestResult"))}}))
+		public: true, params: inboundParams, reqBody: body(ref("InboundMessageRequest")), responses: M{"200": jsonResp("Accepted", ref("TestResult"))}}))
 	p.add("POST", "/v1/inbound/channel/{channel}/delivery-receipts", op(opConfig{tag: "channels", summary: "Ingest delivery receipts (channel-authenticated)",
-		public: true, params: chp, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
+		public: true, params: inboundParams, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
 }
 
 func registerIntegrations(p *paths) {

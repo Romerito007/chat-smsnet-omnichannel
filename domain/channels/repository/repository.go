@@ -18,9 +18,10 @@ type ConnectionRepository interface {
 	// FindEnabledByType returns the first enabled connection of a type within the
 	// tenant (used to resolve outbound delivery for a conversation).
 	FindEnabledByType(ctx context.Context, t entity.Type) (*entity.ChannelConnection, error)
-	// FindByWebhookVerifyToken resolves a connection pre-auth (inbound/receipts);
-	// not tenant-scoped — the matched record carries the tenant.
-	FindByWebhookVerifyToken(ctx context.Context, token string) (*entity.ChannelConnection, error)
+	// FindByInboundTokenHash resolves a connection pre-auth (inbound/receipts) by
+	// the SHA-256 hash of its integration token; not tenant-scoped — the matched
+	// record carries the tenant.
+	FindByInboundTokenHash(ctx context.Context, tokenHash string) (*entity.ChannelConnection, error)
 }
 
 // OutboundDeliveryRepository persists outbound delivery records.

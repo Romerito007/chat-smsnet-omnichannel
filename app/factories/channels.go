@@ -32,6 +32,7 @@ func ConnectionService(c *container.Container) *channelservice.ConnectionService
 		clock,
 	)
 	svc.SetHealthChecker(infrachannels.NewHealthChecker())
+	svc.SetAuditor(AuditService(c))
 	return svc
 }
 

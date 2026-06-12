@@ -1172,6 +1172,8 @@ components:
                     type: string
                 external_message_id:
                     type: string
+                inbound_token:
+                    type: string
                 integration_key:
                     type: string
                 metadata:
@@ -1811,6 +1813,13 @@ components:
                 updated_at:
                     format: date-time
                     type: string
+            type: object
+        RotatedInboundToken:
+            properties:
+                inbound_token:
+                    type: string
+            required:
+                - inbound_token
             type: object
         RoutingRunRequest:
             properties:
@@ -3757,6 +3766,38 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Update a channel connection
+            tags:
+                - channels
+    /v1/channels/{id}/rotate-inbound-token:
+        post:
+            operationId: postChannelsByIdRotateInboundToken
+            parameters:
+                - description: channel id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RotatedInboundToken'
+                    description: Rotated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Rotate the channel integration token (revokes the prior one; returned once)
             tags:
                 - channels
     /v1/channels/{id}/test:
@@ -5767,6 +5808,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Channel integration token (preferred over the inbound_token body field).
+                  in: header
+                  name: X-Inbound-Token
+                  required: false
+                  schema:
+                    type: string
             requestBody:
                 content:
                     application/json:
@@ -5800,6 +5847,12 @@ paths:
                   in: path
                   name: channel
                   required: true
+                  schema:
+                    type: string
+                - description: Channel integration token (preferred over the inbound_token body field).
+                  in: header
+                  name: X-Inbound-Token
+                  required: false
                   schema:
                     type: string
             requestBody:

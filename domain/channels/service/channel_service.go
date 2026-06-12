@@ -5,7 +5,10 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
+	"math/big"
 	"strings"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
@@ -21,6 +24,7 @@ type ConnectionService struct {
 	registry contracts.AdapterRegistry
 	clock    shared.Clock
 	health   contracts.ConnectionHealthChecker
+	auditor  shared.Auditor
 }
 
 // NewConnectionService builds the service.
@@ -28,7 +32,15 @@ func NewConnectionService(repo repository.ConnectionRepository, registry contrac
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &ConnectionService{repo: repo, registry: registry, clock: clock, health: contracts.NoopHealthChecker{}}
+	return &ConnectionService{repo: repo, registry: registry, clock: clock, health: contracts.NoopHealthChecker{}, auditor: shared.NoopAuditor{}}
+}
+
+// SetAuditor wires the audit trail. Optional: when unset, token rotations are
+// not recorded.
+func (s *ConnectionService) SetAuditor(a shared.Auditor) {
+	if a != nil {
+		s.auditor = a
+	}
 }
 
 // SetHealthChecker wires the connection health checker. Optional: when unset,
@@ -74,7 +86,8 @@ func (s *ConnectionService) HealthCheck(ctx context.Context) (int, error) {
 	return changed, nil
 }
 
-// Create registers a connection, generating its webhook verify token.
+// Create registers a connection, generating its integration token (returned in
+// plaintext once via InboundToken; only the hash is persisted).
 func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConnection) (*entity.ChannelConnection, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
@@ -96,25 +109,57 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 		secret = randomToken(32)
 	}
 	now := s.clock.Now()
+	token := newInboundToken()
 	conn := &entity.ChannelConnection{
-		ID:                 shared.NewID(),
-		TenantID:           tenantID,
-		Type:               cmd.Type,
-		Name:               strings.TrimSpace(cmd.Name),
-		Status:             entity.StatusDisconnected,
-		BaseURL:            strings.TrimSpace(cmd.BaseURL),
-		AuthType:           authType,
-		Secret:             secret,
-		WebhookVerifyToken: randomToken(24),
-		DefaultSectorID:    cmd.DefaultSectorID,
-		Enabled:            true,
-		AutomationEnabled:  cmd.AutomationEnabled,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		ID:                shared.NewID(),
+		TenantID:          tenantID,
+		Type:              cmd.Type,
+		Name:              strings.TrimSpace(cmd.Name),
+		Status:            entity.StatusDisconnected,
+		BaseURL:           strings.TrimSpace(cmd.BaseURL),
+		AuthType:          authType,
+		Secret:            secret,
+		InboundToken:      token,
+		InboundTokenHash:  hashInboundToken(token),
+		DefaultSectorID:   cmd.DefaultSectorID,
+		Enabled:           true,
+		AutomationEnabled: cmd.AutomationEnabled,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 	if err := s.repo.Create(ctx, conn); err != nil {
 		return nil, err
 	}
+	return conn, nil
+}
+
+// RotateInboundToken issues a fresh integration token for the channel, revoking
+// the previous one (only the new hash is stored). The plaintext is returned once
+// on the entity's InboundToken field; thereafter only has_inbound_token is shown.
+// Audited as channel.token_rotated.
+func (s *ConnectionService) RotateInboundToken(ctx context.Context, id string) (*entity.ChannelConnection, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	token := newInboundToken()
+	conn.InboundToken = token
+	conn.InboundTokenHash = hashInboundToken(token)
+	conn.UpdatedAt = s.clock.Now()
+	if err := s.repo.Update(ctx, conn); err != nil {
+		return nil, err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		TenantID:     tenantID,
+		Action:       "channel.token_rotated",
+		ResourceType: "channel",
+		ResourceID:   conn.ID,
+		Data:         map[string]any{"type": string(conn.Type)},
+	})
 	return conn, nil
 }
 
@@ -214,19 +259,27 @@ func (s *ConnectionService) Test(ctx context.Context, id string) (contracts.Test
 	return contracts.TestResult{OK: true, ExternalMessageID: res.ExternalMessageID}, conn, nil
 }
 
-// ResolveInbound resolves and verifies an inbound request/receipt by its webhook
-// verify token, returning the (tenant-bearing) connection. Verification is
-// delegated to the channel adapter.
+// ResolveInbound resolves and authenticates an inbound request/receipt by its
+// integration token, returning the (tenant-bearing) connection. The token is
+// looked up by its hash and re-checked in constant time; the tenant, channel and
+// default sector always come from the matched record, never a client header.
+// When the channel carries an outbound secret, the adapter additionally verifies
+// the HMAC body signature (anti-replay); otherwise the token alone authenticates.
 func (s *ConnectionService) ResolveInbound(ctx context.Context, token string, channelType entity.Type, rawBody []byte, headers map[string]string) (*entity.ChannelConnection, error) {
 	if token == "" {
-		return nil, apperror.Unauthorized("missing webhook token")
+		return nil, apperror.Unauthorized("missing inbound token")
 	}
-	conn, err := s.repo.FindByWebhookVerifyToken(ctx, token)
+	hash := hashInboundToken(token)
+	conn, err := s.repo.FindByInboundTokenHash(ctx, hash)
 	if err != nil {
 		if apperror.From(err).Code == apperror.CodeNotFound {
 			return nil, apperror.Unauthorized("unknown channel")
 		}
 		return nil, err
+	}
+	// Defensive constant-time re-check so timing never distinguishes a near-miss.
+	if subtle.ConstantTimeCompare([]byte(conn.InboundTokenHash), []byte(hash)) != 1 {
+		return nil, apperror.Unauthorized("invalid inbound token")
 	}
 	if !conn.Enabled {
 		return nil, apperror.Unauthorized("channel is disabled")
@@ -244,6 +297,42 @@ func (s *ConnectionService) ResolveInbound(ctx context.Context, token string, ch
 	return conn, nil
 }
 
+// hashInboundToken returns the SHA-256 hex of an integration token — the only
+// form stored and compared, so plaintext is never persisted.
+func hashInboundToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// newInboundToken returns a high-entropy, URL-safe base62 integration token
+// drawn from 32 random bytes (~190 bits).
+func newInboundToken() string { return randomBase62(32) }
+
+const base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+// randomBase62 returns a base62 string carrying at least n bytes of entropy.
+func randomBase62(n int) string {
+	buf := make([]byte, n)
+	_, _ = rand.Read(buf)
+	// Interpret the bytes as a big integer and emit base62 digits; pad so a
+	// leading-zero draw never shortens the token below its entropy budget.
+	num := new(big.Int).SetBytes(buf)
+	base := big.NewInt(62)
+	zero := big.NewInt(0)
+	mod := new(big.Int)
+	var b strings.Builder
+	for num.Cmp(zero) > 0 {
+		num.DivMod(num, base, mod)
+		b.WriteByte(base62Alphabet[mod.Int64()])
+	}
+	for b.Len() < 43 { // ceil(32 bytes * 8 / log2(62)) ≈ 43
+		b.WriteByte(base62Alphabet[0])
+	}
+	return b.String()
+}
+
+// randomToken returns a hex token of n random bytes (used for the outbound HMAC
+// secret).
 func randomToken(n int) string {
 	buf := make([]byte, n)
 	_, _ = rand.Read(buf)

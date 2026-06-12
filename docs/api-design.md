@@ -190,11 +190,44 @@ PUT    /presence/me                 # define status (online/away/busy)
 
 ### channels
 ```
-GET/POST/PATCH/DELETE  /channels[/{id}]
-GET    /channels/{id}/health
-POST   /channels/{id}/test
-POST   /channels/{id}/webhook       # inbound do provedor (assinado)
+GET/POST/PATCH/DELETE  /channels[/{id}]                    # channel.manage
+POST   /channels/{id}/test                                 # testa entrega outbound
+POST   /channels/{id}/rotate-inbound-token                 # gera novo inbound_token (1x); revoga o anterior
+
+# Borda pública (sem JWT — autenticada pelo inbound_token do canal):
+POST   /inbound/channel/{channel}/messages                 # ingestão de mensagem
+POST   /inbound/channel/{channel}/delivery-receipts        # recibos de entrega (idempotente por external_message_id)
 ```
+
+#### Integração por token de canal (sem JWT)
+
+Um sistema externo (ex.: gateway de WhatsApp) integra ao chat **sem o
+Bearer/JWT do front**, usando um **token de integração por canal** (estilo
+Chatwoot `api_access_token`). O Bearer continua **exclusivo** da comunicação
+front↔back; o `inbound_token` vale **só** para as rotas públicas de canal.
+
+- **Obter o token:** ao criar o canal (`POST /v1/channels`), o backend gera um
+  `inbound_token` de **alta entropia** (32 bytes, base62), guardado **só como
+  hash (SHA-256)** no banco. O **texto em claro aparece uma única vez** no corpo
+  do `ChannelCreated` (campos `inbound_token` e, p/ canal `api`,
+  `outbound_secret`). Depois disso, leituras expõem apenas `has_inbound_token`.
+- **Rotacionar:** `POST /v1/channels/{id}/rotate-inbound-token` →
+  `{ "inbound_token": "<novo>" }` (mostrado uma vez; o anterior é **revogado**).
+  Auditado como `channel.token_rotated`.
+- **Autenticar inbound:** envie o token no header **`X-Inbound-Token: <token>`**
+  (preferido) ou no corpo (`inbound_token`). O backend compara **por hash em
+  tempo constante**; token inválido/canal desabilitado → **401**. O **tenant**,
+  o **canal** e o **default_sector** saem do **registro do canal** (nunca de um
+  header de tenant).
+- **Assinatura HMAC (opcional, recomendada):** se o canal tiver `outbound_secret`,
+  o inbound também valida a assinatura do corpo (`Signature` + `Timestamp`, com
+  janela anti-replay). Sem assinatura, o token sozinho autentica.
+- **Rate limit:** a borda pública tem limite próprio por IP/canal, separado do
+  orçamento da API protegida.
+- **Outbound (back→sistema externo):** o backend faz `POST` assinado para o
+  `outbound_url` do canal com os headers `X-Chat-Event`, `Timestamp`,
+  `Signature` (HMAC-SHA256 do corpo com `outbound_secret`) e `Delivery-Id`. O
+  sistema externo devolve recibos em `.../delivery-receipts`.
 
 ### automation (integra flow externo)
 ```
@@ -287,8 +320,10 @@ GET    /attachments/{id}/url        # URL assinada
 
 ## Notas
 
-- **Endpoints públicos assinados:** webhook inbound de canal, callback de
-  automation e coleta de CSAT usam assinatura (HMAC) em vez de JWT.
+- **Endpoints públicos sem JWT:** o inbound de canal autentica pelo
+  `inbound_token` do canal (header `X-Inbound-Token`/corpo, hash em tempo
+  constante) com assinatura HMAC opcional; callback de automation e coleta de
+  CSAT usam assinatura/token assinado. Nenhum aceita o Bearer do front.
 - **Bulk/admin:** operações em lote ficam fora do MVP, exceto onde citado.
 - **Rate limit:** aplicado por tenant+ator; limites finos por rota podem ser
   adicionados via `policy`.

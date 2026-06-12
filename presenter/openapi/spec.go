@@ -68,6 +68,11 @@ func queryParam(name, desc string) M {
 	return M{"name": name, "in": "query", "required": false, "description": desc, "schema": str()}
 }
 
+// headerParam describes an optional request header parameter.
+func headerParam(name, desc string) M {
+	return M{"name": name, "in": "header", "required": false, "description": desc, "schema": str()}
+}
+
 // paginationParams are the shared keyset (cursor) pagination query params.
 func paginationParams() []M {
 	return []M{

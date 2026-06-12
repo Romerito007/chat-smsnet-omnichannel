@@ -125,7 +125,7 @@ func NewConnectionResponse(c *chentity.ChannelConnection) ConnectionResponse {
 		BaseURL:           c.BaseURL,
 		AuthType:          string(c.AuthType),
 		HasSecret:         c.Secret != "",
-		HasInboundToken:   c.WebhookVerifyToken != "",
+		HasInboundToken:   c.InboundTokenHash != "",
 		DefaultSectorID:   c.DefaultSectorID,
 		Enabled:           c.Enabled,
 		AutomationEnabled: c.AutomationEnabled,
@@ -156,9 +156,20 @@ type CreatedConnectionResponse struct {
 func NewCreatedConnectionResponse(c *chentity.ChannelConnection) CreatedConnectionResponse {
 	return CreatedConnectionResponse{
 		ConnectionResponse: NewConnectionResponse(c),
-		InboundToken:       c.WebhookVerifyToken,
+		InboundToken:       c.InboundToken,
 		OutboundSecret:     c.Secret,
 	}
+}
+
+// RotatedInboundTokenResponse is returned by POST /v1/channels/{id}/rotate-inbound-token.
+// It is the only place the freshly issued integration token is revealed.
+type RotatedInboundTokenResponse struct {
+	InboundToken string `json:"inbound_token"`
+}
+
+// NewRotatedInboundTokenResponse maps the one-time plaintext token.
+func NewRotatedInboundTokenResponse(c *chentity.ChannelConnection) RotatedInboundTokenResponse {
+	return RotatedInboundTokenResponse{InboundToken: c.InboundToken}
 }
 
 // ── inbound ──────────────────────────────────────────────────────────────────
@@ -173,9 +184,12 @@ type AttachmentItem struct {
 }
 
 // InboundRequest is the body of POST /v1/inbound/channel/{channel}/messages.
-// IntegrationKey carries the connection's webhook verify token.
+// The integration token is supplied via the X-Inbound-Token header (preferred)
+// or the inbound_token body field; integration_key/webhook_verify_token are
+// accepted as legacy aliases.
 type InboundRequest struct {
 	TenantKey          string           `json:"tenant_key"`
+	InboundToken       string           `json:"inbound_token"`
 	IntegrationKey     string           `json:"integration_key"`
 	WebhookVerifyToken string           `json:"webhook_verify_token"`
 	ExternalMessageID  string           `json:"external_message_id"`
@@ -190,12 +204,17 @@ type InboundRequest struct {
 	Timestamp          int64            `json:"timestamp"`
 }
 
-// Token returns the webhook verify token from the body (either field).
+// Token returns the integration token from the body, preferring the canonical
+// inbound_token field over the legacy aliases.
 func (r InboundRequest) Token() string {
-	if r.WebhookVerifyToken != "" {
+	switch {
+	case r.InboundToken != "":
+		return r.InboundToken
+	case r.WebhookVerifyToken != "":
 		return r.WebhookVerifyToken
+	default:
+		return r.IntegrationKey
 	}
-	return r.IntegrationKey
 }
 
 // ToMessage maps the request to the domain inbound message.

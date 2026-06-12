@@ -45,7 +45,7 @@ func (r *fakeConnRepo) List(ctx context.Context, _ shared.PageRequest) ([]*entit
 func (r *fakeConnRepo) FindEnabledByType(context.Context, entity.Type) (*entity.ChannelConnection, error) {
 	return nil, apperror.NotFound("none")
 }
-func (r *fakeConnRepo) FindByWebhookVerifyToken(context.Context, string) (*entity.ChannelConnection, error) {
+func (r *fakeConnRepo) FindByInboundTokenHash(context.Context, string) (*entity.ChannelConnection, error) {
 	return nil, apperror.NotFound("none")
 }
 

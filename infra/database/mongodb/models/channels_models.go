@@ -3,19 +3,20 @@ package models
 import "time"
 
 // ChannelConnection is the BSON document for a channel connection. The secret is
-// stored encrypted (encrypted_secret).
+// stored encrypted (encrypted_secret); the integration token is stored only as a
+// SHA-256 hash (inbound_token_hash), never in plaintext.
 type ChannelConnection struct {
-	Base               `bson:",inline"`
-	Type               string `bson:"type"`
-	Name               string `bson:"name,omitempty"`
-	Status             string `bson:"status"`
-	BaseURL            string `bson:"base_url,omitempty"`
-	AuthType           string `bson:"auth_type,omitempty"`
-	EncryptedSecret    string `bson:"encrypted_secret,omitempty"`
-	WebhookVerifyToken string `bson:"webhook_verify_token"`
-	DefaultSectorID    string `bson:"default_sector_id,omitempty"`
-	Enabled            bool   `bson:"enabled"`
-	AutomationEnabled  bool   `bson:"automation_enabled"`
+	Base              `bson:",inline"`
+	Type              string `bson:"type"`
+	Name              string `bson:"name,omitempty"`
+	Status            string `bson:"status"`
+	BaseURL           string `bson:"base_url,omitempty"`
+	AuthType          string `bson:"auth_type,omitempty"`
+	EncryptedSecret   string `bson:"encrypted_secret,omitempty"`
+	InboundTokenHash  string `bson:"inbound_token_hash"`
+	DefaultSectorID   string `bson:"default_sector_id,omitempty"`
+	Enabled           bool   `bson:"enabled"`
+	AutomationEnabled bool   `bson:"automation_enabled"`
 }
 
 // OutboundDelivery is the BSON document for an outbound delivery record.

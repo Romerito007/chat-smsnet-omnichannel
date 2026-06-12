@@ -20,3 +20,8 @@ var DefaultAPIRateLimit = RateLimit{Requests: 120, Window: time.Minute}
 // unauthenticated account endpoints (signup, forgot-password,
 // resend-verification) on top of the baseline API limit.
 var SensitiveAuthRateLimit = RateLimit{Requests: 5, Window: time.Minute}
+
+// InboundChannelRateLimit caps the public, token-authenticated channel endpoints
+// (inbound messages + delivery receipts) per client IP, so an external gateway
+// integrating by integration token can't exhaust the shared API budget.
+var InboundChannelRateLimit = RateLimit{Requests: 600, Window: time.Minute}

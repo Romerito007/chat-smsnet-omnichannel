@@ -150,12 +150,13 @@ func schemas() M {
 			"default_sector_id": str(), "enabled": boolean(), "automation_enabled": boolean(),
 		}),
 		"InboundMessageRequest": object(M{
-			"tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
+			"inbound_token": str(), "tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
 			"external_message_id": str(), "external_contact_id": str(), "contact_name": str(),
 			"contact_phone": str(), "contact_document": str(), "channel": str(), "text": str(),
 			"attachments": arr(ref("Attachment")), "metadata": freeObject(), "timestamp": integer(),
 		}),
-		"TestResult": object(M{"ok": boolean(), "external_message_id": str(), "error": str()}),
+		"RotatedInboundToken": object(M{"inbound_token": str()}, "inbound_token"),
+		"TestResult":          object(M{"ok": boolean(), "external_message_id": str(), "error": str()}),
 
 		// ── automation ─────────────────────────────────────────────────────────
 		"AutomationIntegration": object(M{

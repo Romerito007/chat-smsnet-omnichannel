@@ -6,6 +6,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/policy"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
 
@@ -27,10 +28,17 @@ func registerChannelRoutes(r chi.Router, c *container.Container) {
 			ch.Patch("/{id}", ctl.Update)
 			ch.Delete("/{id}", ctl.Delete)
 			ch.Post("/{id}/test", ctl.Test)
+			ch.Post("/{id}/rotate-inbound-token", ctl.RotateInboundToken)
 		})
 	})
 
-	// Public inbound endpoints, authenticated by the channel signature/token.
-	r.Post("/inbound/channel/{channel}/messages", inbound.HandleMessage)
-	r.Post("/inbound/channel/{channel}/delivery-receipts", inbound.HandleDeliveryReceipts)
+	// Public inbound endpoints, authenticated by the channel integration token
+	// (X-Inbound-Token / body inbound_token) — never the front's JWT. Rate limited
+	// on a dedicated scope keyed by client IP so a noisy gateway can't exhaust the
+	// shared API budget.
+	r.Group(func(pub chi.Router) {
+		pub.Use(middleware.RateLimitScoped(c.Redis, policy.InboundChannelRateLimit, "inbound_channel"))
+		pub.Post("/inbound/channel/{channel}/messages", inbound.HandleMessage)
+		pub.Post("/inbound/channel/{channel}/delivery-receipts", inbound.HandleDeliveryReceipts)
+	})
 }

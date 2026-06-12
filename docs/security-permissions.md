@@ -92,14 +92,38 @@ Além da permissão, há **escopo de dados**:
 - **Tópicos WS** prefixados por tenant; assinatura cross-tenant é rejeitada.
 - **Jobs** carregam `tenant_id`; jobs periódicos iteram tenants explicitamente.
 
-## 4. Endpoints públicos assinados (sem JWT)
+## 4. Endpoints públicos sem JWT
 
 | Endpoint | Verificação |
 |---|---|
-| Webhook inbound de canal | assinatura do provedor (HMAC/secret) |
+| Inbound de canal (`/inbound/channel/{channel}/messages`, `.../delivery-receipts`) | **inbound_token do canal** (`X-Inbound-Token`/corpo, hash em tempo constante) + HMAC do corpo opcional |
 | Callback de `automation` | HMAC com segredo do binding |
 | Coleta de CSAT (link público) | token assinado de vida curta |
 | Webhook **outbound** (nosso) | assinamos com HMAC; subscriber valida |
+
+### Integração por token de canal (sem JWT)
+
+Para um sistema externo (ex.: gateway de WhatsApp) integrar **sem o Bearer/JWT
+do front**, cada canal tem um **token de integração** estável e longo (estilo
+Chatwoot `api_access_token`). O Bearer continua **exclusivo** do front↔back; o
+`inbound_token` **não** é aceito nas rotas `/v1` protegidas — vale **só** para a
+borda pública de canal (inbound/receipts).
+
+- **Geração:** `POST /v1/channels` cria um `inbound_token` de alta entropia (32
+  bytes, base62). É guardado **apenas como hash SHA-256** (`inbound_token_hash`);
+  o texto em claro é revelado **uma única vez** no `ChannelCreated`. Depois, só
+  `has_inbound_token`.
+- **Rotação:** `POST /v1/channels/{id}/rotate-inbound-token` emite um novo token
+  (revoga o anterior) e o mostra uma vez. Auditado: `channel.token_rotated`.
+- **Autenticação:** header `X-Inbound-Token` (preferido) **ou** corpo
+  `inbound_token`, comparado **por hash em tempo constante**
+  (`subtle.ConstantTimeCompare`). Inválido/desabilitado → **401**.
+- **Origem dos dados:** tenant, canal e `default_sector` vêm do **registro do
+  canal** — **nunca** de um header de tenant do cliente.
+- **HMAC opcional:** se houver `outbound_secret`, o corpo é validado por
+  assinatura (`Signature`/`Timestamp`, janela anti-replay); sem assinatura, o
+  token sozinho autentica.
+- **Rate limit:** limite dedicado por IP na borda pública (`policy.InboundChannelRateLimit`).
 
 ## 5. Segredos (`infra/secrets`)
 

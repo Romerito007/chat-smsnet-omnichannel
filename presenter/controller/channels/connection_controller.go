@@ -88,6 +88,17 @@ func (c *ConnectionController) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// RotateInboundToken handles POST /v1/channels/{id}/rotate-inbound-token. It
+// issues a fresh integration token (revoking the prior one) and returns it once.
+func (c *ConnectionController) RotateInboundToken(w http.ResponseWriter, r *http.Request) {
+	conn, err := c.connections.RotateInboundToken(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewRotatedInboundTokenResponse(conn))
+}
+
 // Test handles POST /v1/channels/{id}/test.
 func (c *ConnectionController) Test(w http.ResponseWriter, r *http.Request) {
 	result, _, err := c.connections.Test(r.Context(), chi.URLParam(r, "id"))

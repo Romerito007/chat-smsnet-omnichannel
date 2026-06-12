@@ -34,7 +34,7 @@ func newFakeConnRepo() *fakeConnRepo {
 }
 func (r *fakeConnRepo) put(c *chentity.ChannelConnection) {
 	r.byID[c.ID] = c
-	r.byToken[c.WebhookVerifyToken] = c
+	r.byToken[c.InboundTokenHash] = c
 	if c.Enabled {
 		r.byType[c.Type] = c
 	}
@@ -60,8 +60,8 @@ func (r *fakeConnRepo) FindEnabledByType(_ context.Context, t chentity.Type) (*c
 	}
 	return nil, apperror.NotFound("nf")
 }
-func (r *fakeConnRepo) FindByWebhookVerifyToken(_ context.Context, token string) (*chentity.ChannelConnection, error) {
-	if c, ok := r.byToken[token]; ok {
+func (r *fakeConnRepo) FindByInboundTokenHash(_ context.Context, tokenHash string) (*chentity.ChannelConnection, error) {
+	if c, ok := r.byToken[tokenHash]; ok {
 		return c, nil
 	}
 	return nil, apperror.NotFound("nf")
@@ -167,8 +167,11 @@ func TestCreateConnection_GeneratesTokenAndDisconnected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if conn.WebhookVerifyToken == "" {
-		t.Error("expected a webhook verify token")
+	if conn.InboundToken == "" {
+		t.Error("expected a plaintext inbound token on creation")
+	}
+	if conn.InboundTokenHash != hashInboundToken(conn.InboundToken) {
+		t.Error("stored hash must match the issued token")
 	}
 	if conn.Status != chentity.StatusDisconnected {
 		t.Errorf("status = %q, want disconnected", conn.Status)
@@ -205,7 +208,7 @@ func TestResolveInbound(t *testing.T) {
 	svc, repo, _ := newConnService()
 	conn := &chentity.ChannelConnection{
 		ID: "c1", TenantID: "t1", Type: chentity.TypeWhatsApp, Enabled: true,
-		WebhookVerifyToken: "tok", Secret: "s3cr3t",
+		InboundTokenHash: hashInboundToken("tok"), Secret: "s3cr3t",
 	}
 	repo.put(conn)
 

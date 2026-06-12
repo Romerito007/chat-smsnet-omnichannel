@@ -49,20 +49,27 @@ const (
 
 // ChannelConnection is a per-tenant channel configuration. Secret is the
 // channel credential, held in plaintext in memory but stored encrypted at rest
-// and never returned to clients (masked). WebhookVerifyToken resolves and
-// verifies inbound requests/receipts.
+// and never returned to clients (masked).
+//
+// The integration token resolves and authenticates inbound requests/receipts
+// without the front's Bearer/JWT (Chatwoot api_access_token style). It is split:
+//   - InboundToken is the high-entropy plaintext, set only on create/rotate and
+//     revealed to the client exactly once; it is never persisted nor loaded back.
+//   - InboundTokenHash is the SHA-256 hex of the token, the only form stored at
+//     rest and the one inbound lookups/comparisons use.
 type ChannelConnection struct {
-	ID                 string
-	TenantID           string
-	Type               Type
-	Name               string
-	Status             Status
-	BaseURL            string
-	AuthType           AuthType
-	Secret             string
-	WebhookVerifyToken string
-	DefaultSectorID    string
-	Enabled            bool
+	ID               string
+	TenantID         string
+	Type             Type
+	Name             string
+	Status           Status
+	BaseURL          string
+	AuthType         AuthType
+	Secret           string
+	InboundToken     string // transient plaintext (create/rotate only; never persisted)
+	InboundTokenHash string // SHA-256 hex stored at rest
+	DefaultSectorID  string
+	Enabled          bool
 	// AutomationEnabled routes brand-new inbound conversations to the external
 	// flow before a human.
 	AutomationEnabled bool

@@ -52,9 +52,11 @@ func (c *InboundController) HandleMessage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	token := req.Token()
+	// The integration token authenticates the channel without the front's JWT.
+	// Header X-Inbound-Token is preferred; the body inbound_token is a fallback.
+	token := r.Header.Get("X-Inbound-Token")
 	if token == "" {
-		token = r.Header.Get("X-Webhook-Token")
+		token = req.Token()
 	}
 	conn, err := c.connections.ResolveInbound(r.Context(), token, chentity.Type(channel), body, verifyHeaders(r))
 	if err != nil {
@@ -80,7 +82,16 @@ func (c *InboundController) HandleDeliveryReceipts(w http.ResponseWriter, r *htt
 		return
 	}
 
-	conn, err := c.connections.ResolveInbound(r.Context(), r.Header.Get("X-Webhook-Token"), chentity.Type(channel), body, verifyHeaders(r))
+	token := r.Header.Get("X-Inbound-Token")
+	if token == "" {
+		// Fall back to a body inbound_token (the receipts payload is otherwise opaque).
+		var tok struct {
+			InboundToken string `json:"inbound_token"`
+		}
+		_ = json.Unmarshal(body, &tok)
+		token = tok.InboundToken
+	}
+	conn, err := c.connections.ResolveInbound(r.Context(), token, chentity.Type(channel), body, verifyHeaders(r))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
