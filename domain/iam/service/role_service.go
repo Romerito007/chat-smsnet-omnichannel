@@ -91,7 +91,21 @@ func (s *RoleService) SeedDefaults(ctx context.Context) (map[string]string, erro
 		if err != nil {
 			// Tolerate an already-seeded role (idempotent re-provisioning).
 			if apperror.From(err).Code == apperror.CodeConflict {
-				if existing, ferr := s.roles.FindByName(ctx, def.Name); ferr == nil {
+				existing, ferr := s.roles.FindByName(ctx, def.Name)
+				if ferr == nil {
+					// The owner is the tenant superuser, so its permission set is
+					// authoritative — keep it in lockstep with the catalog instead of
+					// leaving a frozen snapshot (a tenant seeded before the catalog grew
+					// would otherwise keep an owner missing the newer permissions).
+					// admin/agent stay as the tenant customized them.
+					if def.Name == authz.DefaultRoleOwner {
+						existing.Permissions = authz.SanitizePermissions(def.Permissions)
+						existing.SectorScope = def.SectorScope
+						existing.UpdatedAt = s.clock.Now()
+						if uerr := s.roles.Update(ctx, existing); uerr != nil {
+							return nil, uerr
+						}
+					}
 					out[def.Name] = existing.ID
 					continue
 				}

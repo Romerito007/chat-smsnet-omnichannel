@@ -19,6 +19,13 @@ type fakeRoleRepo struct {
 func newFakeRoleRepo() *fakeRoleRepo { return &fakeRoleRepo{roles: map[string]*entity.Role{}} }
 
 func (r *fakeRoleRepo) Create(ctx context.Context, role *entity.Role) error {
+	// Mirror the unique (tenant_id, name) index so SeedDefaults sees a conflict on
+	// re-provisioning, exercising the reconcile path.
+	for _, existing := range r.roles {
+		if existing.TenantID == role.TenantID && existing.Name == role.Name {
+			return apperror.Conflict("role already exists")
+		}
+	}
 	cp := *role
 	r.roles[role.ID] = &cp
 	return nil
@@ -109,6 +116,37 @@ func TestCreateRole_RequiresName(t *testing.T) {
 	svc, _ := newRoleService()
 	if _, err := svc.Create(tenantCtx("t1"), contracts.CreateRole{Name: "  "}); !isValidation(err) {
 		t.Errorf("expected validation_error, got %v", err)
+	}
+}
+
+func TestSeedDefaults_ReconcilesFrozenOwnerToFullCatalog(t *testing.T) {
+	svc, repo := newRoleService()
+	ctx := tenantCtx("t1")
+
+	// Simulate a tenant provisioned before the catalog grew: its owner role is
+	// frozen with a stale, short permission set.
+	repo.roles["stale-owner"] = &entity.Role{
+		ID: "stale-owner", TenantID: "t1", Name: authz.DefaultRoleOwner,
+		Permissions: []authz.Permission{authz.ConversationRead}, SectorScope: authz.ScopeOwn,
+	}
+
+	ids, err := svc.SeedDefaults(ctx)
+	if err != nil {
+		t.Fatalf("seed defaults: %v", err)
+	}
+	if ids[authz.DefaultRoleOwner] != "stale-owner" {
+		t.Fatalf("owner id = %q, want existing stale-owner (no duplicate)", ids[authz.DefaultRoleOwner])
+	}
+	owner := repo.roles["stale-owner"]
+	if len(owner.Permissions) != len(authz.AllPermissions()) {
+		t.Errorf("owner has %d permissions, want full catalog of %d", len(owner.Permissions), len(authz.AllPermissions()))
+	}
+	if owner.SectorScope != authz.ScopeAll {
+		t.Errorf("owner scope = %q, want all", owner.SectorScope)
+	}
+	// admin/agent are created fresh and not present beforehand.
+	if ids[authz.DefaultRoleAdmin] == "" || ids[authz.DefaultRoleAgent] == "" {
+		t.Errorf("admin/agent should be seeded: %+v", ids)
 	}
 }
 

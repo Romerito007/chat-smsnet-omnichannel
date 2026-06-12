@@ -42,8 +42,45 @@ func bootstrapSeeds(ctx context.Context, c *container.Container) error {
 		return fmt.Errorf("seed owner: %w", err)
 	}
 
+	// Heal every tenant's owner role, not just the freshly seeded one: tenants
+	// provisioned by self-service signup before the permission catalog grew keep
+	// an owner role frozen at its creation-time snapshot (e.g. showing 25/26
+	// permissions and failing admin-level actions). The owner is the tenant
+	// superuser, so its permission set is authoritative.
+	n, err := reconcileOwnerRoles(ctx, db.Collection("roles"), now)
+	if err != nil {
+		return fmt.Errorf("reconcile owner roles: %w", err)
+	}
+	if n > 0 {
+		c.Logger.Info("owner roles reconciled to full permission catalog", "updated", n)
+	}
+
 	c.Logger.Info("seed applied", "tenant_id", tenantID, "owner_email", c.Config.Seed.OwnerEmail)
 	return nil
+}
+
+// reconcileOwnerRoles re-asserts the full permission catalog (tenant-wide scope)
+// on every tenant's owner role. Additive and idempotent: it only touches roles
+// named "owner", leaving admin/agent (which tenants may customize) untouched.
+// Affected owners must re-login to mint a token carrying the new permissions.
+func reconcileOwnerRoles(ctx context.Context, coll *mongo.Collection, now time.Time) (int64, error) {
+	all := authz.AllPermissions()
+	perms := make([]string, len(all))
+	for i, p := range all {
+		perms[i] = string(p)
+	}
+	res, err := coll.UpdateMany(ctx,
+		bson.M{"name": authz.DefaultRoleOwner},
+		bson.M{"$set": bson.M{
+			"permissions":  perms,
+			"sector_scope": string(authz.ScopeAll),
+			"updated_at":   now,
+		}},
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.ModifiedCount, nil
 }
 
 // upsertTenant inserts the tenant on first run and returns its id.
