@@ -28,50 +28,82 @@ RBAC (iam + authz) e **isolamento por tenant** em todas as camadas.
 ## 2. Autorização (RBAC: `iam` + `authz`)
 
 ### Modelo
-- **Permission** (`<recurso>:<ação>`) — capacidade fina.
+- **Permission** no formato **`<recurso>.<ação>`** (ponto, não `:`) — capacidade
+  fina. A **fonte da verdade** é `domain/authz/permission.go` (`AllPermissions()`):
+  **26 permissões**, listadas abaixo. Não invente chaves; o que não estiver nessa
+  lista não é emitido pelo backend.
 - **Role** — bundle de permissões, por tenant.
 - **User** — possui papéis; papéis resolvem o conjunto efetivo de permissões.
 - **Authorizer** (`domain/authz`) — decide `Authorize(actor, permission)`;
   fonte de verdade vem de `iam` (papéis do usuário + catálogo).
+- **Catálogo para o front:** ainda **não** existe `GET /v1/permissions`. Até
+  existir, o front deve espelhar exatamente a lista abaixo (mesmas strings).
 
 ### Papéis padrão (seed)
-| Papel | Escopo |
+Definidos em `domain/authz/authz.go` (`DefaultRoles()`). São **três** — não há
+`supervisor`:
+
+| Papel | Permissões | Escopo de setor |
+|---|---|---|
+| `owner` | **todas as 26** (`AllPermissions()`) | `ScopeAll` |
+| `admin` | 23 — tudo **menos** `contact.view_financial`, `integration.execute_action`, `privacy.manage` | `ScopeAll` |
+| `agent` | 8 — `conversation.read/assign/close`, `message.send/internal_note`, `contact.read/write`, `copilot.use` | `ScopeOwn` |
+
+> Papéis são **customizáveis** por tenant; o seed é apenas o ponto de partida
+> idempotente.
+
+### Catálogo de permissões (as 26 reais)
+```
+conversation.read   conversation.assign   conversation.transfer   conversation.close
+message.send        message.internal_note message.delete
+contact.read        contact.write         contact.view_financial  contact.view_connection_status
+sector.manage       queue.manage          user.manage
+automation.manage
+copilot.use         copilot.configure
+integration.read    integration.configure integration.execute_action
+channel.manage      webhook.manage
+report.view         report.export
+audit.view          privacy.manage
+```
+
+> O modelo é **grosso de propósito**: não existe `tag.*`, `canned.*`, `reason.*`,
+> `sla.*`, `csat.*`, `businesshours.*`, `routing.*`, `notification.*`, `search.*`,
+> `attachment.*`, `tenant.*`, `role.*` nem `sector.read/write`. Esses recursos são
+> cobertos por permissões existentes (ver mapa abaixo). Chaves nesse formato
+> antigo (`recurso:ação`) **não existem** e causam "Sem permissão" no front.
+
+### Mapa permissão → o que libera (para o front montar os gates)
+| Funcionalidade (rota) | Permissão exigida |
 |---|---|
-| `owner` | tudo (`*`) — dono do tenant |
-| `admin` | administração do tenant (usuários, canais, filas, configs) |
-| `supervisor` | visão de equipe, filas, relatórios, reatribuição |
-| `agent` | atender conversas atribuídas/da sua fila |
+| Setores & filas (`/sectors`, `/queues`) | `sector.manage` / `queue.manage` |
+| **Horário/feriados** (`/holidays`, `/sectors/{id}/business-status`) | `sector.manage` |
+| **Etiquetas, respostas prontas, motivos** (`/tags`, `/canned-responses`, `/close-reasons`) | ler=`conversation.read`, escrever=`sector.manage` |
+| Aplicar tag em conversa (`/conversations/{id}/tags`) | `conversation.read` |
+| Políticas de SLA (`/sla/policies`) / SLA em risco (`/sla/at-risk`) | escrever=`sector.manage`, ler=`conversation.read` |
+| Pesquisas CSAT (`/csat/surveys`) / respostas (`/csat/responses`) | `sector.manage` / `report.view` |
+| **Agentes** (`/users`, `/users/invite`) e **Papéis** (`/roles`) e settings do tenant (`/tenants/current`) | `user.manage` |
+| Contatos (`/contacts`) | ler=`contact.read`, escrever=`contact.write` |
+| Faturas no Customer-360 | `contact.view_financial` |
+| Canais (`/channels`) | `channel.manage` |
+| Webhooks (`/webhooks`) | `webhook.manage` |
+| Automation (`/automation/*`) | `automation.manage` |
+| Copilot usar / configurar (`/copilot/*`) | `copilot.use` / `copilot.configure` |
+| MCP servers / tools / aprovar ação (`/mcp/*`) | `integration.configure` / `integration.read` / `integration.execute_action` |
+| Providerhub & ações externas (`/providerhub/*`, `/conversations/{id}/external/*`) | ler=`integration.read`, ações=`integration.execute_action` |
+| Relatórios (`/reports/*`) / export (`/reports/export`) | `report.view` / `report.export` |
+| Auditoria (`/audit`) | `audit.view` |
+| Privacidade/retenção (`/privacy/*`) | `privacy.manage` |
+| Inbox/mensagens (`/conversations/*`) | `conversation.read/assign/transfer/close`, `message.send/internal_note/delete` |
+| `/me`, notificações, presença, busca¹, anexos | só autenticação (sem permissão específica) |
 
-> `owner` recebe `*`. Demais papéis recebem subconjuntos. Papéis são
-> **customizáveis** por tenant.
-
-### Catálogo de permissões (base)
-```
-tenant:read  tenant:write
-user:read    user:write     role:read    role:write
-contact:read contact:write  contact:delete
-sector:read  sector:write   queue:read   queue:write
-conversation:read  conversation:write  conversation:assign  conversation:transfer
-conversation:close conversation:read_all   # read_all = ver de toda a equipe
-message:read message:write   note:write
-tag:read tag:write   canned:read canned:write   reason:read reason:write
-routing:read routing:write
-channel:read channel:write
-automation:read automation:write
-integration:read   integration:configure   integration:execute_action
-copilot:use
-sla:read sla:write   csat:read csat:write   businesshours:read businesshours:write
-webhook:read webhook:write   notification:read
-search:use
-privacy:read privacy:write   audit:read
-attachment:read attachment:write
-report:read
-```
+> ¹ `/search/*` exige `conversation.read`.
 
 ### Escopo de visibilidade
-Além da permissão, há **escopo de dados**:
-- `agent` vê conversas **atribuídas a si** ou **da sua fila/setor**.
-- `conversation:read_all` (supervisor/admin) amplia para toda a equipe/tenant.
+Além da permissão, há **escopo de dados** (`SectorScope` no papel):
+- `ScopeOwn` (ex.: `agent`) — vê conversas **atribuídas a si** ou **dos seus
+  setores**.
+- `ScopeAll` (ex.: `owner`/`admin`) — vê toda a equipe/tenant.
+- Não existe permissão `conversation.read_all`; a amplitude vem do `SectorScope`.
 - Filtros de visibilidade aplicados no serviço/repositório, não só na rota.
 
 ### Aplicação

@@ -98,14 +98,16 @@ POST   /auth/password/reset        # aplica novo password
 GET    /auth/me                    # perfil + permissões do ator
 ```
 
-### iam (users, roles)
+### iam (users, roles) — tudo sob `user.manage`
 ```
 GET    /users                      POST   /users
+POST   /users/invite               # convida agente (e-mail de aceite)
 GET    /users/{id}                 PATCH  /users/{id}        DELETE /users/{id}
-POST   /users/{id}/roles           # atribui papéis
 GET    /roles                      POST   /roles
 GET    /roles/{id}                 PATCH  /roles/{id}        DELETE /roles/{id}
-GET    /permissions                # catálogo (read-only)
+# papéis do usuário são atribuídos no próprio PATCH /users/{id} (campo role_ids).
+# NÃO existe GET /permissions: o catálogo (26 perms) é fixo em
+# domain/authz/permission.go — ver security-permissions.md.
 ```
 
 ### tenant
