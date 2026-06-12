@@ -151,8 +151,14 @@ func registerChannels(p *paths) {
 	// the front's Bearer JWT.
 	inboundParams := []M{pathParam("channel", "channel type"),
 		headerParam("X-Inbound-Token", "Channel integration token (preferred over the inbound_token body field).")}
-	p.add("POST", "/v1/inbound/channel/{channel}/messages", op(opConfig{tag: "channels", summary: "Ingest an inbound message (channel-authenticated)",
-		public: true, params: inboundParams, reqBody: body(ref("InboundMessageRequest")), responses: M{"200": jsonResp("Accepted", ref("TestResult"))}}))
+	// Chatwoot-compatible: accepts JSON (media by URL) OR multipart/form-data (raw
+	// file attachments, like Chatwoot's create-message API).
+	inboundBody := M{"required": true, "content": M{
+		"application/json":    M{"schema": ref("InboundMessageRequest")},
+		"multipart/form-data": M{"schema": ref("InboundMessageMultipart"), "encoding": M{"attachments[]": M{"contentType": "image/*, audio/*, video/*, application/*"}}},
+	}}
+	p.add("POST", "/v1/inbound/channel/{channel}/messages", op(opConfig{tag: "channels", summary: "Ingest an inbound message (channel-authenticated; JSON or Chatwoot multipart)",
+		public: true, params: inboundParams, reqBody: inboundBody, responses: M{"200": jsonResp("Accepted", ref("TestResult"))}}))
 	p.add("POST", "/v1/inbound/channel/{channel}/delivery-receipts", op(opConfig{tag: "channels", summary: "Ingest delivery receipts (channel-authenticated)",
 		public: true, params: inboundParams, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
 }

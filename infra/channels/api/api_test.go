@@ -95,6 +95,46 @@ func TestSendMessage_SignedPOST_Success(t *testing.T) {
 	}
 }
 
+func TestSendMessage_ChatwootCompatibleShape(t *testing.T) {
+	ext := &externalSystem{responseBody: `{"external_message_id":"EXT-1"}`}
+	srv := newExternalServer(t, ext)
+	defer srv.Close()
+
+	send := sampleSend()
+	send.Attachments = []conventity.Attachment{
+		{URL: "https://f/nota.ogg", ContentType: "audio/ogg", Filename: "nota.ogg", Size: 99},
+	}
+	if _, err := New(chentity.TypeAPI).SendMessage(t.Context(), connFor(srv.URL), send); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	m := ext.body.Message
+	if m.Content != "olá" || m.Text != "olá" || m.MessageType != "outgoing" || m.Private {
+		t.Errorf("chatwoot message envelope wrong: %+v", m)
+	}
+	if m.FileType != "audio" {
+		t.Errorf("message file_type = %q, want audio", m.FileType)
+	}
+	if len(m.Attachments) != 1 {
+		t.Fatalf("want 1 attachment, got %d", len(m.Attachments))
+	}
+	a := m.Attachments[0]
+	if a.FileType != "audio" || a.DataURL != "https://f/nota.ogg" || a.ContentType != "audio/ogg" {
+		t.Errorf("chatwoot attachment wrong: %+v", a)
+	}
+}
+
+func TestFileTypeFor(t *testing.T) {
+	cases := map[string]string{
+		"audio/ogg": "audio", "audio/mpeg": "audio", "image/png": "image",
+		"video/mp4": "video", "application/pdf": "file", "": "file",
+	}
+	for ct, want := range cases {
+		if got := fileTypeFor(ct); got != want {
+			t.Errorf("fileTypeFor(%q) = %q, want %q", ct, got, want)
+		}
+	}
+}
+
 func TestSendMessage_NoExternalID_FallsBackToDeliveryID(t *testing.T) {
 	ext := &externalSystem{responseBody: `{"ok":true}`}
 	srv := newExternalServer(t, ext)
@@ -149,9 +189,10 @@ func TestVerifyInbound(t *testing.T) {
 	if err := a.VerifyInbound(conn, body, map[string]string{"X-Integration-Secret": testSecret}); err != nil {
 		t.Errorf("shared secret should verify: %v", err)
 	}
-	// Missing everything.
-	if err := a.VerifyInbound(conn, body, map[string]string{}); err == nil {
-		t.Error("missing signature must fail")
+	// Missing everything: HMAC is OPTIONAL — the inbound_token already authenticated
+	// the connection (Chatwoot-style multipart senders don't sign), so this passes.
+	if err := a.VerifyInbound(conn, body, map[string]string{}); err != nil {
+		t.Errorf("missing signature should be allowed (token-only auth): %v", err)
 	}
 }
 

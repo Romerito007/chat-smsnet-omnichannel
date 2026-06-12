@@ -380,6 +380,64 @@ components:
                     format: date-time
                     type: string
             type: object
+        ChannelOutboundMessage:
+            properties:
+                contact:
+                    properties:
+                        external_id:
+                            type: string
+                        id:
+                            type: string
+                        name:
+                            type: string
+                        phone:
+                            type: string
+                    type: object
+                conversation_id:
+                    type: string
+                delivery_id:
+                    type: string
+                message:
+                    properties:
+                        attachments:
+                            items:
+                                properties:
+                                    content_type:
+                                        type: string
+                                    data_url:
+                                        type: string
+                                    file_type:
+                                        enum:
+                                            - image
+                                            - audio
+                                            - video
+                                            - file
+                                        type: string
+                                    filename:
+                                        type: string
+                                    size:
+                                        type: integer
+                                    url:
+                                        type: string
+                                type: object
+                            type: array
+                        content:
+                            type: string
+                        file_type:
+                            type: string
+                        message_type:
+                            type: string
+                        private:
+                            type: boolean
+                        text:
+                            type: string
+                    type: object
+                metadata:
+                    additionalProperties: true
+                    type: object
+                timestamp:
+                    type: integer
+            type: object
         ClassifyRequest:
             properties:
                 categories:
@@ -1179,6 +1237,41 @@ components:
                 updated_at:
                     format: date-time
                     type: string
+            type: object
+        InboundMessageMultipart:
+            properties:
+                attachments[]:
+                    items:
+                        format: binary
+                        type: string
+                    type: array
+                contact_document:
+                    type: string
+                contact_name:
+                    type: string
+                contact_phone:
+                    type: string
+                content:
+                    type: string
+                external_contact_id:
+                    type: string
+                external_message_id:
+                    type: string
+                file_type:
+                    enum:
+                        - image
+                        - audio
+                        - video
+                        - document
+                    type: string
+                inbound_token:
+                    type: string
+                message_type:
+                    type: string
+                private:
+                    type: boolean
+                timestamp:
+                    type: integer
             type: object
         InboundMessageRequest:
             properties:
@@ -6050,6 +6143,12 @@ paths:
                     application/json:
                         schema:
                             $ref: '#/components/schemas/InboundMessageRequest'
+                    multipart/form-data:
+                        encoding:
+                            attachments[]:
+                                contentType: image/*, audio/*, video/*, application/*
+                        schema:
+                            $ref: '#/components/schemas/InboundMessageMultipart'
                 required: true
             responses:
                 "200":
@@ -6065,7 +6164,7 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             security: []
-            summary: Ingest an inbound message (channel-authenticated)
+            summary: Ingest an inbound message (channel-authenticated; JSON or Chatwoot multipart)
             tags:
                 - channels
     /v1/mcp/servers:

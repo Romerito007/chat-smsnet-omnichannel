@@ -145,6 +145,54 @@ func (s *Service) Confirm(ctx context.Context, cmd contracts.ConfirmUpload) (*en
 	return att, nil
 }
 
+// StoreInbound persists a raw inbound attachment (Chatwoot multipart) directly to
+// storage and creates a ready record linked to the conversation, returning the
+// conversation-entity attachment with its access-gated download URL. It is a
+// system path (inbound is pre-auth: the channel token already authenticated), so
+// it does NOT run the agent visibility check — the tenant comes from the context.
+func (s *Service) StoreInbound(ctx context.Context, conversationID, filename, contentType string, data []byte) (conventity.Attachment, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return conventity.Attachment{}, err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return conventity.Attachment{}, apperror.Validation("conversation_id is required")
+	}
+	filename = sanitizeFilename(filename)
+	contentType = strings.TrimSpace(contentType)
+	size := int64(len(data))
+	if v := s.validate(filename, contentType, size); v != nil {
+		return conventity.Attachment{}, v
+	}
+
+	id := shared.NewID()
+	key := fmt.Sprintf("attachments/%s/%s/%s/%s", tenantID, conversationID, id, filename)
+	if err := s.storage.Put(key, contentType, data); err != nil {
+		return conventity.Attachment{}, apperror.Internal("could not store inbound attachment").Wrap(err)
+	}
+
+	att := &entity.Attachment{
+		ID:              id,
+		TenantID:        tenantID,
+		ConversationID:  conversationID,
+		Filename:        filename,
+		ContentType:     contentType,
+		Size:            size,
+		StorageProvider: s.storage.Provider(),
+		StorageKey:      key,
+		Status:          entity.StatusReady,
+		SignedURL:       s.downloadURL(id),
+		CreatedAt:       s.clock.Now(),
+	}
+	if err := s.repo.Create(ctx, att); err != nil {
+		return conventity.Attachment{}, err
+	}
+	return conventity.Attachment{
+		ID: att.ID, URL: att.SignedURL, ContentType: contentType, Filename: filename, Size: size,
+	}, nil
+}
+
 // Download resolves an attachment for serving after checking the caller's access
 // to its conversation. The raw object is never served without this check.
 func (s *Service) Download(ctx context.Context, id string) (contracts.DownloadResult, error) {

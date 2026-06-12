@@ -38,7 +38,7 @@ func ConnectionService(c *container.Container) *channelservice.ConnectionService
 
 // InboundService builds the inbound orchestration service.
 func InboundService(c *container.Container) *channelservice.InboundService {
-	return channelservice.NewInboundService(
+	svc := channelservice.NewInboundService(
 		ContactService(c),
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		convrepo.NewMessageRepository(c.Mongo.DB),
@@ -49,6 +49,9 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 		c.Events,
 		clock,
 	)
+	// Raw (multipart) inbound attachments are persisted via the attachments service.
+	svc.SetAttachmentStore(AttachmentService(c))
+	return svc
 }
 
 // OutboundService builds the outbound delivery service.

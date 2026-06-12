@@ -34,6 +34,15 @@ type InboundService struct {
 	locker        shared.Locker
 	publisher     shared.EventPublisher
 	clock         shared.Clock
+	attachments   chcontracts.InboundAttachmentStore
+}
+
+// SetAttachmentStore wires the persister for raw (multipart) inbound attachments.
+// Optional: when unset, only URL-mode attachments are accepted.
+func (s *InboundService) SetAttachmentStore(a chcontracts.InboundAttachmentStore) {
+	if a != nil {
+		s.attachments = a
+	}
 }
 
 // NewInboundService builds the orchestrator.
@@ -84,8 +93,11 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 	if externalContact == "" {
 		return chcontracts.InboundResult{}, apperror.Validation("external_contact_id or contact_phone is required")
 	}
-	if strings.TrimSpace(msg.Text) == "" && len(msg.Attachments) == 0 {
+	if strings.TrimSpace(msg.Text) == "" && len(msg.Attachments) == 0 && len(msg.RawAttachments) == 0 {
 		return chcontracts.InboundResult{}, apperror.Validation("text or attachments are required")
+	}
+	if len(msg.RawAttachments) > 0 && s.attachments == nil {
+		return chcontracts.InboundResult{}, apperror.Internal("attachment storage is not configured")
 	}
 
 	// Serialize processing of the same external message across nodes.
@@ -203,8 +215,20 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	if in.Timestamp > 0 {
 		createdAt = time.UnixMilli(in.Timestamp).UTC()
 	}
+
+	// Persist any raw (multipart) attachments now that the conversation exists, so
+	// each record is access-checked on download; merge with URL-mode attachments.
+	attachments := append([]conventity.Attachment(nil), in.Attachments...)
+	for _, f := range in.RawAttachments {
+		att, err := s.attachments.StoreInbound(ctx, conv.ID, f.Filename, f.ContentType, f.Data)
+		if err != nil {
+			return nil, err
+		}
+		attachments = append(attachments, att)
+	}
+
 	mtype := conventity.MessageText
-	if strings.TrimSpace(in.Text) == "" && len(in.Attachments) > 0 {
+	if strings.TrimSpace(in.Text) == "" && len(attachments) > 0 {
 		mtype = conventity.MessageFile
 	}
 
@@ -217,7 +241,7 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		Direction:         conventity.DirectionInbound,
 		MessageType:       mtype,
 		Text:              in.Text,
-		Attachments:       in.Attachments,
+		Attachments:       attachments,
 		Metadata:          in.Metadata,
 		CreatedAt:         createdAt,
 		DeliveryStatus:    conventity.DeliveryNone,

@@ -168,6 +168,36 @@ func schemas() M {
 			"contact_phone": str(), "contact_document": str(), "channel": str(), "text": str(),
 			"attachments": arr(ref("Attachment")), "metadata": freeObject(), "timestamp": integer(),
 		}),
+		// Chatwoot-compatible multipart/form-data: content + message_type + file_type
+		// + attachments[] (raw files). Routing fields mirror the JSON shape.
+		"InboundMessageMultipart": M{
+			"type": "object",
+			"properties": M{
+				"inbound_token": str(), "external_message_id": str(),
+				"external_contact_id": str(), "contact_phone": str(), "contact_name": str(),
+				"contact_document": str(), "content": str(), "message_type": str(),
+				"private":       boolean(),
+				"file_type":     enum("image", "audio", "video", "document"),
+				"timestamp":     integer(),
+				"attachments[]": M{"type": "array", "items": M{"type": "string", "format": "binary"}},
+			},
+		},
+		// ChannelOutboundMessage documents the Chatwoot-compatible envelope this
+		// backend POSTs to a channel's outbound_url (not a served /v1 endpoint).
+		"ChannelOutboundMessage": object(M{
+			"delivery_id": str(), "conversation_id": str(), "timestamp": integer(),
+			"contact": object(M{"id": str(), "name": str(), "phone": str(), "external_id": str()}),
+			"message": object(M{
+				"content": str(), "text": str(), "message_type": str(), "private": boolean(),
+				"file_type": str(),
+				"attachments": arr(object(M{
+					"url": str(), "data_url": str(),
+					"file_type":    enum("image", "audio", "video", "file"),
+					"content_type": str(), "filename": str(), "size": integer(),
+				})),
+			}),
+			"metadata": freeObject(),
+		}),
 		"RotatedInboundToken": object(M{"inbound_token": str()}, "inbound_token"),
 		"TestResult":          object(M{"ok": boolean(), "external_message_id": str(), "error": str()}),
 

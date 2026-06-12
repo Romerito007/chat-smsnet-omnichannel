@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
@@ -50,11 +51,30 @@ func (a *Adapter) Type() chentity.Type { return a.channelType }
 
 // ── outbound envelope ─────────────────────────────────────────────────────────
 
+// attachment mirrors Chatwoot's webhook attachment: data_url + file_type let a
+// Chatwoot-speaking receiver process media without adaptation; url/filename/size
+// are kept for our own back-compat.
 type attachment struct {
 	URL         string `json:"url"`
+	DataURL     string `json:"data_url,omitempty"`  // Chatwoot alias of the media URL
+	FileType    string `json:"file_type,omitempty"` // image|audio|video|file
 	ContentType string `json:"content_type,omitempty"`
 	Filename    string `json:"filename,omitempty"`
 	Size        int64  `json:"size,omitempty"`
+}
+
+// fileTypeFor derives Chatwoot's attachment file_type from a MIME content type.
+func fileTypeFor(contentType string) string {
+	switch ct := strings.ToLower(contentType); {
+	case strings.HasPrefix(ct, "image/"):
+		return "image"
+	case strings.HasPrefix(ct, "audio/"):
+		return "audio"
+	case strings.HasPrefix(ct, "video/"):
+		return "video"
+	default:
+		return "file" // Chatwoot uses "file" for documents/other
+	}
 }
 
 type contact struct {
@@ -64,8 +84,14 @@ type contact struct {
 	ExternalID string `json:"external_id,omitempty"`
 }
 
+// messageBody mirrors Chatwoot's outgoing message: content + message_type +
+// private + attachments[]; text is kept as a back-compat alias of content.
 type messageBody struct {
+	Content     string       `json:"content"`
 	Text        string       `json:"text"`
+	MessageType string       `json:"message_type"`        // "outgoing" (agent → customer)
+	Private     bool         `json:"private"`             // internal notes are never delivered
+	FileType    string       `json:"file_type,omitempty"` // message-level (first attachment)
 	Attachments []attachment `json:"attachments,omitempty"`
 }
 
@@ -95,8 +121,16 @@ func (a *Adapter) SendMessage(ctx context.Context, conn *chentity.ChannelConnect
 	}
 
 	atts := make([]attachment, 0, len(send.Attachments))
+	msgFileType := ""
 	for _, at := range send.Attachments {
-		atts = append(atts, attachment{URL: at.URL, ContentType: at.ContentType, Filename: at.Filename, Size: at.Size})
+		ft := fileTypeFor(at.ContentType)
+		if msgFileType == "" {
+			msgFileType = ft
+		}
+		atts = append(atts, attachment{
+			URL: at.URL, DataURL: at.URL, FileType: ft,
+			ContentType: at.ContentType, Filename: at.Filename, Size: at.Size,
+		})
 	}
 	env := envelope{
 		DeliveryID:     send.DeliveryID,
@@ -107,7 +141,10 @@ func (a *Adapter) SendMessage(ctx context.Context, conn *chentity.ChannelConnect
 			Phone:      send.Contact.Phone,
 			ExternalID: firstNonEmpty(send.Contact.ExternalID, send.ExternalContactID),
 		},
-		Message:   messageBody{Text: send.Text, Attachments: atts},
+		Message: messageBody{
+			Content: send.Text, Text: send.Text, MessageType: "outgoing", Private: false,
+			FileType: msgFileType, Attachments: atts,
+		},
 		Timestamp: time.Now().UTC().UnixMilli(),
 		Metadata:  send.Metadata,
 	}
@@ -151,10 +188,15 @@ func (a *Adapter) SendMessage(ctx context.Context, conn *chentity.ChannelConnect
 	return chcontracts.SendResult{ExternalMessageID: externalID, Status: chentity.DeliverySent}, nil
 }
 
-// VerifyInbound validates the inbound POST: the connection is already resolved by
-// its inbound_token, and the body signature (HMAC of the body, optionally bound
-// to a Timestamp header) is verified against the connection secret.
+// VerifyInbound validates the inbound POST. The connection is already resolved
+// and authenticated by its inbound_token, so the HMAC body signature is OPTIONAL
+// (Chatwoot-style multipart senders don't sign): when no signature/secret header
+// is present, the token alone authenticates; when one IS present it must be valid.
+// This is what lets multipart/form-data inbound work without a body HMAC.
 func (a *Adapter) VerifyInbound(conn *chentity.ChannelConnection, rawBody []byte, headers map[string]string) error {
+	if headers["X-Signature"] == "" && headers["X-Integration-Secret"] == "" {
+		return nil
+	}
 	return sign.VerifySignature(conn.Secret, rawBody, headers)
 }
 
