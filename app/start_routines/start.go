@@ -117,12 +117,29 @@ func Seed(ctx context.Context, cfg config.Config) error {
 // buildHTTPHandler composes the API and/or WS routers onto a single mux based on
 // the active roles.
 func buildHTTPHandler(cfg config.Config, c *container.Container) http.Handler {
-	root := chi.NewRouter()
+	var api, wsHandler http.Handler
 	if cfg.RunsRole(config.RoleAPI) {
-		root.Mount("/", httproutes.NewRouter(c))
+		api = httproutes.NewRouter(c)
 	}
 	if cfg.RunsRole(config.RoleWS) {
-		root.Mount("/realtime", wsroutes.NewRouter(c))
+		wsHandler = wsroutes.Handler(c)
+	}
+	return composeRouter(api, wsHandler)
+}
+
+// composeRouter mounts the API as the catch-all and exposes the WS handler at
+// both /realtime/ws (canonical) and /ws (the alias browsers commonly connect to),
+// so the WebSocket upgrade is never swallowed by the API 404. Either handler may
+// be nil when its role is inactive. The static WS routes take precedence over the
+// API catch-all.
+func composeRouter(api, wsHandler http.Handler) http.Handler {
+	root := chi.NewRouter()
+	if wsHandler != nil {
+		root.Handle("/realtime/ws", wsHandler)
+		root.Handle("/ws", wsHandler)
+	}
+	if api != nil {
+		root.Mount("/", api)
 	}
 	return root
 }

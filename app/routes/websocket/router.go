@@ -2,23 +2,19 @@
 package websocket
 
 import (
-	"github.com/go-chi/chi/v5"
+	"net/http"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 	ws "github.com/romerito007/chat-smsnet-omnichannel/presenter/websocket"
 )
 
-// NewRouter builds the WS router. The handler authenticates the upgrade via JWT
-// and bridges sockets to the realtime Hub owned by the container's manager.
-// There is intentionally no tenant header middleware: the tenant comes only from
-// the verified token.
-func NewRouter(c *container.Container) *chi.Mux {
-	r := chi.NewRouter()
-	r.Use(middleware.Recover(c.Logger))
-	r.Use(middleware.RequestID(c.Logger))
-
-	handler := ws.NewHandler(c.Realtime.Hub, c.Tokens, c.Logger, c.Config.Realtime.MaxConnPerUser)
-	r.Handle("/ws", handler)
-	return r
+// Handler builds the realtime WS handler, wrapped with recover + request-id so
+// the handshake is observable. The handler authenticates the upgrade via JWT
+// (Authorization: Bearer, or ?token= for browsers that cannot set headers); the
+// tenant comes only from the verified token, never a header. The server wiring
+// exposes it at both /realtime/ws (canonical) and /ws (alias).
+func Handler(c *container.Container) http.Handler {
+	h := ws.NewHandler(c.Realtime.Hub, c.Tokens, c.Logger, c.Config.Realtime.MaxConnPerUser)
+	return middleware.Recover(c.Logger)(middleware.RequestID(c.Logger)(h))
 }

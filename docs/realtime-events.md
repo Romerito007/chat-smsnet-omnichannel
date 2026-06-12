@@ -8,11 +8,17 @@ handshake em `presenter/websocket/handler.go`.
 ## Handshake / conexão
 
 ```
-GET /realtime/ws            (Upgrade: websocket)
+GET /realtime/ws            (Upgrade: websocket)   # canônico
+GET /ws                     (Upgrade: websocket)   # alias equivalente
 Authorization: Bearer <jwt>          # access token JWT
 # — ou, para browsers que não setam headers no handshake —
 GET /realtime/ws?token=<jwt>
 ```
+
+O handler é exposto nos **dois** caminhos (`/realtime/ws` e `/ws`) no mesmo
+listener do API (porta 8080), então o upgrade nunca cai no `404` do roteador
+REST. O browser deve usar `?token=<jwt>` (não dá para setar `Authorization` no
+handshake do WebSocket).
 
 - **Autenticação** no upgrade: o token é verificado (`VerifyAccess`); sem token
   válido → `401`. O `tenant_id`, o `user_id`, os papéis/permissões e os setores
