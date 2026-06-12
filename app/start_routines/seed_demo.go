@@ -116,16 +116,17 @@ type demoSeeder struct {
 	rng      *rand.Rand
 
 	// resolved during run
-	sectorIDs  map[string]string   // name -> id
-	queueIDs   map[string][]string // sector name -> queue ids
-	agentIDs   []string            // demo agent user ids
-	agentBySec map[string][]string // sector name -> agent ids
-	tagNames   []string
-	channels   []string // channel type slugs created
-	contactIDs []string
-	closeReasn []string // close reason names
-	surveyID   string
-	convCount  int
+	sectorIDs       map[string]string   // name -> id
+	queueIDs        map[string][]string // sector name -> queue ids
+	agentIDs        []string            // demo agent user ids
+	agentBySec      map[string][]string // sector name -> agent ids
+	tagNames        []string
+	channels        []string // channel type slugs created
+	contactIDs      []string
+	closeReasn      []string // close reason names
+	surveyID        string
+	convCount       int
+	ownerAssignLeft int // open conversations still to assign to the owner ("Minhas")
 }
 
 // mark records a created doc in the ledger immediately (best-effort) so a partial
@@ -625,6 +626,10 @@ func (d *demoSeeder) seedContacts() error {
 // ── 4.9 conversations + messages + timeline + sla + csat ───────────────────────
 
 func (d *demoSeeder) seedConversations() error {
+	// Seed ~4 of the open assigned conversations onto the owner so the owner's
+	// "Minhas" tab is not empty when reviewing the layout. These stay open
+	// (StatusAssigned, never resolved/closed) and remain reassignable.
+	d.ownerAssignLeft = 4
 	// Distribution: ~10 open assigned, ~6 queued, ~6 pending, ~4 at-risk, ~24 resolved.
 	specs := []struct {
 		count    int
@@ -663,10 +668,17 @@ func (d *demoSeeder) createConversation(status conventity.Status, assign, atRisk
 
 	assignee := ""
 	if assign {
-		if a := d.agentBySec[sectorName]; len(a) > 0 {
-			assignee = a[d.rng.Intn(len(a))]
-		} else {
-			assignee = d.agentIDs[d.rng.Intn(len(d.agentIDs))]
+		switch {
+		case !resolved && !atRisk && d.ownerAssignLeft > 0:
+			// First few open, non-at-risk assigned conversations go to the owner.
+			assignee = d.ownerID
+			d.ownerAssignLeft--
+		default:
+			if a := d.agentBySec[sectorName]; len(a) > 0 {
+				assignee = a[d.rng.Intn(len(a))]
+			} else {
+				assignee = d.agentIDs[d.rng.Intn(len(d.agentIDs))]
+			}
 		}
 	}
 
