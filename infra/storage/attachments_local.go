@@ -69,6 +69,21 @@ func (s *LocalAttachmentStorage) Put(key, _ string, data []byte) error {
 	return os.WriteFile(path, data, 0o640)
 }
 
+// Exists reports whether the object file is present (used by confirm).
+func (s *LocalAttachmentStorage) Exists(key string) (bool, error) {
+	path, err := s.pathFor(key)
+	if err != nil {
+		return false, err
+	}
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // ResolveUpload validates a signed upload token and returns the bound key,
 // content-type and max size. Used by the blob PUT endpoint (local only).
 func (s *LocalAttachmentStorage) ResolveUpload(token string) (key, contentType string, maxSize int64, err error) {

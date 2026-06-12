@@ -1,68 +1,129 @@
 package storage
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
+	"errors"
 	"fmt"
-	"net/url"
-	"sort"
-	"strconv"
-	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithy "github.com/aws/smithy-go"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/attachments/contracts"
 )
 
-// S3Config configures the S3-compatible backend (AWS S3, MinIO, etc.).
+// S3Config configures the S3-compatible backend (AWS S3, MinIO, Cloudflare R2).
+// When AccessKey/SecretKey are empty the AWS default credential chain is used
+// (env, shared config, or an IAM role on EC2/ECS) — credentials are never logged.
 type S3Config struct {
-	Endpoint  string // e.g. https://s3.eu-west-1.amazonaws.com or http://minio:9000
-	Region    string
-	Bucket    string
-	AccessKey string
-	SecretKey string
+	Endpoint       string // optional, for S3-compatible stores (MinIO/R2); empty = AWS
+	Region         string
+	Bucket         string
+	AccessKey      string
+	SecretKey      string
+	ForcePathStyle bool          // path-style addressing (required by MinIO and most R2 setups)
+	PresignExpiry  time.Duration // upper bound on a presigned URL's lifetime
 }
 
-// S3AttachmentStorage is an S3-compatible attachments backend. Uploads and
-// downloads use AWS Signature V4 presigned URLs (path-style, works with AWS S3
-// and MinIO), so bytes flow directly between the client and the object store.
-// The implementation is self-contained (no AWS SDK dependency).
+// S3AttachmentStorage is an S3-compatible attachments backend built on the AWS
+// SDK for Go v2. Uploads and downloads use presigned URLs (SigV4), so bytes flow
+// directly between the client and the object store; the API never proxies them.
 type S3AttachmentStorage struct {
-	cfg  S3Config
-	host string
+	bucket  string
+	client  *s3.Client
+	presign *s3.PresignClient
+	expiry  time.Duration
 }
 
 // NewS3AttachmentStorage builds the backend.
 func NewS3AttachmentStorage(cfg S3Config) (*S3AttachmentStorage, error) {
-	u, err := url.Parse(cfg.Endpoint)
-	if err != nil || u.Host == "" {
-		return nil, fmt.Errorf("invalid S3 endpoint %q", cfg.Endpoint)
+	if cfg.Bucket == "" {
+		return nil, fmt.Errorf("s3 bucket is required")
 	}
-	return &S3AttachmentStorage{cfg: cfg, host: u.Host}, nil
+	region := cfg.Region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	loadOpts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
+	// Static credentials only when both are provided; otherwise the SDK's default
+	// chain (env / shared config / IAM role) resolves them.
+	if cfg.AccessKey != "" && cfg.SecretKey != "" {
+		loadOpts = append(loadOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, "")))
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), loadOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("load aws config: %w", err)
+	}
+
+	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+		if cfg.Endpoint != "" {
+			o.BaseEndpoint = aws.String(cfg.Endpoint)
+		}
+		o.UsePathStyle = cfg.ForcePathStyle
+	})
+
+	expiry := cfg.PresignExpiry
+	if expiry <= 0 {
+		expiry = 5 * time.Minute
+	}
+	return &S3AttachmentStorage{
+		bucket:  cfg.Bucket,
+		client:  client,
+		presign: s3.NewPresignClient(client),
+		expiry:  expiry,
+	}, nil
 }
 
 // Provider implements contracts.Storage.
 func (s *S3AttachmentStorage) Provider() string { return "s3" }
 
-// SignUpload returns a presigned PUT URL the client uploads the bytes to.
+// SignUpload returns a presigned PUT URL the client uploads the bytes to. The
+// returned headers (e.g. Content-Type) MUST be replayed by the client, since they
+// are part of the signature.
 func (s *S3AttachmentStorage) SignUpload(key, contentType string, _ int64, ttl time.Duration) (contracts.UploadTarget, error) {
-	signed := s.presign("PUT", key, ttl, time.Now().UTC())
+	exp := s.effective(ttl)
+	in := &s3.PutObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
+	if contentType != "" {
+		in.ContentType = aws.String(contentType)
+	}
+	req, err := s.presign.PresignPutObject(context.Background(), in, s3.WithPresignExpires(exp))
+	if err != nil {
+		return contracts.UploadTarget{}, apperror.Integration("could not presign upload").Wrap(err)
+	}
 	headers := map[string]string{}
 	if contentType != "" {
 		headers["Content-Type"] = contentType
 	}
 	return contracts.UploadTarget{
-		URL:       signed,
-		Method:    "PUT",
+		URL:       req.URL,
+		Method:    req.Method,
 		Headers:   headers,
-		ExpiresAt: time.Now().Add(ttl).UTC(),
+		ExpiresAt: time.Now().Add(exp).UTC(),
 	}, nil
 }
 
 // Download returns a short-lived presigned GET URL for the client to redirect to.
-func (s *S3AttachmentStorage) Download(key, _ string, ttl time.Duration) (contracts.DownloadResult, error) {
-	return contracts.DownloadResult{RedirectURL: s.presign("GET", key, ttl, time.Now().UTC())}, nil
+// The filename drives a Content-Disposition so browsers download with the right
+// name.
+func (s *S3AttachmentStorage) Download(key, filename string, ttl time.Duration) (contracts.DownloadResult, error) {
+	exp := s.effective(ttl)
+	in := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
+	if filename != "" {
+		in.ResponseContentDisposition = aws.String(`attachment; filename="` + filename + `"`)
+	}
+	req, err := s.presign.PresignGetObject(context.Background(), in, s3.WithPresignExpires(exp))
+	if err != nil {
+		return contracts.DownloadResult{}, apperror.Integration("could not presign download").Wrap(err)
+	}
+	return contracts.DownloadResult{RedirectURL: req.URL}, nil
 }
 
 // Put is not supported: S3 uploads go directly from the client to the bucket.
@@ -70,103 +131,54 @@ func (s *S3AttachmentStorage) Put(string, string, []byte) error {
 	return apperror.Internal("direct put is not supported by the s3 backend")
 }
 
-// presign builds an AWS SigV4 query-string-authenticated URL (path-style).
-func (s *S3AttachmentStorage) presign(method, key string, ttl time.Duration, now time.Time) string {
-	const algorithm = "AWS4-HMAC-SHA256"
-	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
-	scope := strings.Join([]string{dateStamp, s.cfg.Region, "s3", "aws4_request"}, "/")
-
-	// Path-style canonical URI: /bucket/key (each segment URL-encoded, '/' kept).
-	canonicalURI := "/" + s.cfg.Bucket + "/" + encodePath(key)
-
-	q := url.Values{}
-	q.Set("X-Amz-Algorithm", algorithm)
-	q.Set("X-Amz-Credential", s.cfg.AccessKey+"/"+scope)
-	q.Set("X-Amz-Date", amzDate)
-	q.Set("X-Amz-Expires", strconv.Itoa(int(ttl.Seconds())))
-	q.Set("X-Amz-SignedHeaders", "host")
-	canonicalQuery := encodeQuery(q)
-
-	canonicalHeaders := "host:" + s.host + "\n"
-	canonicalRequest := strings.Join([]string{
-		method,
-		canonicalURI,
-		canonicalQuery,
-		canonicalHeaders,
-		"host",
-		"UNSIGNED-PAYLOAD",
-	}, "\n")
-
-	stringToSign := strings.Join([]string{
-		algorithm,
-		amzDate,
-		scope,
-		hexSHA256([]byte(canonicalRequest)),
-	}, "\n")
-
-	signature := hex.EncodeToString(hmacSHA256(s.signingKey(dateStamp), []byte(stringToSign)))
-	return s.cfg.Endpoint + canonicalURI + "?" + canonicalQuery + "&X-Amz-Signature=" + signature
-}
-
-func (s *S3AttachmentStorage) signingKey(dateStamp string) []byte {
-	kDate := hmacSHA256([]byte("AWS4"+s.cfg.SecretKey), []byte(dateStamp))
-	kRegion := hmacSHA256(kDate, []byte(s.cfg.Region))
-	kService := hmacSHA256(kRegion, []byte("s3"))
-	return hmacSHA256(kService, []byte("aws4_request"))
-}
-
-func hmacSHA256(key, data []byte) []byte {
-	m := hmac.New(sha256.New, key)
-	m.Write(data)
-	return m.Sum(nil)
-}
-
-func hexSHA256(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-// encodePath URI-encodes each path segment per AWS rules, preserving '/'.
-func encodePath(key string) string {
-	segments := strings.Split(key, "/")
-	for i, seg := range segments {
-		segments[i] = awsURIEncode(seg, false)
+// Exists reports whether the object was actually uploaded (HeadObject). A missing
+// object is (false, nil); any other error propagates.
+func (s *S3AttachmentStorage) Exists(key string) (bool, error) {
+	_, err := s.client.HeadObject(context.Background(), &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket), Key: aws.String(key),
+	})
+	if err == nil {
+		return true, nil
 	}
-	return strings.Join(segments, "/")
+	if isNotFound(err) {
+		return false, nil
+	}
+	return false, err
 }
 
-// encodeQuery renders the query in the canonical, sorted, AWS-encoded form.
-func encodeQuery(q url.Values) string {
-	keys := make([]string, 0, len(q))
-	for k := range q {
-		keys = append(keys, k)
+// isNotFound recognizes S3's "object missing" responses across SDK error shapes.
+func isNotFound(err error) bool {
+	var nf *s3types.NotFound
+	var nsk *s3types.NoSuchKey
+	if errors.As(err, &nf) || errors.As(err, &nsk) {
+		return true
 	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, awsURIEncode(k, true)+"="+awsURIEncode(q.Get(k), true))
-	}
-	return strings.Join(parts, "&")
-}
-
-// awsURIEncode encodes per RFC 3986 as AWS SigV4 requires (unreserved chars are
-// left as-is; everything else is %-encoded). When encodeSlash is false, '/' is
-// preserved (for path segments handled separately).
-func awsURIEncode(s string, encodeSlash bool) string {
-	const unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if strings.IndexByte(unreserved, c) >= 0 {
-			b.WriteByte(c)
-		} else if c == '/' && !encodeSlash {
-			b.WriteByte(c)
-		} else {
-			b.WriteString(fmt.Sprintf("%%%02X", c))
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NotFound", "NoSuchKey", "404":
+			return true
 		}
 	}
-	return b.String()
+	// HeadObject 404 may surface only as a transport-level response error.
+	var respErr *awshttp.ResponseError
+	if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
+		return true
+	}
+	return false
+}
+
+// effective bounds the presign lifetime by the configured PresignExpiry so a URL
+// never lives longer than allowed.
+func (s *S3AttachmentStorage) effective(ttl time.Duration) time.Duration {
+	exp := ttl
+	if exp <= 0 || (s.expiry > 0 && s.expiry < exp) {
+		exp = s.expiry
+	}
+	if exp <= 0 {
+		exp = 5 * time.Minute
+	}
+	return exp
 }
 
 var _ contracts.Storage = (*S3AttachmentStorage)(nil)

@@ -1,6 +1,9 @@
 package storage
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -74,10 +77,11 @@ func TestLocalAttachment_TraversalContained(t *testing.T) {
 	}
 }
 
-func TestS3Attachment_PresignsUploadAndDownload(t *testing.T) {
+func TestS3Attachment_PresignShapes(t *testing.T) {
 	s, err := NewS3AttachmentStorage(S3Config{
 		Endpoint: "https://s3.eu-west-1.amazonaws.com", Region: "eu-west-1",
 		Bucket: "bucket", AccessKey: "AKID", SecretKey: "secret",
+		ForcePathStyle: true, PresignExpiry: 5 * time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("new s3: %v", err)
@@ -85,6 +89,9 @@ func TestS3Attachment_PresignsUploadAndDownload(t *testing.T) {
 	target, err := s.SignUpload("attachments/t1/cv1/a1/p.png", "image/png", 10, 5*time.Minute)
 	if err != nil {
 		t.Fatalf("sign upload: %v", err)
+	}
+	if target.Method != "PUT" || target.Headers["Content-Type"] != "image/png" {
+		t.Errorf("upload target should be a PUT carrying the signed Content-Type: %+v", target)
 	}
 	u, err := url.Parse(target.URL)
 	if err != nil {
@@ -109,12 +116,93 @@ func TestS3Attachment_PresignsUploadAndDownload(t *testing.T) {
 	}
 }
 
-func TestS3Attachment_DeterministicSignature(t *testing.T) {
-	cfg := S3Config{Endpoint: "https://s3.amazonaws.com", Region: "us-east-1", Bucket: "b", AccessKey: "AKID", SecretKey: "secret"}
-	a, _ := NewS3AttachmentStorage(cfg)
-	b, _ := NewS3AttachmentStorage(cfg)
-	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	if a.presign("GET", "k/obj.txt", time.Minute, now) != b.presign("GET", "k/obj.txt", time.Minute, now) {
-		t.Errorf("presign must be deterministic for identical inputs")
+// mockS3 is a tiny in-memory, path-style S3 emulator for the end-to-end test. It
+// ignores the signature (the SDK still signs every request).
+func mockS3(t *testing.T) (*httptest.Server, map[string][]byte) {
+	t.Helper()
+	objects := map[string][]byte{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Path // "/bucket/key..."
+		switch r.Method {
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			objects[key] = body
+			w.WriteHeader(http.StatusOK)
+		case http.MethodHead:
+			if _, ok := objects[key]; ok {
+				w.WriteHeader(http.StatusOK)
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+		case http.MethodGet:
+			if data, ok := objects[key]; ok {
+				_, _ = w.Write(data)
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, objects
+}
+
+// End-to-end against a mock S3: presigned PUT → Exists (HEAD) → presigned GET.
+func TestS3Attachment_EndToEnd_MockServer(t *testing.T) {
+	srv, _ := mockS3(t)
+	s, err := NewS3AttachmentStorage(S3Config{
+		Endpoint: srv.URL, Region: "us-east-1", Bucket: "bucket",
+		AccessKey: "test", SecretKey: "test", ForcePathStyle: true,
+	})
+	if err != nil {
+		t.Fatalf("new s3: %v", err)
+	}
+	key := "attachments/t1/cv1/a1/doc.txt"
+
+	// Not uploaded yet.
+	if ok, err := s.Exists(key); err != nil || ok {
+		t.Fatalf("exists before upload = %v, %v; want false", ok, err)
+	}
+
+	// Presign + upload the bytes directly to the (mock) bucket.
+	target, err := s.SignUpload(key, "text/plain", 5, time.Minute)
+	if err != nil {
+		t.Fatalf("sign upload: %v", err)
+	}
+	req, _ := http.NewRequest(target.Method, target.URL, strings.NewReader("hello"))
+	for k, v := range target.Headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("upload PUT: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upload status = %d", resp.StatusCode)
+	}
+
+	// Confirm-time existence check now passes.
+	if ok, err := s.Exists(key); err != nil || !ok {
+		t.Fatalf("exists after upload = %v, %v; want true", ok, err)
+	}
+
+	// Download presigns a GET; following it returns the bytes.
+	dl, err := s.Download(key, "doc.txt", time.Minute)
+	if err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	if dl.RedirectURL == "" {
+		t.Fatal("expected a presigned redirect URL")
+	}
+	getResp, err := http.Get(dl.RedirectURL)
+	if err != nil {
+		t.Fatalf("download GET: %v", err)
+	}
+	defer func() { _ = getResp.Body.Close() }()
+	got, _ := io.ReadAll(getResp.Body)
+	if string(got) != "hello" {
+		t.Errorf("downloaded %q, want %q", got, "hello")
 	}
 }

@@ -81,9 +81,11 @@ type fakeStorage struct {
 	uploadKey string
 	putCalls  int
 	redirect  string
+	missing   bool // when true, Exists reports the object was not uploaded
 }
 
-func (s *fakeStorage) Provider() string { return s.provider }
+func (s *fakeStorage) Provider() string            { return s.provider }
+func (s *fakeStorage) Exists(string) (bool, error) { return !s.missing, nil }
 func (s *fakeStorage) SignUpload(key, _ string, _ int64, _ time.Duration) (contracts.UploadTarget, error) {
 	s.uploadKey = key
 	return contracts.UploadTarget{URL: "http://up/" + key, Method: "PUT"}, nil
@@ -178,6 +180,21 @@ func TestConfirm_LinksMessageAndMarksReady(t *testing.T) {
 	}
 	if att.SignedURL != "http://api/v1/attachments/a1/download" {
 		t.Errorf("unexpected download url: %q", att.SignedURL)
+	}
+}
+
+func TestConfirm_RejectsWhenObjectNotUploaded(t *testing.T) {
+	repo := newRepo()
+	repo.items["a1"] = &entity.Attachment{ID: "a1", TenantID: "t1", ConversationID: "cv1", Status: entity.StatusPending}
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, &fakeStorage{provider: "s3", missing: true}, Config{})
+
+	_, err := svc.Confirm(ctxAuth(authz.ScopeAll, nil, "u1"), contracts.ConfirmUpload{AttachmentID: "a1"})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("confirm must reject when the object was never uploaded, got %v", err)
+	}
+	if repo.items["a1"].Status == entity.StatusReady {
+		t.Error("attachment must not be marked ready when the upload is missing")
 	}
 }
 

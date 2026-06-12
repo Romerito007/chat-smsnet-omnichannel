@@ -15,18 +15,23 @@ import (
 // breaks startup.
 func attachmentStorage(c *container.Container) (acontracts.Storage, attachctl.LocalBlobStore) {
 	cfg := c.Config.Attachments
-	if cfg.Provider == "s3" && cfg.S3.Endpoint != "" && cfg.S3.Bucket != "" {
+	// S3 is selected by STORAGE_PROVIDER=s3 + a bucket. The endpoint is optional
+	// (empty = real AWS); credentials may be empty (AWS default chain / IAM role).
+	if cfg.Provider == "s3" && cfg.S3.Bucket != "" {
 		s3, err := storage.NewS3AttachmentStorage(storage.S3Config{
-			Endpoint:  cfg.S3.Endpoint,
-			Region:    cfg.S3.Region,
-			Bucket:    cfg.S3.Bucket,
-			AccessKey: cfg.S3.AccessKey,
-			SecretKey: cfg.S3.SecretKey,
+			Endpoint:       cfg.S3.Endpoint,
+			Region:         cfg.S3.Region,
+			Bucket:         cfg.S3.Bucket,
+			AccessKey:      cfg.S3.AccessKey,
+			SecretKey:      cfg.S3.SecretKey,
+			ForcePathStyle: cfg.S3.ForcePathStyle,
+			PresignExpiry:  cfg.S3.PresignExpiry,
 		})
 		if err == nil {
 			return s3, nil // no local blob sink for the S3 backend
 		}
-		c.Logger.Error("attachments: invalid s3 config, falling back to local", "error", err)
+		// Never log credentials — only the error message.
+		c.Logger.Error("attachments: invalid s3 config, falling back to local", "error", err.Error())
 	}
 	local := storage.NewLocalAttachmentStorage(cfg.LocalDir, cfg.SigningSecret, cfg.BaseURL)
 	return local, local

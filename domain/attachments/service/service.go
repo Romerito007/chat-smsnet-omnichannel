@@ -128,6 +128,15 @@ func (s *Service) Confirm(ctx context.Context, cmd contracts.ConfirmUpload) (*en
 		att.MessageID = mid
 	}
 
+	// The object must actually have been uploaded before we mark it ready.
+	exists, err := s.storage.Exists(att.StorageKey)
+	if err != nil {
+		return nil, apperror.Internal("could not verify the upload").Wrap(err)
+	}
+	if !exists {
+		return nil, apperror.Validation("the file was not uploaded to storage")
+	}
+
 	att.Status = entity.StatusReady
 	att.SignedURL = s.downloadURL(att.ID)
 	if err := s.repo.Update(ctx, att); err != nil {

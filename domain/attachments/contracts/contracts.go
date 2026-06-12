@@ -51,4 +51,7 @@ type Storage interface {
 	// Put stores bytes under key. Used by the local backend's blob upload endpoint;
 	// the S3 backend uploads directly from the client and may return an error.
 	Put(key, contentType string, data []byte) error
+	// Exists reports whether the object was actually uploaded — used by confirm to
+	// reject a confirmation when the client never PUT the bytes.
+	Exists(key string) (bool, error)
 }

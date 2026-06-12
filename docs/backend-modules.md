@@ -294,10 +294,23 @@ expõe (REST / WS / jobs).
 - **Expõe:** REST (`/audit`, leitura); jobs (`audit.compact` no scheduler).
 
 ### `attachments`
-- **Responsabilidade:** anexos/mídia — upload, validação (tipo/tamanho/AV),
-  armazenamento (S3-compatible/local), thumbnails, URLs assinadas.
+- **Responsabilidade:** anexos/mídia — upload direto ao storage por **URL
+  assinada**, validação (tipo/tamanho) **antes** de assinar, confirmação por
+  checagem de existência, download por redirect assinado.
+- **Storage (`infra/storage`, selecionado por `STORAGE_PROVIDER`):**
+  - **`local`** (dev): bytes passam pela API via token HMAC assinado.
+  - **`s3`** (prod): backend **AWS SDK for Go v2** — presigned **PUT** (upload),
+    presigned **GET** com TTL curto (download → `302`), e **HeadObject** para a
+    confirmação. Endpoint customizado + path-style para **S3-compatible**
+    (MinIO/Cloudflare R2). Credenciais vazias → cadeia padrão da AWS (env /
+    config / **IAM role** em EC2/ECS); nunca logadas.
+- **Fluxo:** `POST /attachments/upload-url` (valida + reserva, retorna presigned
+  PUT) → cliente sobe direto → `POST /attachments/confirm` (valida existência,
+  marca *ready*) → `GET /attachments/{id}/download` (302 → presigned GET).
+- **Segurança:** chaves namespaced por tenant
+  (`attachments/{tenant_id}/{conversation_id}/{attachment_id}/{filename}`).
 - **Entidades:** `Attachment`.
-- **Depende de:** `infra/storage`, `conversations`, `messages`.
+- **Depende de:** `infra/storage` (aws-sdk-go-v2), `conversations`, `messages`.
 - **Expõe:** REST (`/attachments`); jobs (`attachment.process`).
 
 ### `realtime`

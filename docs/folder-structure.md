@@ -60,7 +60,7 @@ chat-backend/
 │   ├── mcp/                            # cliente MCP Streamable HTTP (JSON-RPC: list_tools / call_tool)
 │   ├── webhooks/                       # delivery client + assinatura HMAC
 │   ├── email/                          # smtp + templates
-│   ├── storage/                        # anexos (S3-compatible + local)
+│   ├── storage/                        # anexos: S3 (aws-sdk-go-v2, presigned PUT/GET, MinIO/R2) + local
 │   ├── secrets/                        # cifragem de segredos
 │   └── http_client/
 │

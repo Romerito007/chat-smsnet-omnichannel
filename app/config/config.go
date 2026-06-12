@@ -90,13 +90,17 @@ type AttachmentsConfig struct {
 	S3 AttachmentsS3Config
 }
 
-// AttachmentsS3Config holds S3-compatible backend settings.
+// AttachmentsS3Config holds S3-compatible backend settings. When AccessKey/
+// SecretKey are empty, the AWS default credential chain is used (env / shared
+// config / IAM role on EC2/ECS).
 type AttachmentsS3Config struct {
-	Endpoint  string
-	Region    string
-	Bucket    string
-	AccessKey string
-	SecretKey string
+	Endpoint       string // optional, S3-compatible (MinIO/R2); empty = AWS
+	Region         string
+	Bucket         string
+	AccessKey      string
+	SecretKey      string
+	ForcePathStyle bool
+	PresignExpiry  time.Duration
 }
 
 // PrivacyConfig holds the privacy (LGPD) settings: where export files are stored
@@ -351,7 +355,9 @@ func Load() (Config, error) {
 			DownloadTTL:     getDuration("REPORTS_DOWNLOAD_TTL", 24*time.Hour),
 		},
 		Attachments: AttachmentsConfig{
-			Provider:            getString("ATTACHMENTS_PROVIDER", "local"),
+			// STORAGE_PROVIDER is the canonical knob (local|s3); ATTACHMENTS_PROVIDER
+			// is accepted as a fallback for older deployments.
+			Provider:            getString("STORAGE_PROVIDER", getString("ATTACHMENTS_PROVIDER", "local")),
 			MaxSizeBytes:        int64(getInt("ATTACHMENTS_MAX_SIZE_BYTES", 25<<20)),
 			AllowedContentTypes: getList("ATTACHMENTS_ALLOWED_CONTENT_TYPES", nil),
 			UploadTTL:           getDuration("ATTACHMENTS_UPLOAD_TTL", 15*time.Minute),
@@ -360,11 +366,13 @@ func Load() (Config, error) {
 			LocalDir:            getString("ATTACHMENTS_LOCAL_DIR", "/tmp/chat-attachments"),
 			BaseURL:             getString("ATTACHMENTS_BASE_URL", "http://localhost:8080"),
 			S3: AttachmentsS3Config{
-				Endpoint:  getString("ATTACHMENTS_S3_ENDPOINT", ""),
-				Region:    getString("ATTACHMENTS_S3_REGION", "us-east-1"),
-				Bucket:    getString("ATTACHMENTS_S3_BUCKET", ""),
-				AccessKey: getString("ATTACHMENTS_S3_ACCESS_KEY", ""),
-				SecretKey: getString("ATTACHMENTS_S3_SECRET_KEY", ""),
+				Endpoint:       getString("S3_ENDPOINT", getString("ATTACHMENTS_S3_ENDPOINT", "")),
+				Region:         getString("S3_REGION", getString("ATTACHMENTS_S3_REGION", "us-east-1")),
+				Bucket:         getString("S3_BUCKET", getString("ATTACHMENTS_S3_BUCKET", "")),
+				AccessKey:      getString("AWS_ACCESS_KEY_ID", getString("ATTACHMENTS_S3_ACCESS_KEY", "")),
+				SecretKey:      getString("AWS_SECRET_ACCESS_KEY", getString("ATTACHMENTS_S3_SECRET_KEY", "")),
+				ForcePathStyle: getBool("S3_FORCE_PATH_STYLE", false),
+				PresignExpiry:  getDuration("S3_PRESIGN_EXPIRY", 5*time.Minute),
 			},
 		},
 		Seed: SeedConfig{
