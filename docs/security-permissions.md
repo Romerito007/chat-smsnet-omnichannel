@@ -114,8 +114,9 @@ Além da permissão, há **escopo de dados** (`SectorScope` no papel):
 
 ## 3. Isolamento multi-tenant
 
-- `tenant_id` **derivado do token** (nunca confiar em header do cliente em
-  produção). `X-Tenant-Id` só é aceito em contextos internos/dev.
+- `tenant_id` **derivado exclusivamente do JWT verificado**, em qualquer
+  ambiente. Nenhum header de tenant do cliente é aceito (o middleware legado de
+  `X-Tenant-Id` foi removido do código e do CORS).
 - `tenant_id` no `context`; `RequireTenant` nos serviços/repositórios.
 - **Toda query** Mongo filtra por `tenant_id`; índices compostos começam por
   `tenant_id`.
