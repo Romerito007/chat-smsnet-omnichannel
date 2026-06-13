@@ -617,8 +617,17 @@ func (d *demoSeeder) seedContacts() error {
 		return nil
 	}
 
-	// The existing real contact.
-	if err := add("Romerito Alexandre", "+5544999088478", "", "", []string{"vip"}); err != nil {
+	// The existing real contact. Tags store the canonical tag ID (never the name),
+	// consistent with the conversation/contact tag-id normalization.
+	vipID, err := d.tagIDByName("vip")
+	if err != nil {
+		return err
+	}
+	var vipTags []string
+	if vipID != "" {
+		vipTags = []string{vipID}
+	}
+	if err := add("Romerito Alexandre", "+5544999088478", "", "", vipTags); err != nil {
 		return err
 	}
 	for i := 0; i < 34; i++ {
