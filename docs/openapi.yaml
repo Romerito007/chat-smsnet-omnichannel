@@ -4519,6 +4519,12 @@ paths:
                   required: false
                   schema:
                     type: string
+                - description: Filter by contact (the contact's conversation history; paginated, last_message embedded)
+                  in: query
+                  name: contact_id
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:

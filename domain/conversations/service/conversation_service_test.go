@@ -77,6 +77,9 @@ func (r *fakeConvRepo) List(ctx context.Context, f contracts.ListFilter, vis con
 		if f.Status != "" && string(c.Status) != f.Status {
 			continue
 		}
+		if f.ContactID != "" && c.ContactID != f.ContactID {
+			continue
+		}
 		if !vis.All {
 			visible := c.AssignedTo == vis.UserID
 			for _, s := range vis.SectorIDs {
@@ -185,6 +188,32 @@ func newService(sectors map[string]string) (*Service, *fakeConvRepo, *fakeMsgRep
 // adminCtx sees everything (all-sector scope).
 func adminCtx() context.Context {
 	return actorCtx("t1", "admin", authz.ScopeAll, nil)
+}
+
+// TestList_FilterByContact backs GET /v1/conversations?contact_id= (the contact's
+// conversation history): only that contact's conversations come back.
+func TestList_FilterByContact(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	for _, cid := range []string{"c1", "c1", "c2"} {
+		if _, err := svc.Create(adminCtx(), contracts.CreateConversation{
+			ContactID: cid, Channel: "whatsapp", SectorID: "s1",
+		}); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+	}
+
+	got, err := svc.List(adminCtx(), contracts.ListFilter{ContactID: "c1"}, shared.PageRequest{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 conversations for c1, got %d", len(got))
+	}
+	for _, c := range got {
+		if c.ContactID != "c1" {
+			t.Errorf("leaked conversation for contact %q", c.ContactID)
+		}
+	}
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
