@@ -150,12 +150,31 @@ func (s *ProfileService) Update(ctx context.Context, id string, cmd contracts.Up
 	return p, nil
 }
 
-// Delete removes a profile.
+// Delete removes a profile. Predictable default promotion: if the delete left the
+// tenant without a default and EXACTLY ONE profile remains, that one is promoted.
+// With 2+ remaining we do NOT guess — the tenant is left without a default
+// (GET /config → default_profile_id null) and the UI prompts to pick one.
 func (s *ProfileService) Delete(ctx context.Context, id string) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	remaining, err := s.repo.List(ctx)
+	if err != nil {
+		return err
+	}
+	if len(remaining) != 1 {
+		return nil // 0 left, or 2+ and we won't guess which becomes default
+	}
+	only := remaining[0]
+	if only.IsDefault {
+		return nil // a default still exists (deleted profile was not the default)
+	}
+	only.IsDefault = true
+	only.UpdatedAt = s.clock.Now()
+	return s.repo.Update(ctx, only)
 }
 
 // SetDefault makes the given profile the tenant's default (unsetting any previous

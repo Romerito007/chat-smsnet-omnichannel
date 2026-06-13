@@ -48,11 +48,18 @@ do catálogo) para o front fazer o gating de ações por ISP. Não há toggles
 > gateway passa a ser sempre env. Sem perfil → sem ISP ativo (ações externas
 > indisponíveis, resposta clara, não 500).
 
+> **Deletar perfil:** se o delete deixar o tenant **sem default** e sobrar
+> **exatamente 1** perfil, ele é promovido a default automaticamente. Com **2+**
+> restantes não há chute: o tenant fica sem default (`GET /config` →
+> `default_profile_id: null`) e a UI pede para definir um ISP padrão.
+
 > **Roadmap (F2/F3):** o **resolvedor tri-modal** (busca manual com `isp_config_id`
 > explícito > default; copiloto via MCP; automação via HTTP) e o **CopilotAssistant**
 > (que fixa um perfil e injeta `config{type+creds}` server-side nos args das tools
 > MCP) chegam nas próximas fases. Hoje as consultas por conversa ainda usam a
-> resolução legada.
+> resolução legada. **F3 — integridade referencial:** deletar um perfil **vinculado
+> a um CopilotAssistant** será **bloqueado** com erro claro ("ISP em uso pelo
+> assistente X"), em vez de anular `ISPProfileID` silenciosamente.
 - **MCP:** os servidores `SMSNET_CONSULTAS` (read) e `SMSNET_OPERACOES` (write)
   entram no substrato MCP genérico via env default; um servidor **registrado pelo
   tenant com o mesmo nome** sobrescreve a URL (tenant DB override → env default).

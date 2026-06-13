@@ -218,6 +218,58 @@ func TestProfileUpdate_RevalidatesCredentialsOnTypeChange(t *testing.T) {
 	}
 }
 
+func TestProfileDelete_PromotesSoleRemaining(t *testing.T) {
+	repo := newFakeProfileRepo()
+	svc := newProfileSvc(repo)
+	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	other, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}})
+
+	// Delete the default; the sole remaining profile must be promoted.
+	if err := svc.Delete(profileCtx(), def.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	got, _ := repo.FindByID(profileCtx(), other.ID)
+	if !got.IsDefault {
+		t.Errorf("sole remaining profile should have been promoted to default")
+	}
+}
+
+func TestProfileDelete_NoPromotionWhenAmbiguous(t *testing.T) {
+	repo := newFakeProfileRepo()
+	svc := newProfileSvc(repo)
+	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	_, _ = svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}})
+	_, _ = svc.Create(profileCtx(), contracts.CreateProfile{Label: "C", ISPType: "ispcloud", Credentials: map[string]string{"ispcloud_host": "h", "ispcloud_token": "t"}})
+
+	// Delete the default; 2 remain → no guess, tenant left without a default.
+	if err := svc.Delete(profileCtx(), def.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if repo.defaultCount("") != 0 {
+		t.Errorf("expected no default when 2+ remain, got %d", repo.defaultCount(""))
+	}
+	st, _ := svc.GatewayStatus(profileCtx())
+	if st.DefaultProfileID != "" {
+		t.Errorf("GET /config default_profile_id should be empty, got %q", st.DefaultProfileID)
+	}
+}
+
+func TestProfileDelete_NonDefaultKeepsDefault(t *testing.T) {
+	repo := newFakeProfileRepo()
+	svc := newProfileSvc(repo)
+	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	other, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}})
+
+	// Deleting the non-default must leave the existing default untouched.
+	if err := svc.Delete(profileCtx(), other.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	got, _ := repo.FindByID(profileCtx(), def.ID)
+	if !got.IsDefault {
+		t.Errorf("existing default must remain default")
+	}
+}
+
 func TestProfileGatewayStatus_ReportsEnvAndProfiles(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
