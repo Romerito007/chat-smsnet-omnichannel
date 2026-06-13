@@ -18,8 +18,11 @@ import (
 
 // QueryService performs on-demand smsnet-integrations queries scoped to a
 // conversation, enforcing tenant + visibility, rate limiting and minimal logging.
+// The ISP profile is resolved per call (explicit isp_config_id > tenant default);
+// the gateway call config is built at the edge from the infra gateway (env
+// host/key) + the resolved profile.
 type QueryService struct {
-	config        phrepo.ConfigRepository
+	resolver      *ISPResolver
 	logs          phrepo.QueryLogRepository
 	conversations convrepo.ConversationRepository
 	contacts      contactrepo.ContactRepository
@@ -31,15 +34,14 @@ type QueryService struct {
 	envKey        string
 }
 
-// SetEnvDefault wires the env-default gateway host/key used when a tenant has no
-// DB config.
+// SetEnvDefault wires the infra SMSNET gateway host/key (ISP_GATEWAY_API_HOST/KEY).
 func (s *QueryService) SetEnvDefault(host, key string) {
 	s.envHost, s.envKey = host, key
 }
 
 // NewQueryService builds the service.
 func NewQueryService(
-	config phrepo.ConfigRepository,
+	profiles phrepo.ProfileRepository,
 	logs phrepo.QueryLogRepository,
 	conversations convrepo.ConversationRepository,
 	contacts contactrepo.ContactRepository,
@@ -50,7 +52,28 @@ func NewQueryService(
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &QueryService{config: config, logs: logs, conversations: conversations, contacts: contacts, gateway: gateway, limiter: limiter, clock: clock, auditor: shared.NoopAuditor{}}
+	return &QueryService{resolver: NewISPResolver(profiles), logs: logs, conversations: conversations, contacts: contacts, gateway: gateway, limiter: limiter, clock: clock, auditor: shared.NoopAuditor{}}
+}
+
+// resolveCall resolves the ISP profile for this call and builds the effective
+// gateway config. Returns an ISPSelectionRequiredError when the profile is
+// ambiguous, or a clear error when no profile / no gateway is configured.
+func (s *QueryService) resolveCall(ctx context.Context, conv *conventity.Conversation, explicitID string) (*phentity.ProviderIntegrationConfig, error) {
+	if s.envHost == "" {
+		return nil, apperror.Integration("provider integration is not configured")
+	}
+	rr, err := s.resolver.Resolve(ctx, explicitID)
+	if err != nil {
+		return nil, err
+	}
+	switch rr.Status {
+	case ResolveOK:
+		return buildCallConfig(conv.TenantID, s.envHost, s.envKey, rr.Profile), nil
+	case ResolveAmbiguous:
+		return nil, &ISPSelectionRequiredError{Eligible: rr.Eligible}
+	default: // ResolveNone
+		return nil, apperror.Conflict("nenhum perfil de ISP configurado para o tenant")
+	}
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, side-effect actions are
@@ -73,7 +96,11 @@ func (s *QueryService) ConsultarCliente(ctx context.Context, conversationID stri
 	}
 	req = s.fillFromContact(ctx, conv, req)
 
-	res, err := execute(s, ctx, conv, phentity.QueryConsultarCliente,
+	cfg, err := s.resolveCall(ctx, conv, req.ISPConfigID)
+	if err != nil {
+		return phcontracts.ClienteResult{}, err
+	}
+	res, err := execute(s, ctx, conv, phentity.QueryConsultarCliente, cfg,
 		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.ClienteResult, error) {
 			return s.gateway.ConsultarCliente(ctx, cfg, req)
 		})
@@ -88,32 +115,41 @@ func (s *QueryService) ConsultarCliente(ctx context.Context, conversationID stri
 }
 
 // ListarPlanos returns the tenant's plans/offers.
-func (s *QueryService) ListarPlanos(ctx context.Context, conversationID string) ([]phcontracts.Plano, error) {
+func (s *QueryService) ListarPlanos(ctx context.Context, conversationID, ispConfigID string) ([]phcontracts.Plano, error) {
 	conv, _, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	return execute(s, ctx, conv, phentity.QueryListarPlanos,
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	if err != nil {
+		return nil, err
+	}
+	return execute(s, ctx, conv, phentity.QueryListarPlanos, cfg,
 		func(cfg *phentity.ProviderIntegrationConfig) ([]phcontracts.Plano, error) {
 			return s.gateway.ListarPlanos(ctx, cfg)
 		})
 }
 
 // DadosEmpresa returns the company/ISP profile.
-func (s *QueryService) DadosEmpresa(ctx context.Context, conversationID string) (phcontracts.Empresa, error) {
+func (s *QueryService) DadosEmpresa(ctx context.Context, conversationID, ispConfigID string) (phcontracts.Empresa, error) {
 	conv, _, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return phcontracts.Empresa{}, err
 	}
-	return execute(s, ctx, conv, phentity.QueryDadosEmpresa,
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	if err != nil {
+		return phcontracts.Empresa{}, err
+	}
+	return execute(s, ctx, conv, phentity.QueryDadosEmpresa, cfg,
 		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.Empresa, error) {
 			return s.gateway.DadosEmpresa(ctx, cfg)
 		})
 }
 
 // LiberarAcesso performs a trust-unlock for a customer contract (side effect).
-// Audited as providerhub.liberacao.
-func (s *QueryService) LiberarAcesso(ctx context.Context, conversationID, idCliente string) (phcontracts.Liberacao, error) {
+// Audited as providerhub.liberacao. The idempotencyKey is forwarded to the gateway
+// so the upstream API can dedup retries.
+func (s *QueryService) LiberarAcesso(ctx context.Context, conversationID, ispConfigID, idCliente, idempotencyKey string) (phcontracts.Liberacao, error) {
 	conv, _, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return phcontracts.Liberacao{}, err
@@ -121,7 +157,12 @@ func (s *QueryService) LiberarAcesso(ctx context.Context, conversationID, idClie
 	if strings.TrimSpace(idCliente) == "" {
 		return phcontracts.Liberacao{}, apperror.Validation("id_cliente is required")
 	}
-	res, err := execute(s, ctx, conv, phentity.QueryLiberarAcesso,
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	if err != nil {
+		return phcontracts.Liberacao{}, err
+	}
+	ctx = phcontracts.WithIdempotencyKey(ctx, idempotencyKey)
+	res, err := execute(s, ctx, conv, phentity.QueryLiberarAcesso, cfg,
 		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.Liberacao, error) {
 			return s.gateway.LiberarAcesso(ctx, cfg, idCliente)
 		})
@@ -136,8 +177,8 @@ func (s *QueryService) LiberarAcesso(ctx context.Context, conversationID, idClie
 }
 
 // AbrirChamado opens a support ticket for a customer contract (side effect).
-// Audited as providerhub.chamado.
-func (s *QueryService) AbrirChamado(ctx context.Context, conversationID, idCliente, subject, message string) (phcontracts.Chamado, error) {
+// Audited as providerhub.chamado. The idempotencyKey is forwarded to the gateway.
+func (s *QueryService) AbrirChamado(ctx context.Context, conversationID, ispConfigID, idCliente, subject, message, idempotencyKey string) (phcontracts.Chamado, error) {
 	conv, _, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return phcontracts.Chamado{}, err
@@ -148,7 +189,12 @@ func (s *QueryService) AbrirChamado(ctx context.Context, conversationID, idClien
 	if strings.TrimSpace(subject) == "" {
 		return phcontracts.Chamado{}, apperror.Validation("subject is required")
 	}
-	res, err := execute(s, ctx, conv, phentity.QueryAbrirChamado,
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	if err != nil {
+		return phcontracts.Chamado{}, err
+	}
+	ctx = phcontracts.WithIdempotencyKey(ctx, idempotencyKey)
+	res, err := execute(s, ctx, conv, phentity.QueryAbrirChamado, cfg,
 		func(cfg *phentity.ProviderIntegrationConfig) (phcontracts.Chamado, error) {
 			return s.gateway.AbrirChamado(ctx, cfg, idCliente, subject, message)
 		})
@@ -162,14 +208,16 @@ func (s *QueryService) AbrirChamado(ctx context.Context, conversationID, idClien
 	return res, nil
 }
 
-// execute wraps a gateway call with rate limiting, config resolution, latency
-// measurement and minimal logging. The gateway already returns domain errors
-// (not_found → friendly NotFound, fallback → Integration), which pass through.
+// execute wraps a resolved gateway call with rate limiting, latency measurement
+// and minimal logging. The ISP profile is already resolved into cfg by the caller.
+// The gateway returns domain errors (not_found → friendly NotFound, fallback →
+// Integration), which pass through.
 func execute[T any](
 	s *QueryService,
 	ctx context.Context,
 	conv *conventity.Conversation,
 	qtype phentity.QueryType,
+	cfg *phentity.ProviderIntegrationConfig,
 	fn func(cfg *phentity.ProviderIntegrationConfig) (T, error),
 ) (T, error) {
 	var zero T
@@ -179,12 +227,6 @@ func execute[T any](
 			s.log(ctx, conv, qtype, phentity.StatusBlocked, 0, "rate limited")
 			return zero, apperror.RateLimited("too many provider queries, please wait a moment")
 		}
-	}
-
-	cfg, _, rerr := resolveConfig(ctx, s.config, s.envHost, s.envKey)
-	if rerr != nil || cfg == nil {
-		s.log(ctx, conv, qtype, phentity.StatusError, 0, "no provider config")
-		return zero, apperror.Integration("provider integration is not configured")
 	}
 
 	start := s.clock.Now()

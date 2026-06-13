@@ -9,8 +9,34 @@ import (
 	contactrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/contacts"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	copilotrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/copilot"
+	providerhubrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/providerhub"
 	copilotctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/copilot"
 )
+
+// CopilotAssistantService builds the assistant service (many per tenant). It
+// validates pinned ISP profiles against the providerhub profiles.
+func CopilotAssistantService(c *container.Container) *cservice.AssistantService {
+	return cservice.NewAssistantService(
+		copilotrepo.NewAssistantRepository(c.Mongo.DB),
+		providerhubrepo.NewProfileRepository(c.Mongo.DB, c.Cipher),
+		clock,
+	)
+}
+
+// copilotISPToolBridge builds the SMSNET ISP tool bridge: it resolves a
+// conversation's assistant → ISP profile to gate and inject the ISP config into
+// MCP tool calls server-side.
+func copilotISPToolBridge(c *container.Container) *cservice.ISPToolBridge {
+	return cservice.NewISPToolBridge(
+		copilotrepo.NewAssistantRepository(c.Mongo.DB),
+		providerhubrepo.NewProfileRepository(c.Mongo.DB, c.Cipher),
+	)
+}
+
+// CopilotAssistantController builds the assistant CRUD controller.
+func CopilotAssistantController(c *container.Container) *copilotctl.AssistantController {
+	return copilotctl.NewAssistantController(CopilotAssistantService(c))
+}
 
 // CopilotConfigService builds the per-tenant config service. The cipher encrypts
 // the per-tenant provider API key at rest.

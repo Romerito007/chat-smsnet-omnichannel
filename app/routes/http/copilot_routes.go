@@ -15,6 +15,7 @@ import (
 // allow_*_data privacy policies.
 func registerCopilotRoutes(r chi.Router, c *container.Container) {
 	ctl := factories.CopilotController(c)
+	asst := factories.CopilotAssistantController(c)
 
 	r.Group(func(p chi.Router) {
 		p.Use(middleware.AuthContext(c.Tokens))
@@ -22,6 +23,13 @@ func registerCopilotRoutes(r chi.Router, c *container.Container) {
 		// Configuration.
 		p.With(middleware.RequirePermission(authz.CopilotConfigure)).Get("/copilot/config", ctl.GetConfig)
 		p.With(middleware.RequirePermission(authz.CopilotConfigure)).Patch("/copilot/config", ctl.SaveConfig)
+
+		// Assistants (many per tenant): manage with copilot.configure.
+		p.With(middleware.RequirePermission(authz.CopilotConfigure)).Get("/copilot/assistants", asst.List)
+		p.With(middleware.RequirePermission(authz.CopilotConfigure)).Post("/copilot/assistants", asst.Create)
+		p.With(middleware.RequirePermission(authz.CopilotConfigure)).Get("/copilot/assistants/{id}", asst.Get)
+		p.With(middleware.RequirePermission(authz.CopilotConfigure)).Patch("/copilot/assistants/{id}", asst.Update)
+		p.With(middleware.RequirePermission(authz.CopilotConfigure)).Delete("/copilot/assistants/{id}", asst.Delete)
 
 		// Inference.
 		p.With(middleware.RequirePermission(authz.CopilotUse)).Post("/copilot/suggest-reply", ctl.SuggestReply)

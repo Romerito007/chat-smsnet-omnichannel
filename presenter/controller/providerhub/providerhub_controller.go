@@ -7,75 +7,118 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	phcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/contracts"
 	phservice "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/service"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/providerhub"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
 
-// Controller serves config management and on-demand provider queries.
+// Controller serves ISP-profile management, gateway status and on-demand provider
+// queries.
 type Controller struct {
-	config  *phservice.ConfigService
-	queries *phservice.QueryService
+	profiles *phservice.ProfileService
+	queries  *phservice.QueryService
 }
 
 // NewController builds the controller.
-func NewController(config *phservice.ConfigService, queries *phservice.QueryService) *Controller {
-	return &Controller{config: config, queries: queries}
+func NewController(profiles *phservice.ProfileService, queries *phservice.QueryService) *Controller {
+	return &Controller{profiles: profiles, queries: queries}
 }
 
-// ── config ───────────────────────────────────────────────────────────────────
+// ── catalog & gateway status ─────────────────────────────────────────────────
 
 // Catalog handles GET /v1/providerhub/catalog: the static, versioned catalog of
 // supported ISPs (per-ISP credential fields + supported actions), so the front
-// renders the config form and shows/hides external actions without hard-coding.
+// renders the profile form and shows/hides external actions without hard-coding.
 func (c *Controller) Catalog(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, dto.NewCatalogResponse())
 }
 
-// GetConfig handles GET /v1/providerhub/config.
+// GetConfig handles GET /v1/providerhub/config: SMSNET gateway status (infra/env)
+// plus a summary of the tenant's ISP profiles.
 func (c *Controller) GetConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, source, err := c.config.Resolved(r.Context())
+	st, err := c.profiles.GatewayStatus(r.Context())
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, dto.NewConfigStatusResponse(cfg, source))
+	middleware.WriteJSON(w, http.StatusOK, dto.NewGatewayStatusResponse(st))
 }
 
-// CreateConfig handles POST /v1/providerhub/config.
-func (c *Controller) CreateConfig(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateConfigRequest
+// ── ISP profiles ─────────────────────────────────────────────────────────────
+
+// ListProfiles handles GET /v1/providerhub/profiles.
+func (c *Controller) ListProfiles(w http.ResponseWriter, r *http.Request) {
+	ps, err := c.profiles.List(r.Context())
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewProfileListResponse(ps))
+}
+
+// CreateProfile handles POST /v1/providerhub/profiles.
+func (c *Controller) CreateProfile(w http.ResponseWriter, r *http.Request) {
+	var req dto.CreateProfileRequest
 	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	cfg, err := c.config.Create(r.Context(), req.ToCommand())
+	p, err := c.profiles.Create(r.Context(), req.ToCommand())
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusCreated, dto.NewConfigResponse(cfg))
+	middleware.WriteJSON(w, http.StatusCreated, dto.NewProfileResponse(p))
 }
 
-// UpdateConfig handles PATCH /v1/providerhub/config.
-func (c *Controller) UpdateConfig(w http.ResponseWriter, r *http.Request) {
-	var req dto.UpdateConfigRequest
+// GetProfile handles GET /v1/providerhub/profiles/{id}.
+func (c *Controller) GetProfile(w http.ResponseWriter, r *http.Request) {
+	p, err := c.profiles.Get(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewProfileResponse(p))
+}
+
+// UpdateProfile handles PATCH /v1/providerhub/profiles/{id}.
+func (c *Controller) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	var req dto.UpdateProfileRequest
 	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	cfg, err := c.config.Update(r.Context(), req.ToCommand())
+	p, err := c.profiles.Update(r.Context(), chi.URLParam(r, "id"), req.ToCommand())
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, dto.NewConfigResponse(cfg))
+	middleware.WriteJSON(w, http.StatusOK, dto.NewProfileResponse(p))
 }
 
-// TestConfig handles POST /v1/providerhub/config/test.
-func (c *Controller) TestConfig(w http.ResponseWriter, r *http.Request) {
-	result, err := c.config.Test(r.Context())
+// DeleteProfile handles DELETE /v1/providerhub/profiles/{id}.
+func (c *Controller) DeleteProfile(w http.ResponseWriter, r *http.Request) {
+	if err := c.profiles.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetDefaultProfile handles POST /v1/providerhub/profiles/{id}/default.
+func (c *Controller) SetDefaultProfile(w http.ResponseWriter, r *http.Request) {
+	p, err := c.profiles.SetDefault(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewProfileResponse(p))
+}
+
+// TestProfile handles POST /v1/providerhub/profiles/{id}/test.
+func (c *Controller) TestProfile(w http.ResponseWriter, r *http.Request) {
+	result, err := c.profiles.Test(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
@@ -85,39 +128,67 @@ func (c *Controller) TestConfig(w http.ResponseWriter, r *http.Request) {
 
 // ── on-demand conversation queries ───────────────────────────────────────────
 
-// Cliente handles GET /v1/conversations/{id}/external/cliente
-// (query: cpfcnpj|phone|email, id_cliente?).
-func (c *Controller) Cliente(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	req := phcontracts.ConsultaClienteRequest{
-		CpfCnpj:   q.Get("cpfcnpj"),
-		Phone:     q.Get("phone"),
-		Email:     q.Get("email"),
-		IDCliente: q.Get("id_cliente"),
+// writeExternalError maps the ISP-selection-required sentinel to a 200
+// needs_isp_selection response (the agent must pick a profile); every other error
+// goes through the standard error envelope.
+func (c *Controller) writeExternalError(w http.ResponseWriter, r *http.Request, err error) {
+	if sel, ok := phservice.AsISPSelectionRequired(err); ok {
+		middleware.WriteJSON(w, http.StatusOK, dto.NewNeedsISPSelectionResponse(sel.Eligible))
+		return
 	}
-	res, err := c.queries.ConsultarCliente(r.Context(), chi.URLParam(r, "id"), req)
-	if err != nil {
+	middleware.WriteError(w, r, err)
+}
+
+// idempotencyKey returns the request's Idempotency-Key header, or a generated one
+// so side-effect calls always forward a key to the gateway.
+func idempotencyKey(r *http.Request) string {
+	if k := r.Header.Get(middleware.HeaderIdempotencyKey); k != "" {
+		return k
+	}
+	return shared.NewID()
+}
+
+// Cliente handles POST /v1/conversations/{id}/external/cliente
+// (body: isp_config_id?, cpfcnpj|phone|email, id_cliente?).
+func (c *Controller) Cliente(w http.ResponseWriter, r *http.Request) {
+	var req dto.ClienteRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.queries.ConsultarCliente(r.Context(), chi.URLParam(r, "id"), req.ToRequest())
+	if err != nil {
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, res)
 }
 
-// Planos handles GET /v1/conversations/{id}/external/planos.
+// Planos handles POST /v1/conversations/{id}/external/planos (body: isp_config_id?).
 func (c *Controller) Planos(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.ListarPlanos(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
+	var req dto.ISPSelectorRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.queries.ListarPlanos(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID)
+	if err != nil {
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{"data": res})
 }
 
-// Empresa handles GET /v1/conversations/{id}/external/empresa.
+// Empresa handles POST /v1/conversations/{id}/external/empresa (body: isp_config_id?).
 func (c *Controller) Empresa(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.DadosEmpresa(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
+	var req dto.ISPSelectorRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.queries.DadosEmpresa(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID)
+	if err != nil {
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, res)
@@ -130,9 +201,9 @@ func (c *Controller) Liberacao(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	res, err := c.queries.LiberarAcesso(r.Context(), chi.URLParam(r, "id"), req.IDCliente)
+	res, err := c.queries.LiberarAcesso(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID, req.IDCliente, idempotencyKey(r))
 	if err != nil {
-		middleware.WriteError(w, r, err)
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, res)
@@ -145,9 +216,9 @@ func (c *Controller) Chamado(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	res, err := c.queries.AbrirChamado(r.Context(), chi.URLParam(r, "id"), req.IDCliente, req.Subject, req.Message)
+	res, err := c.queries.AbrirChamado(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID, req.IDCliente, req.Subject, req.Message, idempotencyKey(r))
 	if err != nil {
-		middleware.WriteError(w, r, err)
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusCreated, res)

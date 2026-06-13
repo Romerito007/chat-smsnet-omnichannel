@@ -27,7 +27,7 @@ var expectedISPs = []struct {
 	{"netcontrol", []string{"netcontrol_host", "netcontrol_client_id", "netcontrol_client_secret"}, actStd, byDoc, true, false},
 	{"radiusnet", []string{"radiusnet_host", "radiusnet_rtoken"}, actStd, byDoc, true, false},
 	{"rbfull", []string{"rbfull_host", "rbfull_token"}, actStd, byDoc, true, false},
-	{"rbxsoft", []string{"rbxsoft_host", "rbxsoft_token"}, actStd, byDoc, true, false},
+	{"rbxsoft", []string{"rbxsoft_host", "rbxsoft_token", "rbxsoft_appkey"}, actStd, byDoc, true, false},
 	{"receitanet", []string{"receitanet_host", "receitanet_token"}, actFull, byDocPhone, true, true},
 	{"sgmcloud", []string{"sgmcloud_host", "sgmcloud_token"}, actStd, byDoc, true, false},
 	{"sgpnet", []string{"sgpnet_host", "sgpnet_token"}, actFull, byDocPhone, true, true},

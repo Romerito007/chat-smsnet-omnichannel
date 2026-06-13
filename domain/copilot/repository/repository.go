@@ -21,3 +21,18 @@ type LogRepository interface {
 	Create(ctx context.Context, l *entity.AILog) error
 	ListByConversation(ctx context.Context, conversationID string, page shared.PageRequest) ([]*entity.AILog, error)
 }
+
+// AssistantRepository persists copilot assistants (many per tenant).
+type AssistantRepository interface {
+	Create(ctx context.Context, a *entity.Assistant) error
+	Update(ctx context.Context, a *entity.Assistant) error
+	Delete(ctx context.Context, id string) error
+	FindByID(ctx context.Context, id string) (*entity.Assistant, error)
+	List(ctx context.Context) ([]*entity.Assistant, error)
+	// FindByChannelType returns an enabled assistant serving the channel type, or a
+	// not_found error.
+	FindByChannelType(ctx context.Context, channelType string) (*entity.Assistant, error)
+	// CountByISPProfile counts assistants referencing the given ISP profile id
+	// (used to block deleting a profile in use).
+	CountByISPProfile(ctx context.Context, ispProfileID string) (int, error)
+}

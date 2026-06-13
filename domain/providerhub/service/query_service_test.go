@@ -22,29 +22,6 @@ type fixedClock struct{ t time.Time }
 
 func (c fixedClock) Now() time.Time { return c.t }
 
-type fakeConfigRepo struct {
-	cfg *phentity.ProviderIntegrationConfig
-}
-
-func (r *fakeConfigRepo) Create(context.Context, *phentity.ProviderIntegrationConfig) error {
-	return nil
-}
-func (r *fakeConfigRepo) Update(context.Context, *phentity.ProviderIntegrationConfig) error {
-	return nil
-}
-func (r *fakeConfigRepo) FindByID(context.Context, string) (*phentity.ProviderIntegrationConfig, error) {
-	return r.cfg, nil
-}
-func (r *fakeConfigRepo) FindEnabled(context.Context) (*phentity.ProviderIntegrationConfig, error) {
-	if r.cfg == nil {
-		return nil, apperror.NotFound("nf")
-	}
-	return r.cfg, nil
-}
-func (r *fakeConfigRepo) List(context.Context, shared.PageRequest) ([]*phentity.ProviderIntegrationConfig, error) {
-	return nil, nil
-}
-
 type fakeLogs struct{ entries []*phentity.ProviderQueryLog }
 
 func (r *fakeLogs) Create(_ context.Context, l *phentity.ProviderQueryLog) error {
@@ -97,29 +74,38 @@ func (r *fakeContactRepo) FindByID(_ context.Context, id string) (*contactentity
 }
 
 type fakeGateway struct {
-	cliente phcontracts.ClienteResult
-	planos  []phcontracts.Plano
-	empresa phcontracts.Empresa
-	liber   phcontracts.Liberacao
-	chamado phcontracts.Chamado
-	err     error
-	gotReq  phcontracts.ConsultaClienteRequest
+	cliente    phcontracts.ClienteResult
+	planos     []phcontracts.Plano
+	empresa    phcontracts.Empresa
+	liber      phcontracts.Liberacao
+	chamado    phcontracts.Chamado
+	err        error
+	gotReq     phcontracts.ConsultaClienteRequest
+	gotConfig  *phentity.ProviderIntegrationConfig
+	gotIdemKey string
 }
 
-func (g *fakeGateway) ConsultarCliente(_ context.Context, _ *phentity.ProviderIntegrationConfig, req phcontracts.ConsultaClienteRequest) (phcontracts.ClienteResult, error) {
+func (g *fakeGateway) ConsultarCliente(_ context.Context, cfg *phentity.ProviderIntegrationConfig, req phcontracts.ConsultaClienteRequest) (phcontracts.ClienteResult, error) {
+	g.gotConfig = cfg
 	g.gotReq = req
 	return g.cliente, g.err
 }
-func (g *fakeGateway) ListarPlanos(context.Context, *phentity.ProviderIntegrationConfig) ([]phcontracts.Plano, error) {
+func (g *fakeGateway) ListarPlanos(_ context.Context, cfg *phentity.ProviderIntegrationConfig) ([]phcontracts.Plano, error) {
+	g.gotConfig = cfg
 	return g.planos, g.err
 }
-func (g *fakeGateway) DadosEmpresa(context.Context, *phentity.ProviderIntegrationConfig) (phcontracts.Empresa, error) {
+func (g *fakeGateway) DadosEmpresa(_ context.Context, cfg *phentity.ProviderIntegrationConfig) (phcontracts.Empresa, error) {
+	g.gotConfig = cfg
 	return g.empresa, g.err
 }
-func (g *fakeGateway) LiberarAcesso(context.Context, *phentity.ProviderIntegrationConfig, string) (phcontracts.Liberacao, error) {
+func (g *fakeGateway) LiberarAcesso(ctx context.Context, cfg *phentity.ProviderIntegrationConfig, _ string) (phcontracts.Liberacao, error) {
+	g.gotConfig = cfg
+	g.gotIdemKey = phcontracts.IdempotencyKeyFrom(ctx)
 	return g.liber, g.err
 }
-func (g *fakeGateway) AbrirChamado(context.Context, *phentity.ProviderIntegrationConfig, string, string, string) (phcontracts.Chamado, error) {
+func (g *fakeGateway) AbrirChamado(ctx context.Context, cfg *phentity.ProviderIntegrationConfig, _, _, _ string) (phcontracts.Chamado, error) {
+	g.gotConfig = cfg
+	g.gotIdemKey = phcontracts.IdempotencyKeyFrom(ctx)
 	return g.chamado, g.err
 }
 func (g *fakeGateway) Ping(context.Context, *phentity.ProviderIntegrationConfig) error { return g.err }
@@ -150,15 +136,19 @@ func actorCtx(tenant, user string, perms ...authz.Permission) context.Context {
 	return authz.WithAuthContext(ctx, authz.NewAuthContext(tenant, user, perms, nil, authz.ScopeAll))
 }
 
-func newSvc(gw *fakeGateway, limiterAllow, withConfig bool) (*QueryService, *fakeLogs, *fakeAuditor) {
-	var cfg *phentity.ProviderIntegrationConfig
-	if withConfig {
-		cfg = &phentity.ProviderIntegrationConfig{ID: "cfg1", TenantID: "t1", Enabled: true, ISPType: phentity.ISPHubsoft, SMSNetBaseURL: "http://api", TimeoutMs: 1000}
+func newSvc(gw *fakeGateway, limiterAllow, withProfile bool) (*QueryService, *fakeLogs, *fakeAuditor) {
+	repo := newFakeProfileRepo()
+	if withProfile {
+		repo.byID["cfg1"] = &phentity.ISPProfile{
+			ID: "cfg1", TenantID: "t1", Label: "default", ISPType: phentity.ISPHubsoft,
+			IsDefault: true, Enabled: true, TimeoutMs: 1000,
+			Credentials: map[string]string{"hubsoft_host": "h"},
+		}
 	}
 	logs := &fakeLogs{}
 	aud := &fakeAuditor{}
 	svc := NewQueryService(
-		&fakeConfigRepo{cfg: cfg},
+		repo,
 		logs,
 		&fakeConvRepo{items: map[string]*conventity.Conversation{
 			"cv1": {ID: "cv1", TenantID: "t1", ContactID: "c1", SectorID: "s1"},
@@ -170,6 +160,7 @@ func newSvc(gw *fakeGateway, limiterAllow, withConfig bool) (*QueryService, *fak
 		fakeLimiter{allow: limiterAllow},
 		fixedClock{t: time.Unix(1700000000, 0).UTC()},
 	)
+	svc.SetEnvDefault("http://api", "k")
 	svc.SetAuditor(aud)
 	return svc, logs, aud
 }
@@ -265,7 +256,7 @@ func TestConsultarCliente_FallbackIsIntegrationError(t *testing.T) {
 func TestLiberarAcesso_SuccessIsAudited(t *testing.T) {
 	gw := &fakeGateway{liber: phcontracts.Liberacao{Liberado: true, Protocolo: "P1"}}
 	svc, _, aud := newSvc(gw, true, true)
-	res, err := svc.LiberarAcesso(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "idc1")
+	res, err := svc.LiberarAcesso(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "", "idc1", "idem-1")
 	if err != nil {
 		t.Fatalf("liberar: %v", err)
 	}
@@ -284,7 +275,7 @@ func TestLiberarAcesso_SuccessIsAudited(t *testing.T) {
 func TestAbrirChamado_SuccessIsAudited(t *testing.T) {
 	gw := &fakeGateway{chamado: phcontracts.Chamado{Protocolo: "C1"}}
 	svc, _, aud := newSvc(gw, true, true)
-	res, err := svc.AbrirChamado(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "idc1", "sem internet", "detalhe")
+	res, err := svc.AbrirChamado(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "", "idc1", "sem internet", "detalhe", "idem-1")
 	if err != nil {
 		t.Fatalf("chamado: %v", err)
 	}
@@ -298,7 +289,7 @@ func TestAbrirChamado_SuccessIsAudited(t *testing.T) {
 
 func TestLiberarAcesso_RequiresIDCliente(t *testing.T) {
 	svc, _, _ := newSvc(&fakeGateway{}, true, true)
-	_, err := svc.LiberarAcesso(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "  ")
+	_, err := svc.LiberarAcesso(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "", "  ", "idem-1")
 	if apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("expected validation for empty id_cliente, got %v", err)
 	}
@@ -306,7 +297,7 @@ func TestLiberarAcesso_RequiresIDCliente(t *testing.T) {
 
 func TestExecute_RateLimited(t *testing.T) {
 	svc, logs, _ := newSvc(&fakeGateway{}, false, true)
-	_, err := svc.ListarPlanos(actorCtx("t1", "u1", authz.IntegrationRead), "cv1")
+	_, err := svc.ListarPlanos(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", "")
 	if apperror.From(err).Code != apperror.CodeRateLimited {
 		t.Fatalf("expected rate_limited, got %v", err)
 	}
@@ -315,11 +306,57 @@ func TestExecute_RateLimited(t *testing.T) {
 	}
 }
 
-func TestExecute_NoConfig(t *testing.T) {
+func TestExecute_NoProfile(t *testing.T) {
+	// No ISP profile for the tenant → clear conflict (not a 500), external actions off.
 	svc, _, _ := newSvc(&fakeGateway{}, true, false)
-	_, err := svc.DadosEmpresa(actorCtx("t1", "u1", authz.IntegrationRead), "cv1")
-	if apperror.From(err).Code != apperror.CodeIntegrationUnavailable {
-		t.Errorf("expected integration error without config, got %v", err)
+	_, err := svc.DadosEmpresa(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", "")
+	if apperror.From(err).Code != apperror.CodeConflict {
+		t.Errorf("expected conflict without any ISP profile, got %v", err)
+	}
+}
+
+func TestResolve_AmbiguousReturnsSelectionSentinel(t *testing.T) {
+	// Two enabled profiles, none default → ambiguous → needs_isp_selection sentinel.
+	gw := &fakeGateway{}
+	repo := newFakeProfileRepo()
+	repo.byID["a"] = &phentity.ISPProfile{ID: "a", TenantID: "t1", Label: "A", ISPType: phentity.ISPIXCSoft, Enabled: true}
+	repo.byID["b"] = &phentity.ISPProfile{ID: "b", TenantID: "t1", Label: "B", ISPType: phentity.ISPMKAuth, Enabled: true}
+	svc := NewQueryService(repo, &fakeLogs{}, &fakeConvRepo{items: map[string]*conventity.Conversation{
+		"cv1": {ID: "cv1", TenantID: "t1", ContactID: "c1", SectorID: "s1"},
+	}}, &fakeContactRepo{byID: map[string]*contactentity.Contact{"c1": {ID: "c1", TenantID: "t1"}}},
+		gw, fakeLimiter{allow: true}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	svc.SetEnvDefault("http://api", "k")
+
+	_, err := svc.DadosEmpresa(actorCtx("t1", "u1", authz.IntegrationRead), "cv1", "")
+	sel, ok := AsISPSelectionRequired(err)
+	if !ok {
+		t.Fatalf("expected ISP selection sentinel, got %v", err)
+	}
+	if len(sel.Eligible) != 2 {
+		t.Errorf("expected 2 eligible profiles, got %d", len(sel.Eligible))
+	}
+}
+
+func TestResolve_ExplicitIDUsedAndIdempotencyForwarded(t *testing.T) {
+	gw := &fakeGateway{liber: phcontracts.Liberacao{Liberado: true}}
+	repo := newFakeProfileRepo()
+	repo.byID["a"] = &phentity.ISPProfile{ID: "a", TenantID: "t1", Label: "A", ISPType: phentity.ISPIXCSoft, Enabled: true, Credentials: map[string]string{"ixcsoft_host": "h"}}
+	repo.byID["b"] = &phentity.ISPProfile{ID: "b", TenantID: "t1", Label: "B", ISPType: phentity.ISPMKAuth, IsDefault: true, Enabled: true, Credentials: map[string]string{"mkauth_host": "h"}}
+	svc := NewQueryService(repo, &fakeLogs{}, &fakeConvRepo{items: map[string]*conventity.Conversation{
+		"cv1": {ID: "cv1", TenantID: "t1", ContactID: "c1", SectorID: "s1"},
+	}}, &fakeContactRepo{byID: map[string]*contactentity.Contact{"c1": {ID: "c1", TenantID: "t1"}}},
+		gw, fakeLimiter{allow: true}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	svc.SetEnvDefault("http://api", "k")
+
+	// Explicit profile "a" overrides the default "b".
+	if _, err := svc.LiberarAcesso(actorCtx("t1", "u1", authz.IntegrationExecuteAction), "cv1", "a", "idc1", "idem-xyz"); err != nil {
+		t.Fatalf("liberar: %v", err)
+	}
+	if gw.gotConfig == nil || gw.gotConfig.ISPType != phentity.ISPIXCSoft {
+		t.Errorf("explicit profile not used: %+v", gw.gotConfig)
+	}
+	if gw.gotIdemKey != "idem-xyz" {
+		t.Errorf("idempotency key not forwarded to gateway: %q", gw.gotIdemKey)
 	}
 }
 
