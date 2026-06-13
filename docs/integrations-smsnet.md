@@ -53,13 +53,28 @@ do catálogo) para o front fazer o gating de ações por ISP. Não há toggles
 > restantes não há chute: o tenant fica sem default (`GET /config` →
 > `default_profile_id: null`) e a UI pede para definir um ISP padrão.
 
-> **Roadmap (F2/F3):** o **resolvedor tri-modal** (busca manual com `isp_config_id`
-> explícito > default; copiloto via MCP; automação via HTTP) e o **CopilotAssistant**
-> (que fixa um perfil e injeta `config{type+creds}` server-side nos args das tools
-> MCP) chegam nas próximas fases. Hoje as consultas por conversa ainda usam a
-> resolução legada. **F3 — integridade referencial:** deletar um perfil **vinculado
-> a um CopilotAssistant** será **bloqueado** com erro claro ("ISP em uso pelo
-> assistente X"), em vez de anular `ISPProfileID` silenciosamente.
+### Busca manual na conversa (resolvedor tri-modal)
+
+As consultas por conversa (`/v1/conversations/{id}/external/*`) são **POST** e
+aceitam `isp_config_id?` no corpo. O **resolvedor** escolhe o perfil nesta ordem:
+**explícito (`isp_config_id`) > default do tenant > (sem default e 1 elegível) esse
+único > (sem default e 2+) `needs_isp_selection` > nenhum perfil → 409 claro**.
+Quando ambíguo, a resposta é **HTTP 200** com
+`{ "needs_isp_selection": true, "eligible": [ {id,label,isp_type,actions[]} ] }`
+(não é erro): o agente escolhe e reenvia com `isp_config_id`. O `needs_input`
+multi-contrato do gateway continua funcionando por cima disso.
+
+`liberacao`/`chamado` (efeito colateral) aceitam o header `Idempotency-Key`
+(replay via middleware + **propagado ao gateway** para dedup upstream; gerado no
+backend quando omitido) e exigem `integration.execute_action`. As credenciais do
+ISP nunca passam por camada de decisão de IA — o config é montado na borda.
+
+> **Roadmap (F3/F4):** o **CopilotAssistant** (que fixa um perfil e injeta
+> `config{type+creds}` server-side nos args das tools MCP, transporte MCP) e a
+> **automação** (transporte HTTP, roadmap) chegam nas próximas fases. **F3 —
+> integridade referencial:** deletar um perfil **vinculado a um CopilotAssistant**
+> será **bloqueado** com erro claro ("ISP em uso pelo assistente X"), em vez de
+> anular `ISPProfileID` silenciosamente.
 - **MCP:** os servidores `SMSNET_CONSULTAS` (read) e `SMSNET_OPERACOES` (write)
   entram no substrato MCP genérico via env default; um servidor **registrado pelo
   tenant com o mesmo nome** sobrescreve a URL (tenant DB override → env default).

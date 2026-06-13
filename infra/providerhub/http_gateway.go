@@ -210,6 +210,11 @@ func (g *Gateway) call(ctx context.Context, cfg *phentity.ProviderIntegrationCon
 	if cfg.SMSNetAPIKey != "" {
 		req.Header.Set("x-api-key", cfg.SMSNetAPIKey)
 	}
+	// Forward the idempotency key (set for side-effect calls) so the upstream API
+	// can dedup retries — it warns against retrying writes without one.
+	if key := phcontracts.IdempotencyKeyFrom(ctx); key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	resp, err := g.client.Do(req)
 	if err != nil {
 		return nil, apperror.Integration(friendly)

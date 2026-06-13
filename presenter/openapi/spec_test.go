@@ -132,7 +132,7 @@ func TestSpec_CoversEveryDomain(t *testing.T) {
 		{"/v1/conversations/{id}/messages/{mid}", "delete"}, {"/v1/conversations/{id}/close", "post"},
 		{"/v1/conversations/{id}/assign", "post"}, {"/v1/conversations/{id}/transfer", "post"},
 		{"/v1/conversations/{id}/tags", "post"}, {"/v1/conversations/{id}/sla", "get"},
-		{"/v1/conversations/{id}/external/cliente", "get"}, {"/v1/conversations/{id}/external/liberacao", "post"},
+		{"/v1/conversations/{id}/external/cliente", "post"}, {"/v1/conversations/{id}/external/liberacao", "post"},
 		{"/v1/conversations/{id}/mcp/tools", "get"}, {"/v1/conversations/{id}/mcp/run", "post"},
 		{"/v1/conversations/{id}/copilot/approvals/{approvalID}", "post"},
 		{"/v1/channels", "post"}, {"/v1/channels/{id}/test", "post"},

@@ -24,14 +24,19 @@ func registerExternalRoutes(r chi.Router, c *container.Container) {
 		p.Route("/conversations/{id}/external", func(ex chi.Router) {
 			ex.Use(middleware.RequirePermission(authz.ConversationRead))
 
+			// Reads are POST so the body can carry isp_config_id (the ISP profile to
+			// use) alongside the lookup fields.
 			read := middleware.RequirePermission(authz.IntegrationRead)
-			ex.With(read).Get("/cliente", provider.Cliente)
-			ex.With(read).Get("/planos", provider.Planos)
-			ex.With(read).Get("/empresa", provider.Empresa)
+			ex.With(read).Post("/cliente", provider.Cliente)
+			ex.With(read).Post("/planos", provider.Planos)
+			ex.With(read).Post("/empresa", provider.Empresa)
 
+			// Side-effect actions: idempotency-keyed (replayed + forwarded to the
+			// gateway for upstream dedup) and audited.
 			act := middleware.RequirePermission(authz.IntegrationExecuteAction)
-			ex.With(act).Post("/liberacao", provider.Liberacao)
-			ex.With(act).Post("/chamado", provider.Chamado)
+			idem := middleware.Idempotency(c.Redis)
+			ex.With(act, idem).Post("/liberacao", provider.Liberacao)
+			ex.With(act, idem).Post("/chamado", provider.Chamado)
 		})
 	})
 }

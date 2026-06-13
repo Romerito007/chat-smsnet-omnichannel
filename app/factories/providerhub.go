@@ -24,7 +24,7 @@ func ProviderHubProfileService(c *container.Container) *phservice.ProfileService
 // ProviderHubQueryService builds the on-demand query service.
 func ProviderHubQueryService(c *container.Container) *phservice.QueryService {
 	svc := phservice.NewQueryService(
-		providerhubrepo.NewConfigRepository(c.Mongo.DB, c.Cipher),
+		providerhubrepo.NewProfileRepository(c.Mongo.DB, c.Cipher),
 		providerhubrepo.NewQueryLogRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		contactrepo.New(c.Mongo.DB),

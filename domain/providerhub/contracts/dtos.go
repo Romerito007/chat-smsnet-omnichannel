@@ -3,14 +3,39 @@
 // persisted.
 package contracts
 
+import "context"
+
 // ConsultaClienteRequest identifies a customer to the smsnet-integrations API.
 // One of CpfCnpj/Phone/Email locates the customer; IDCliente targets a specific
-// contract after a needs_input selection.
+// contract after a needs_input selection. ISPConfigID optionally pins the ISP
+// profile to use (else the tenant default).
 type ConsultaClienteRequest struct {
-	CpfCnpj   string
-	Phone     string
-	Email     string
-	IDCliente string
+	CpfCnpj     string
+	Phone       string
+	Email       string
+	IDCliente   string
+	ISPConfigID string
+}
+
+// idemKeyCtx carries the idempotency key down to the gateway so side-effect calls
+// (liberacao/chamado) forward an Idempotency-Key header to the smsnet-integrations
+// API for upstream dedup.
+type idemKeyCtx struct{}
+
+// WithIdempotencyKey returns a context carrying the idempotency key.
+func WithIdempotencyKey(ctx context.Context, key string) context.Context {
+	if key == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, idemKeyCtx{}, key)
+}
+
+// IdempotencyKeyFrom returns the idempotency key from the context, or "".
+func IdempotencyKeyFrom(ctx context.Context) string {
+	if v, ok := ctx.Value(idemKeyCtx{}).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // ContratoOption is one selectable contract returned on a needs_input response.

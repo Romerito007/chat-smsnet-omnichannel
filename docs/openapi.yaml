@@ -311,6 +311,8 @@ components:
             properties:
                 id_cliente:
                     type: string
+                isp_config_id:
+                    type: string
                 message:
                     type: string
                 subject:
@@ -506,6 +508,21 @@ components:
             required:
                 - needs_selection
                 - options
+            type: object
+        ClienteRequest:
+            properties:
+                cpfcnpj:
+                    type: string
+                email:
+                    type: string
+                id_cliente:
+                    description: Target a specific contract after a needs_input selection.
+                    type: string
+                isp_config_id:
+                    description: ISP profile id to use; omit to use the tenant default. If there is no default and 2+ profiles, the response is a NeedsISPSelection prompt.
+                    type: string
+                phone:
+                    type: string
             type: object
         ClienteResult:
             description: When needs_selection is true, render a contract selector from options[].id_cliente; otherwise use cliente.
@@ -1441,6 +1458,12 @@ components:
                 ok:
                     type: boolean
             type: object
+        ISPSelectorRequest:
+            properties:
+                isp_config_id:
+                    description: ISP profile id to use; omit to use the tenant default.
+                    type: string
+            type: object
         InboundMessageMultipart:
             properties:
                 attachments[]:
@@ -1569,6 +1592,8 @@ components:
         LiberacaoRequest:
             properties:
                 id_cliente:
+                    type: string
+                isp_config_id:
                     type: string
             required:
                 - id_cliente
@@ -1799,6 +1824,36 @@ components:
                     type: string
                 text:
                     type: string
+            type: object
+        NeedsISPSelection:
+            properties:
+                eligible:
+                    items:
+                        properties:
+                            actions:
+                                items:
+                                    enum:
+                                        - cliente
+                                        - planos
+                                        - empresa
+                                        - liberacao
+                                        - chamado
+                                    type: string
+                                type: array
+                            id:
+                                type: string
+                            isp_type:
+                                type: string
+                            label:
+                                type: string
+                        type: object
+                    type: array
+                needs_isp_selection:
+                    description: Always true on this response shape.
+                    type: boolean
+            required:
+                - needs_isp_selection
+                - eligible
             type: object
         NextActionRequest:
             properties:
@@ -5148,6 +5203,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Idempotency key for the side-effect call; replayed on retry and forwarded to the gateway. Generated server-side when omitted.
+                  in: header
+                  name: Idempotency-Key
+                  required: false
+                  schema:
+                    type: string
             requestBody:
                 content:
                     application/json:
@@ -5159,8 +5220,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Chamado'
-                    description: Result
+                                oneOf:
+                                    - $ref: '#/components/schemas/Chamado'
+                                    - $ref: '#/components/schemas/NeedsISPSelection'
+                    description: Result (or an ISP-selection prompt)
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
@@ -5175,8 +5238,8 @@ paths:
             tags:
                 - providerhub
     /v1/conversations/{id}/external/cliente:
-        get:
-            operationId: getConversationsByIdExternalCliente
+        post:
+            operationId: postConversationsByIdExternalCliente
             parameters:
                 - description: conversation id
                   in: path
@@ -5184,37 +5247,21 @@ paths:
                   required: true
                   schema:
                     type: string
-                - description: customer id (after a selection)
-                  in: query
-                  name: id_cliente
-                  required: false
-                  schema:
-                    type: string
-                - description: document
-                  in: query
-                  name: cpfcnpj
-                  required: false
-                  schema:
-                    type: string
-                - description: phone
-                  in: query
-                  name: phone
-                  required: false
-                  schema:
-                    type: string
-                - description: email
-                  in: query
-                  name: email
-                  required: false
-                  schema:
-                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ClienteRequest'
+                required: true
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ClienteResult'
-                    description: Customer (or a contract-selection prompt)
+                                oneOf:
+                                    - $ref: '#/components/schemas/ClienteResult'
+                                    - $ref: '#/components/schemas/NeedsISPSelection'
+                    description: Customer, a contract-selection prompt, or an ISP-selection prompt
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
@@ -5225,12 +5272,12 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Customer lookup (read); may need a contract selection
+            summary: Customer lookup (read); may need a contract or ISP selection
             tags:
                 - providerhub
     /v1/conversations/{id}/external/empresa:
-        get:
-            operationId: getConversationsByIdExternalEmpresa
+        post:
+            operationId: postConversationsByIdExternalEmpresa
             parameters:
                 - description: conversation id
                   in: path
@@ -5238,13 +5285,21 @@ paths:
                   required: true
                   schema:
                     type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ISPSelectorRequest'
+                required: true
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Empresa'
-                    description: Company
+                                oneOf:
+                                    - $ref: '#/components/schemas/Empresa'
+                                    - $ref: '#/components/schemas/NeedsISPSelection'
+                    description: Company (or an ISP-selection prompt)
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
@@ -5268,6 +5323,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Idempotency key for the side-effect call; replayed on retry and forwarded to the gateway. Generated server-side when omitted.
+                  in: header
+                  name: Idempotency-Key
+                  required: false
+                  schema:
+                    type: string
             requestBody:
                 content:
                     application/json:
@@ -5279,8 +5340,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Liberacao'
-                    description: Result
+                                oneOf:
+                                    - $ref: '#/components/schemas/Liberacao'
+                                    - $ref: '#/components/schemas/NeedsISPSelection'
+                    description: Result (or an ISP-selection prompt)
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
@@ -5295,8 +5358,8 @@ paths:
             tags:
                 - providerhub
     /v1/conversations/{id}/external/planos:
-        get:
-            operationId: getConversationsByIdExternalPlanos
+        post:
+            operationId: postConversationsByIdExternalPlanos
             parameters:
                 - description: conversation id
                   in: path
@@ -5304,13 +5367,21 @@ paths:
                   required: true
                   schema:
                     type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ISPSelectorRequest'
+                required: true
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/PlanosResult'
-                    description: Plans
+                                oneOf:
+                                    - $ref: '#/components/schemas/PlanosResult'
+                                    - $ref: '#/components/schemas/NeedsISPSelection'
+                    description: Plans (or an ISP-selection prompt)
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":

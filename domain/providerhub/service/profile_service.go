@@ -248,24 +248,11 @@ func (s *ProfileService) GatewayStatus(ctx context.Context) (contracts.GatewaySt
 	return st, nil
 }
 
-// callConfig builds the effective gateway call config: infra gateway (env
-// host/key) + the profile's ISP identity/credentials/options. botId defaults to
-// the tenant id.
+// callConfig builds the effective gateway call config for a test (env gateway +
+// profile).
 func (s *ProfileService) callConfig(ctx context.Context, p *entity.ISPProfile) *entity.ProviderIntegrationConfig {
 	tenantID, _ := shared.TenantFrom(ctx)
-	return &entity.ProviderIntegrationConfig{
-		TenantID:       tenantID,
-		SMSNetBaseURL:  s.envHost,
-		SMSNetAPIKey:   s.envKey,
-		ISPType:        p.ISPType,
-		ISPCredentials: p.Credentials,
-		Options: entity.Options{
-			UsaPegarFaturaAtrasada:      p.Options.UsaPegarFaturaAtrasada,
-			UsaExtrairLinhaDigitavelPDF: p.Options.UsaExtrairLinhaDigitavelPDF,
-		},
-		Enabled:   true,
-		TimeoutMs: p.TimeoutMs,
-	}
+	return buildCallConfig(tenantID, s.envHost, s.envKey, p)
 }
 
 // validateProfile enforces a non-empty label, an isp_type from the catalog (the

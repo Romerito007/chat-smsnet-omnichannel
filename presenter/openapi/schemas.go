@@ -292,8 +292,26 @@ func schemas() M {
 		"ISPProfileTestResult": object(M{
 			"ok": boolean(), "latency_ms": integer(), "error": str(),
 		}),
-		"LiberacaoRequest": object(M{"id_cliente": str()}, "id_cliente"),
-		"ChamadoRequest":   object(M{"id_cliente": str(), "subject": str(), "message": str()}, "id_cliente"),
+		"ClienteRequest": object(M{
+			"isp_config_id": describedStr("ISP profile id to use; omit to use the tenant default. If there is no default and 2+ profiles, the response is a NeedsISPSelection prompt."),
+			"cpfcnpj":       str(), "phone": str(), "email": str(),
+			"id_cliente": describedStr("Target a specific contract after a needs_input selection."),
+		}),
+		"ISPSelectorRequest": object(M{
+			"isp_config_id": describedStr("ISP profile id to use; omit to use the tenant default."),
+		}),
+		"LiberacaoRequest": object(M{"isp_config_id": str(), "id_cliente": str()}, "id_cliente"),
+		"ChamadoRequest":   object(M{"isp_config_id": str(), "id_cliente": str(), "subject": str(), "message": str()}, "id_cliente"),
+		// NeedsISPSelection is returned (HTTP 200) by the external endpoints when the
+		// ISP profile is ambiguous (no default, 2+ eligible). The agent picks one and
+		// re-sends with isp_config_id. NOT an error.
+		"NeedsISPSelection": object(M{
+			"needs_isp_selection": describedBool("Always true on this response shape."),
+			"eligible": arr(object(M{
+				"id": str(), "label": str(), "isp_type": str(),
+				"actions": arr(enum("cliente", "planos", "empresa", "liberacao", "chamado")),
+			})),
+		}, "needs_isp_selection", "eligible"),
 
 		// ── Customer 360 (smsnet-integrations on-demand results) ────────────────
 		"Fatura": object(M{

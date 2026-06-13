@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	phcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/contracts"
 	phservice "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/service"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/providerhub"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
@@ -128,39 +128,67 @@ func (c *Controller) TestProfile(w http.ResponseWriter, r *http.Request) {
 
 // ── on-demand conversation queries ───────────────────────────────────────────
 
-// Cliente handles GET /v1/conversations/{id}/external/cliente
-// (query: cpfcnpj|phone|email, id_cliente?).
-func (c *Controller) Cliente(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	req := phcontracts.ConsultaClienteRequest{
-		CpfCnpj:   q.Get("cpfcnpj"),
-		Phone:     q.Get("phone"),
-		Email:     q.Get("email"),
-		IDCliente: q.Get("id_cliente"),
+// writeExternalError maps the ISP-selection-required sentinel to a 200
+// needs_isp_selection response (the agent must pick a profile); every other error
+// goes through the standard error envelope.
+func (c *Controller) writeExternalError(w http.ResponseWriter, r *http.Request, err error) {
+	if sel, ok := phservice.AsISPSelectionRequired(err); ok {
+		middleware.WriteJSON(w, http.StatusOK, dto.NewNeedsISPSelectionResponse(sel.Eligible))
+		return
 	}
-	res, err := c.queries.ConsultarCliente(r.Context(), chi.URLParam(r, "id"), req)
-	if err != nil {
+	middleware.WriteError(w, r, err)
+}
+
+// idempotencyKey returns the request's Idempotency-Key header, or a generated one
+// so side-effect calls always forward a key to the gateway.
+func idempotencyKey(r *http.Request) string {
+	if k := r.Header.Get(middleware.HeaderIdempotencyKey); k != "" {
+		return k
+	}
+	return shared.NewID()
+}
+
+// Cliente handles POST /v1/conversations/{id}/external/cliente
+// (body: isp_config_id?, cpfcnpj|phone|email, id_cliente?).
+func (c *Controller) Cliente(w http.ResponseWriter, r *http.Request) {
+	var req dto.ClienteRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.queries.ConsultarCliente(r.Context(), chi.URLParam(r, "id"), req.ToRequest())
+	if err != nil {
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, res)
 }
 
-// Planos handles GET /v1/conversations/{id}/external/planos.
+// Planos handles POST /v1/conversations/{id}/external/planos (body: isp_config_id?).
 func (c *Controller) Planos(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.ListarPlanos(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
+	var req dto.ISPSelectorRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.queries.ListarPlanos(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID)
+	if err != nil {
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{"data": res})
 }
 
-// Empresa handles GET /v1/conversations/{id}/external/empresa.
+// Empresa handles POST /v1/conversations/{id}/external/empresa (body: isp_config_id?).
 func (c *Controller) Empresa(w http.ResponseWriter, r *http.Request) {
-	res, err := c.queries.DadosEmpresa(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
+	var req dto.ISPSelectorRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
 		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.queries.DadosEmpresa(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID)
+	if err != nil {
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, res)
@@ -173,9 +201,9 @@ func (c *Controller) Liberacao(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	res, err := c.queries.LiberarAcesso(r.Context(), chi.URLParam(r, "id"), req.IDCliente)
+	res, err := c.queries.LiberarAcesso(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID, req.IDCliente, idempotencyKey(r))
 	if err != nil {
-		middleware.WriteError(w, r, err)
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, res)
@@ -188,9 +216,9 @@ func (c *Controller) Chamado(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	res, err := c.queries.AbrirChamado(r.Context(), chi.URLParam(r, "id"), req.IDCliente, req.Subject, req.Message)
+	res, err := c.queries.AbrirChamado(r.Context(), chi.URLParam(r, "id"), req.ISPConfigID, req.IDCliente, req.Subject, req.Message, idempotencyKey(r))
 	if err != nil {
-		middleware.WriteError(w, r, err)
+		c.writeExternalError(w, r, err)
 		return
 	}
 	middleware.WriteJSON(w, http.StatusCreated, res)

@@ -145,14 +145,74 @@ func NewProfileListResponse(ps []*phentity.ISPProfile) map[string]any {
 
 // LiberacaoRequest is the body of POST /v1/conversations/{id}/external/liberacao.
 type LiberacaoRequest struct {
-	IDCliente string `json:"id_cliente"`
+	ISPConfigID string `json:"isp_config_id"`
+	IDCliente   string `json:"id_cliente"`
 }
 
 // ChamadoRequest is the body of POST /v1/conversations/{id}/external/chamado.
 type ChamadoRequest struct {
-	IDCliente string `json:"id_cliente"`
-	Subject   string `json:"subject"`
-	Message   string `json:"message"`
+	ISPConfigID string `json:"isp_config_id"`
+	IDCliente   string `json:"id_cliente"`
+	Subject     string `json:"subject"`
+	Message     string `json:"message"`
+}
+
+// ClienteRequest is the body of POST /v1/conversations/{id}/external/cliente.
+// isp_config_id pins the ISP profile (else the tenant default); one of
+// cpfcnpj/phone/email locates the customer (filled from the contact when omitted);
+// id_cliente targets a contract after a needs_input selection.
+type ClienteRequest struct {
+	ISPConfigID string `json:"isp_config_id"`
+	CpfCnpj     string `json:"cpfcnpj"`
+	Phone       string `json:"phone"`
+	Email       string `json:"email"`
+	IDCliente   string `json:"id_cliente"`
+}
+
+// ToRequest maps to the domain query DTO.
+func (r ClienteRequest) ToRequest() phcontracts.ConsultaClienteRequest {
+	return phcontracts.ConsultaClienteRequest{
+		ISPConfigID: r.ISPConfigID,
+		CpfCnpj:     r.CpfCnpj,
+		Phone:       r.Phone,
+		Email:       r.Email,
+		IDCliente:   r.IDCliente,
+	}
+}
+
+// ISPSelectorRequest is the body of the read endpoints that only need to pin an
+// ISP profile (planos/empresa).
+type ISPSelectorRequest struct {
+	ISPConfigID string `json:"isp_config_id"`
+}
+
+// EligibleISP is one ISP profile the agent can pick when selection is required.
+type EligibleISP struct {
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	ISPType string   `json:"isp_type"`
+	Actions []string `json:"actions"`
+}
+
+// NeedsISPSelectionResponse is returned (HTTP 200) by the external endpoints when
+// the ISP profile is ambiguous (no default, 2+ eligible). The agent picks one and
+// re-sends the call with isp_config_id. This is NOT an error.
+type NeedsISPSelectionResponse struct {
+	NeedsISPSelection bool          `json:"needs_isp_selection"`
+	Eligible          []EligibleISP `json:"eligible"`
+}
+
+// NewNeedsISPSelectionResponse builds the selection prompt from eligible profiles.
+func NewNeedsISPSelectionResponse(eligible []*phentity.ISPProfile) NeedsISPSelectionResponse {
+	out := NeedsISPSelectionResponse{NeedsISPSelection: true, Eligible: make([]EligibleISP, 0, len(eligible))}
+	for _, p := range eligible {
+		actions := make([]string, 0)
+		for _, a := range p.Actions() {
+			actions = append(actions, string(a))
+		}
+		out.Eligible = append(out.Eligible, EligibleISP{ID: p.ID, Label: p.Label, ISPType: p.ISPType, Actions: actions})
+	}
+	return out
 }
 
 // ── ISP catalog (GET /v1/providerhub/catalog) ────────────────────────────────

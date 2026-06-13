@@ -201,19 +201,24 @@ func registerIntegrations(p *paths) {
 	p.add("POST", "/v1/providerhub/profiles/{id}/test", op(opConfig{tag: "providerhub", summary: "Test an ISP profile against the gateway",
 		params: profileIDP, responses: M{"200": jsonResp("Result", ref("ISPProfileTestResult")), "404": errorResponse("Not found.")}}))
 
-	// external on-demand queries (smsnet-integrations) under a conversation
+	// external on-demand queries (smsnet-integrations) under a conversation. Reads
+	// are POST so the body can carry isp_config_id. When the ISP profile is
+	// ambiguous (no default, 2+ eligible) any of these returns 200 with a
+	// NeedsISPSelection body instead of the normal payload.
 	cidp := []M{pathParam("id", "conversation id")}
-	p.add("GET", "/v1/conversations/{id}/external/cliente", op(opConfig{tag: "providerhub", summary: "Customer lookup (read); may need a contract selection",
-		params:    append([]M{pathParam("id", "conversation id")}, queryParam("id_cliente", "customer id (after a selection)"), queryParam("cpfcnpj", "document"), queryParam("phone", "phone"), queryParam("email", "email")),
-		responses: M{"200": jsonResp("Customer (or a contract-selection prompt)", ref("ClienteResult"))}}))
-	p.add("GET", "/v1/conversations/{id}/external/planos", op(opConfig{tag: "providerhub", summary: "Plans (read)",
-		params: cidp, responses: M{"200": jsonResp("Plans", ref("PlanosResult"))}}))
-	p.add("GET", "/v1/conversations/{id}/external/empresa", op(opConfig{tag: "providerhub", summary: "Company info (read)",
-		params: cidp, responses: M{"200": jsonResp("Company", ref("Empresa"))}}))
+	idemHeader := headerParam("Idempotency-Key", "Idempotency key for the side-effect call; replayed on retry and forwarded to the gateway. Generated server-side when omitted.")
+	orSelect := func(schema M) M { return M{"oneOf": []any{schema, ref("NeedsISPSelection")}} }
+	p.add("POST", "/v1/conversations/{id}/external/cliente", op(opConfig{tag: "providerhub", summary: "Customer lookup (read); may need a contract or ISP selection",
+		params: cidp, reqBody: body(ref("ClienteRequest")),
+		responses: M{"200": jsonResp("Customer, a contract-selection prompt, or an ISP-selection prompt", orSelect(ref("ClienteResult")))}}))
+	p.add("POST", "/v1/conversations/{id}/external/planos", op(opConfig{tag: "providerhub", summary: "Plans (read)",
+		params: cidp, reqBody: body(ref("ISPSelectorRequest")), responses: M{"200": jsonResp("Plans (or an ISP-selection prompt)", orSelect(ref("PlanosResult")))}}))
+	p.add("POST", "/v1/conversations/{id}/external/empresa", op(opConfig{tag: "providerhub", summary: "Company info (read)",
+		params: cidp, reqBody: body(ref("ISPSelectorRequest")), responses: M{"200": jsonResp("Company (or an ISP-selection prompt)", orSelect(ref("Empresa")))}}))
 	p.add("POST", "/v1/conversations/{id}/external/liberacao", op(opConfig{tag: "providerhub", summary: "Trust-release a customer (write)",
-		params: cidp, reqBody: body(ref("LiberacaoRequest")), responses: M{"200": jsonResp("Result", ref("Liberacao"))}}))
+		params: append([]M{pathParam("id", "conversation id")}, idemHeader), reqBody: body(ref("LiberacaoRequest")), responses: M{"200": jsonResp("Result (or an ISP-selection prompt)", orSelect(ref("Liberacao")))}}))
 	p.add("POST", "/v1/conversations/{id}/external/chamado", op(opConfig{tag: "providerhub", summary: "Open a support ticket (write)",
-		params: cidp, reqBody: body(ref("ChamadoRequest")), responses: M{"200": jsonResp("Result", ref("Chamado"))}}))
+		params: append([]M{pathParam("id", "conversation id")}, idemHeader), reqBody: body(ref("ChamadoRequest")), responses: M{"200": jsonResp("Result (or an ISP-selection prompt)", orSelect(ref("Chamado")))}}))
 
 	// webhooks
 	p.add("GET", "/v1/webhooks", op(opConfig{tag: "webhooks", summary: "List webhook subscriptions", params: paginationParams(),
