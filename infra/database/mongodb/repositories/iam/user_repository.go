@@ -86,6 +86,30 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*entity.User,
 	return userToEntity(&m), nil
 }
 
+func (r *UserRepository) FindByIDs(ctx context.Context, ids []string) ([]*entity.User, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	cur, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}, "tenant_id": tenantID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []*entity.User
+	for cur.Next(ctx) {
+		var m models.User
+		if err := cur.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, userToEntity(&m))
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*entity.User, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

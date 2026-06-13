@@ -94,7 +94,10 @@ func schemas() M {
 			"unread_count": integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
 			"last_message":       ref("LastMessage"),
+			"contact_name":       describedStr("Read-only, derived: the conversation contact's display name, resolved in batch so the inbox renders the row without a per-contact fetch. Empty when the contact is absent."),
 			"contact_avatar_url": describedStr("Read-only, derived: the conversation contact's short-lived signed avatar URL (loadable in <img src>, no Authorization), resolved in batch for the inbox. Empty when the contact has no ready avatar."),
+			"agent_name":         describedStr("Read-only, derived: the assignee's display name, resolved in batch. Empty when the conversation is unassigned."),
+			"agent_avatar_url":   describedStr("Read-only, derived: the assignee's short-lived signed avatar URL (no Authorization), resolved in batch. Empty when unassigned or no ready avatar."),
 		}),
 		"LastMessage": object(M{
 			"preview": str(), "sender_type": str(), "message_type": str(), "created_at": dateTime(),

@@ -19,23 +19,24 @@ import (
 
 // Service implements the conversations use cases.
 type Service struct {
-	conversations  repository.ConversationRepository
-	messages       repository.MessageRepository
-	events         repository.EventRepository
-	sectors        sectorrepo.SectorRepository
-	publisher      shared.EventPublisher
-	clock          shared.Clock
-	outbound       contracts.OutboundDispatcher
-	webhooks       shared.WebhookEmitter
-	tags           contracts.TagCatalog
-	closeReasons   contracts.CloseReasonPolicy
-	sla            contracts.SLAHook
-	notifier       shared.Notifier
-	csat           contracts.CSATTrigger
-	auditor        shared.Auditor
-	queueStats     shared.QueueStatsNotifier
-	attachments    contracts.AttachmentResolver
-	contactAvatars contracts.ContactAvatarResolver
+	conversations repository.ConversationRepository
+	messages      repository.MessageRepository
+	events        repository.EventRepository
+	sectors       sectorrepo.SectorRepository
+	publisher     shared.EventPublisher
+	clock         shared.Clock
+	outbound      contracts.OutboundDispatcher
+	webhooks      shared.WebhookEmitter
+	tags          contracts.TagCatalog
+	closeReasons  contracts.CloseReasonPolicy
+	sla           contracts.SLAHook
+	notifier      shared.Notifier
+	csat          contracts.CSATTrigger
+	auditor       shared.Auditor
+	queueStats    shared.QueueStatsNotifier
+	attachments   contracts.AttachmentResolver
+	contacts      contracts.ContactDirectory
+	agents        contracts.AgentDirectory
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, conversation closes are
@@ -55,33 +56,64 @@ func (s *Service) SetAttachmentResolver(a contracts.AttachmentResolver) {
 	}
 }
 
-// SetContactAvatarResolver wires the resolver that turns a conversation's
-// contact id into a signed contact avatar URL for the inbox list. Optional.
-func (s *Service) SetContactAvatarResolver(r contracts.ContactAvatarResolver) {
-	if r != nil {
-		s.contactAvatars = r
+// SetContactDirectory wires the resolver of contact display cards (name + signed
+// avatar URL) for the inbox rows. Optional.
+func (s *Service) SetContactDirectory(d contracts.ContactDirectory) {
+	if d != nil {
+		s.contacts = d
 	}
 }
 
-// ContactAvatarURLs batch-resolves the signed contact avatar URLs for a page of
+// SetAgentDirectory wires the resolver of agent (assignee) display cards. Optional.
+func (s *Service) SetAgentDirectory(d contracts.AgentDirectory) {
+	if d != nil {
+		s.agents = d
+	}
+}
+
+// ContactCards batch-resolves the contact display cards for a page of
 // conversations, keyed by contact id. Best-effort and nil-safe.
-func (s *Service) ContactAvatarURLs(ctx context.Context, conversations []*entity.Conversation) (map[string]string, error) {
-	if s.contactAvatars == nil || len(conversations) == 0 {
+func (s *Service) ContactCards(ctx context.Context, conversations []*entity.Conversation) (map[string]shared.DisplayCard, error) {
+	if s.contacts == nil {
 		return nil, nil
 	}
+	ids := dedupeField(conversations, func(c *entity.Conversation) string { return c.ContactID })
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return s.contacts.ContactCards(ctx, ids)
+}
+
+// AgentCards batch-resolves the assignee display cards for a page of
+// conversations, keyed by user id. Best-effort and nil-safe.
+func (s *Service) AgentCards(ctx context.Context, conversations []*entity.Conversation) (map[string]shared.DisplayCard, error) {
+	if s.agents == nil {
+		return nil, nil
+	}
+	ids := dedupeField(conversations, func(c *entity.Conversation) string { return c.AssignedTo })
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return s.agents.AgentCards(ctx, ids)
+}
+
+// dedupeField collects the non-empty, de-duplicated values of a field across the
+// page, preserving order.
+func dedupeField(conversations []*entity.Conversation, field func(*entity.Conversation) string) []string {
 	ids := make([]string, 0, len(conversations))
 	seen := make(map[string]struct{}, len(conversations))
 	for _, c := range conversations {
-		if c.ContactID == "" {
+		v := field(c)
+		if v == "" {
 			continue
 		}
-		if _, dup := seen[c.ContactID]; dup {
+		if _, dup := seen[v]; dup {
 			continue
 		}
-		seen[c.ContactID] = struct{}{}
-		ids = append(ids, c.ContactID)
+		seen[v] = struct{}{}
+		ids = append(ids, v)
 	}
-	return s.contactAvatars.ContactAvatarURLs(ctx, ids)
+	return ids
 }
 
 // SetQueueStatsNotifier wires the queue.stats notifier. Optional: when unset,
@@ -275,18 +307,8 @@ func (s *Service) LastMessages(ctx context.Context, conversationIDs []string) (m
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return nil, err
 	}
-	out := make(map[string]*entity.Message, len(conversationIDs))
-	for _, id := range conversationIDs {
-		m, err := s.messages.LatestByConversation(ctx, id)
-		if err != nil {
-			if apperror.From(err).Code == apperror.CodeNotFound {
-				continue
-			}
-			return nil, err
-		}
-		out[id] = m
-	}
-	return out, nil
+	// Single aggregation across the page (no per-conversation query).
+	return s.messages.LatestByConversations(ctx, conversationIDs)
 }
 
 // Update applies the non-nil fields of cmd.

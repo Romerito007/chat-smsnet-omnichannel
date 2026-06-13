@@ -105,6 +105,15 @@ func (r *fakeUserRepo) FindByID(_ context.Context, id string) (*iamentity.User, 
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeUserRepo) FindByIDs(_ context.Context, ids []string) ([]*iamentity.User, error) {
+	var out []*iamentity.User
+	for _, id := range ids {
+		if u, ok := r.byID[id]; ok {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
 func (r *fakeUserRepo) FindByEmail(context.Context, string) (*iamentity.User, error) {
 	return nil, apperror.NotFound("nf")
 }

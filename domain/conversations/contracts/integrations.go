@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
 // TagCatalog validates and resolves tags against the tenant's catalog. It is
@@ -35,12 +36,19 @@ type AttachmentResolver interface {
 	ValidateMessageAttachments(ctx context.Context, ids []string) error
 }
 
-// ContactAvatarResolver resolves a set of contact ids to their short-lived signed
-// avatar URLs (keyed by contact id), so the inbox list can render the contact
-// avatar per row without a second call. Implemented by the contacts service.
-// Optional: when unset, conversation items carry no contact_avatar_url.
-type ContactAvatarResolver interface {
-	ContactAvatarURLs(ctx context.Context, contactIDs []string) (map[string]string, error)
+// ContactDirectory resolves a set of contact ids to their display cards (name +
+// short-lived signed avatar URL), keyed by contact id, so the inbox list renders
+// the contact per row without a second call. Implemented by the contacts service.
+// Optional: when unset, conversation items carry no contact_name/contact_avatar_url.
+type ContactDirectory interface {
+	ContactCards(ctx context.Context, contactIDs []string) (map[string]shared.DisplayCard, error)
+}
+
+// AgentDirectory resolves a set of agent (user) ids to their display cards (name +
+// signed avatar URL), keyed by user id, so the inbox renders the assignee per row
+// without a second call. Implemented by the iam user service. Optional.
+type AgentDirectory interface {
+	AgentCards(ctx context.Context, userIDs []string) (map[string]shared.DisplayCard, error)
 }
 
 // CloseReasonPolicy reports whether a close reason requires a note. It is

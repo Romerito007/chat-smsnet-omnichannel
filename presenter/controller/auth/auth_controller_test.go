@@ -41,6 +41,17 @@ func (r *fakeUsers) FindByID(_ context.Context, id string) (*iamentity.User, err
 	}
 	return nil, apperror.NotFound("none")
 }
+func (r *fakeUsers) FindByIDs(_ context.Context, ids []string) ([]*iamentity.User, error) {
+	var out []*iamentity.User
+	for _, id := range ids {
+		for _, u := range r.byEmail {
+			if u.ID == id {
+				out = append(out, u)
+			}
+		}
+	}
+	return out, nil
+}
 func (r *fakeUsers) FindByEmail(context.Context, string) (*iamentity.User, error) {
 	return nil, apperror.NotFound("none")
 }

@@ -37,6 +37,9 @@ func (r *fakeMessages) LatestByConversation(context.Context, string) (*conventit
 	}
 	return r.items[0], nil
 }
+func (r *fakeMessages) LatestByConversations(context.Context, []string) (map[string]*conventity.Message, error) {
+	return nil, nil
+}
 
 type fakeConvRepo struct {
 	items map[string]*conventity.Conversation

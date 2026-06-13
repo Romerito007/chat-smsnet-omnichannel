@@ -60,7 +60,7 @@ func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*ent
 	return nil, nil
 }
 
-type fakeMsgRepo struct{}
+type fakeMsgRepo struct{ latestBatchCalls *int }
 
 func (fakeMsgRepo) Create(context.Context, *entity.Message) error { return nil }
 func (fakeMsgRepo) Update(context.Context, *entity.Message) error { return nil }
@@ -72,6 +72,12 @@ func (fakeMsgRepo) ListByConversation(context.Context, string, shared.PageReques
 }
 func (fakeMsgRepo) LatestByConversation(context.Context, string) (*entity.Message, error) {
 	return nil, apperror.NotFound("none")
+}
+func (r fakeMsgRepo) LatestByConversations(context.Context, []string) (map[string]*entity.Message, error) {
+	if r.latestBatchCalls != nil {
+		*r.latestBatchCalls++
+	}
+	return nil, nil
 }
 
 type fakeEventRepo struct{}
@@ -99,19 +105,35 @@ var (
 	_ convrepo.EventRepository        = fakeEventRepo{}
 )
 
-// fakeContactAvatars resolves contact ids to signed avatar URLs, counting calls
-// so a test can assert per-page batching.
-type fakeContactAvatars struct {
-	byContact map[string]string
-	calls     int
+// fakeContactDir / fakeAgentDir resolve display cards, counting calls so a test
+// can assert per-page batching (one call per page, not per row).
+type fakeContactDir struct {
+	cards map[string]shared.DisplayCard
+	calls int
 }
 
-func (f *fakeContactAvatars) ContactAvatarURLs(_ context.Context, contactIDs []string) (map[string]string, error) {
+func (f *fakeContactDir) ContactCards(_ context.Context, ids []string) (map[string]shared.DisplayCard, error) {
 	f.calls++
-	out := map[string]string{}
-	for _, id := range contactIDs {
-		if u, ok := f.byContact[id]; ok {
-			out[id] = u
+	out := map[string]shared.DisplayCard{}
+	for _, id := range ids {
+		if c, ok := f.cards[id]; ok {
+			out[id] = c
+		}
+	}
+	return out, nil
+}
+
+type fakeAgentDir struct {
+	cards map[string]shared.DisplayCard
+	calls int
+}
+
+func (f *fakeAgentDir) AgentCards(_ context.Context, ids []string) (map[string]shared.DisplayCard, error) {
+	f.calls++
+	out := map[string]shared.DisplayCard{}
+	for _, id := range ids {
+		if c, ok := f.cards[id]; ok {
+			out[id] = c
 		}
 	}
 	return out, nil
@@ -120,13 +142,16 @@ func (f *fakeContactAvatars) ContactAvatarURLs(_ context.Context, contactIDs []s
 // ── harness ──────────────────────────────────────────────────────────────────
 
 func buildRouter(cr *fakeConvRepo) http.Handler {
-	return buildRouterWithAvatars(cr, nil)
+	return buildRouterFull(cr, nil, nil, nil)
 }
 
-func buildRouterWithAvatars(cr *fakeConvRepo, av convcontracts.ContactAvatarResolver) http.Handler {
-	svc := convservice.New(cr, fakeMsgRepo{}, fakeEventRepo{}, fakeSectorRepo{}, shared.NoopPublisher{}, shared.SystemClock{})
-	if av != nil {
-		svc.SetContactAvatarResolver(av)
+func buildRouterFull(cr *fakeConvRepo, cd convcontracts.ContactDirectory, ad convcontracts.AgentDirectory, latestCalls *int) http.Handler {
+	svc := convservice.New(cr, fakeMsgRepo{latestBatchCalls: latestCalls}, fakeEventRepo{}, fakeSectorRepo{}, shared.NoopPublisher{}, shared.SystemClock{})
+	if cd != nil {
+		svc.SetContactDirectory(cd)
+	}
+	if ad != nil {
+		svc.SetAgentDirectory(ad)
 	}
 	ctl := conversations.NewController(svc)
 	r := chi.NewRouter()
@@ -170,64 +195,95 @@ func TestConversations_List_HappyTenantFilteredCursorShape(t *testing.T) {
 	}
 }
 
-// GET /v1/conversations resolves contact_avatar_url per row in one batch: a
-// conversation whose contact has a ready avatar carries the signed URL; a contact
-// without an avatar omits the field (front falls back to initials).
-func TestConversations_List_ResolvesContactAvatarURLInBatch(t *testing.T) {
+// GET /v1/conversations embeds contact + agent display fields resolved in a
+// CONSTANT number of batch calls (no per-row, no per-conversation last-message):
+// last-messages = 1 aggregation, contact cards = 1, agent cards = 1 — regardless
+// of page size. Contacts/agents without a record (or avatar) yield empty fields.
+func TestConversations_List_EmbedsContactAndAgentInConstantQueries(t *testing.T) {
 	now := time.Now()
 	cr := &fakeConvRepo{items: []*entity.Conversation{
-		{ID: "c1", TenantID: "t1", ContactID: "ct-av", Status: entity.StatusNew, Priority: entity.PriorityNormal, UpdatedAt: now},
+		{ID: "c1", TenantID: "t1", ContactID: "ct-av", AssignedTo: "u-agent", Status: entity.StatusAssigned, Priority: entity.PriorityNormal, UpdatedAt: now},
 		{ID: "c2", TenantID: "t1", ContactID: "ct-none", Status: entity.StatusNew, Priority: entity.PriorityNormal, UpdatedAt: now},
+		{ID: "c3", TenantID: "t1", ContactID: "ct-av", AssignedTo: "u-agent", Status: entity.StatusAssigned, Priority: entity.PriorityNormal, UpdatedAt: now},
 	}}
-	av := &fakeContactAvatars{byContact: map[string]string{"ct-av": "http://api/v1/channel-media/tok-ct-av"}}
+	cd := &fakeContactDir{cards: map[string]shared.DisplayCard{
+		"ct-av":   {Name: "Ana Cliente", AvatarURL: "http://api/v1/channel-media/tok-ct-av"},
+		"ct-none": {Name: "Bob SemAvatar"}, // name resolves, no avatar
+	}}
+	ad := &fakeAgentDir{cards: map[string]shared.DisplayCard{
+		"u-agent": {Name: "Diego Agente", AvatarURL: "http://api/v1/channel-media/tok-agent"},
+	}}
+	var latestCalls int
 
-	rec := httpharness.Do(t, buildRouterWithAvatars(cr, av), http.MethodGet, "/conversations", token(t, "t1", authz.ConversationRead), nil)
+	rec := httpharness.Do(t, buildRouterFull(cr, cd, ad, &latestCalls), http.MethodGet, "/conversations", token(t, "t1", authz.ConversationRead), nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
 	}
 	var page struct {
 		Data []struct {
 			ID               string `json:"id"`
+			ContactName      string `json:"contact_name"`
 			ContactAvatarURL string `json:"contact_avatar_url"`
+			AgentName        string `json:"agent_name"`
+			AgentAvatarURL   string `json:"agent_avatar_url"`
 		} `json:"data"`
 	}
 	httpharness.DecodeJSON(t, rec, &page)
-	byID := map[string]string{}
+	got := map[string]struct {
+		cn, ca, an, aa string
+	}{}
 	for _, d := range page.Data {
-		byID[d.ID] = d.ContactAvatarURL
+		got[d.ID] = struct{ cn, ca, an, aa string }{d.ContactName, d.ContactAvatarURL, d.AgentName, d.AgentAvatarURL}
 	}
-	if byID["c1"] != "http://api/v1/channel-media/tok-ct-av" {
-		t.Errorf("c1 (contact with avatar) must carry contact_avatar_url, got %q", byID["c1"])
+	if got["c1"].cn != "Ana Cliente" || got["c1"].ca == "" {
+		t.Errorf("c1 must carry contact_name + contact_avatar_url, got %+v", got["c1"])
 	}
-	if !strings.Contains(byID["c1"], "/v1/channel-media/") {
-		t.Errorf("contact_avatar_url must be the JWT-less channel-media URL, got %q", byID["c1"])
+	if got["c1"].an != "Diego Agente" || got["c1"].aa == "" {
+		t.Errorf("c1 must carry agent_name + agent_avatar_url, got %+v", got["c1"])
 	}
-	if byID["c2"] != "" {
-		t.Errorf("c2 (contact without avatar) must omit contact_avatar_url, got %q", byID["c2"])
+	if !strings.Contains(got["c1"].ca, "/v1/channel-media/") || !strings.Contains(got["c1"].aa, "/v1/channel-media/") {
+		t.Errorf("avatar URLs must be JWT-less channel-media URLs, got %+v", got["c1"])
 	}
-	if av.calls != 1 {
-		t.Errorf("expected one batch resolution for the page, got %d calls", av.calls)
+	if got["c2"].cn != "Bob SemAvatar" || got["c2"].ca != "" {
+		t.Errorf("c2 must carry name with empty avatar, got %+v", got["c2"])
+	}
+	if got["c2"].an != "" || got["c2"].aa != "" {
+		t.Errorf("c2 (unassigned) must have empty agent fields, got %+v", got["c2"])
+	}
+	// Constant queries regardless of page size: 1 last-message aggregation + 1
+	// contact-card batch + 1 agent-card batch.
+	if latestCalls != 1 {
+		t.Errorf("last-message must be a single aggregation, got %d calls", latestCalls)
+	}
+	if cd.calls != 1 {
+		t.Errorf("contact cards must resolve in one batch, got %d calls", cd.calls)
+	}
+	if ad.calls != 1 {
+		t.Errorf("agent cards must resolve in one batch, got %d calls", ad.calls)
 	}
 }
 
-// GET /v1/conversations/{id} (detail) resolves contact_avatar_url consistently
-// with the list.
-func TestConversations_Detail_ResolvesContactAvatarURL(t *testing.T) {
+// GET /v1/conversations/{id} (detail) resolves the same display fields as the list.
+func TestConversations_Detail_ResolvesContactAndAgent(t *testing.T) {
 	cr := &fakeConvRepo{items: []*entity.Conversation{
-		{ID: "c1", TenantID: "t1", ContactID: "ct-av", Status: entity.StatusNew, Priority: entity.PriorityNormal, UpdatedAt: time.Now()},
+		{ID: "c1", TenantID: "t1", ContactID: "ct-av", AssignedTo: "u-agent", Status: entity.StatusAssigned, Priority: entity.PriorityNormal, UpdatedAt: time.Now()},
 	}}
-	av := &fakeContactAvatars{byContact: map[string]string{"ct-av": "http://api/v1/channel-media/tok-ct-av"}}
+	cd := &fakeContactDir{cards: map[string]shared.DisplayCard{"ct-av": {Name: "Ana Cliente", AvatarURL: "http://api/v1/channel-media/tok-ct-av"}}}
+	ad := &fakeAgentDir{cards: map[string]shared.DisplayCard{"u-agent": {Name: "Diego Agente", AvatarURL: "http://api/v1/channel-media/tok-agent"}}}
 
-	rec := httpharness.Do(t, buildRouterWithAvatars(cr, av), http.MethodGet, "/conversations/c1", token(t, "t1", authz.ConversationRead), nil)
+	rec := httpharness.Do(t, buildRouterFull(cr, cd, ad, nil), http.MethodGet, "/conversations/c1", token(t, "t1", authz.ConversationRead), nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
 	}
 	var resp struct {
+		ContactName      string `json:"contact_name"`
 		ContactAvatarURL string `json:"contact_avatar_url"`
+		AgentName        string `json:"agent_name"`
+		AgentAvatarURL   string `json:"agent_avatar_url"`
 	}
 	httpharness.DecodeJSON(t, rec, &resp)
-	if resp.ContactAvatarURL != "http://api/v1/channel-media/tok-ct-av" {
-		t.Errorf("detail must resolve contact_avatar_url, got %q", resp.ContactAvatarURL)
+	if resp.ContactName != "Ana Cliente" || resp.ContactAvatarURL == "" || resp.AgentName != "Diego Agente" || resp.AgentAvatarURL == "" {
+		t.Errorf("detail must resolve contact+agent fields, got %+v", resp)
 	}
 }
 

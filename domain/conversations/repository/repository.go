@@ -40,6 +40,10 @@ type MessageRepository interface {
 	// LatestByConversation returns the most recent non-deleted message of a
 	// conversation (for list previews), or NotFound when the thread is empty.
 	LatestByConversation(ctx context.Context, conversationID string) (*entity.Message, error)
+	// LatestByConversations returns the most recent non-deleted message PER
+	// conversation id, in a single aggregation (no N+1), keyed by conversation id.
+	// Conversations with an empty thread are absent from the map.
+	LatestByConversations(ctx context.Context, conversationIDs []string) (map[string]*entity.Message, error)
 }
 
 // EventRepository persists conversation timeline events.

@@ -72,36 +72,31 @@ func (s *Service) AvatarURLs(ctx context.Context, attachmentIDs []string) (map[s
 	return s.avatarURLs.SignedAvatarURLs(ctx, attachmentIDs)
 }
 
-// ContactAvatarURLs resolves a set of CONTACT ids to their signed avatar URLs
-// (keyed by contact id) in two batch queries: load the contacts, then sign their
-// avatars. Used by the conversation inbox to render the contact avatar per row
-// without a second round-trip. Best-effort and nil-safe.
-func (s *Service) ContactAvatarURLs(ctx context.Context, contactIDs []string) (map[string]string, error) {
-	if s.avatarURLs == nil || len(contactIDs) == 0 {
+// ContactCards resolves a set of CONTACT ids to their display cards (name +
+// signed avatar URL), keyed by contact id, in two batch queries: load the
+// contacts, then sign their avatars. Used by the conversation inbox to render the
+// contact per row without a second round-trip. Best-effort and nil-safe.
+func (s *Service) ContactCards(ctx context.Context, contactIDs []string) (map[string]shared.DisplayCard, error) {
+	if len(contactIDs) == 0 {
 		return nil, nil
 	}
 	contacts, err := s.repo.FindByIDs(ctx, contactIDs)
 	if err != nil {
 		return nil, err
 	}
-	avatarToContacts := make(map[string][]string)
-	ids := make([]string, 0, len(contacts))
+	avatarIDs := make([]string, 0, len(contacts))
 	for _, c := range contacts {
-		if c.AvatarAttachmentID == "" {
-			continue
+		if c.AvatarAttachmentID != "" {
+			avatarIDs = append(avatarIDs, c.AvatarAttachmentID)
 		}
-		avatarToContacts[c.AvatarAttachmentID] = append(avatarToContacts[c.AvatarAttachmentID], c.ID)
-		ids = append(ids, c.AvatarAttachmentID)
 	}
-	urls, err := s.avatarURLs.SignedAvatarURLs(ctx, ids)
-	if err != nil {
-		return nil, err
+	var urls map[string]string
+	if s.avatarURLs != nil {
+		urls, _ = s.avatarURLs.SignedAvatarURLs(ctx, avatarIDs) // best-effort: name still resolves
 	}
-	out := make(map[string]string, len(contacts))
-	for avatarID, url := range urls {
-		for _, contactID := range avatarToContacts[avatarID] {
-			out[contactID] = url
-		}
+	out := make(map[string]shared.DisplayCard, len(contacts))
+	for _, c := range contacts {
+		out[c.ID] = shared.DisplayCard{Name: c.Name, AvatarURL: urls[c.AvatarAttachmentID]}
 	}
 	return out, nil
 }

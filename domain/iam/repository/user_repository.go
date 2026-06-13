@@ -13,6 +13,9 @@ type UserRepository interface {
 	Update(ctx context.Context, u *entity.User) error
 	Delete(ctx context.Context, id string) error
 	FindByID(ctx context.Context, id string) (*entity.User, error)
+	// FindByIDs batch-loads users by id within the tenant (missing ids absent),
+	// used to resolve agent display cards for the inbox without N+1.
+	FindByIDs(ctx context.Context, ids []string) ([]*entity.User, error)
 	// FindByEmail looks a user up by email within the current tenant scope.
 	FindByEmail(ctx context.Context, email string) (*entity.User, error)
 	// FindByEmailAnyTenant looks a user up by email across all tenants. It is

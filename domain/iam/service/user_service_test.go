@@ -73,6 +73,18 @@ func (r *fakeUserRepo) FindByID(ctx context.Context, id string) (*entity.User, e
 	return nil, apperror.NotFound("resource not found")
 }
 
+func (r *fakeUserRepo) FindByIDs(ctx context.Context, ids []string) ([]*entity.User, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	var out []*entity.User
+	for _, id := range ids {
+		if u, ok := r.users[id]; ok && u.TenantID == tenant {
+			cp := *u
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
 func (r *fakeUserRepo) FindByEmail(ctx context.Context, email string) (*entity.User, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	for _, u := range r.users {

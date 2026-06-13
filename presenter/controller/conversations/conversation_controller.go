@@ -51,10 +51,11 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	// Resolve the contact avatar per row in one batch, so the inbox renders avatars
-	// without a per-row contact fetch. Best-effort: never fail the list.
-	contactAvatars, _ := c.svc.ContactAvatarURLs(r.Context(), items)
-	resp := shared.NewPage(dto.NewConversationResponsesWithLastMessage(items, last, contactAvatars), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
+	// Resolve the contact + assignee display cards per row in two batch queries, so
+	// the inbox renders each row (name/avatar) without a per-row fetch. Best-effort.
+	contactCards, _ := c.svc.ContactCards(r.Context(), items)
+	agentCards, _ := c.svc.AgentCards(r.Context(), items)
+	resp := shared.NewPage(dto.NewConversationResponsesWithLastMessage(items, last, contactCards, agentCards), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
 		return shared.Cursor{CreatedAt: cv.UpdatedAt.UnixMilli(), ID: cv.ID}
 	})
 	middleware.WriteJSON(w, http.StatusOK, resp)
@@ -72,8 +73,10 @@ func (c *Controller) Create(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	avatars, _ := c.svc.ContactAvatarURLs(r.Context(), []*entity.Conversation{conv})
-	middleware.WriteJSON(w, http.StatusCreated, dto.NewConversationResponseWithContactAvatar(conv, avatars))
+	single := []*entity.Conversation{conv}
+	contactCards, _ := c.svc.ContactCards(r.Context(), single)
+	agentCards, _ := c.svc.AgentCards(r.Context(), single)
+	middleware.WriteJSON(w, http.StatusCreated, dto.NewConversationResponseWithCards(conv, contactCards, agentCards))
 }
 
 // Get handles GET /v1/conversations/{id}. The contact avatar is resolved into
@@ -84,8 +87,10 @@ func (c *Controller) Get(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	avatars, _ := c.svc.ContactAvatarURLs(r.Context(), []*entity.Conversation{conv})
-	middleware.WriteJSON(w, http.StatusOK, dto.NewConversationResponseWithContactAvatar(conv, avatars))
+	single := []*entity.Conversation{conv}
+	contactCards, _ := c.svc.ContactCards(r.Context(), single)
+	agentCards, _ := c.svc.AgentCards(r.Context(), single)
+	middleware.WriteJSON(w, http.StatusOK, dto.NewConversationResponseWithCards(conv, contactCards, agentCards))
 }
 
 // Update handles PATCH /v1/conversations/{id}.

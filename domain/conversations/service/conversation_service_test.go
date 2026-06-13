@@ -136,6 +136,15 @@ func (r *fakeMsgRepo) LatestByConversation(_ context.Context, convID string) (*e
 	}
 	return latest, nil
 }
+func (r *fakeMsgRepo) LatestByConversations(_ context.Context, ids []string) (map[string]*entity.Message, error) {
+	out := map[string]*entity.Message{}
+	for _, id := range ids {
+		if m, err := r.LatestByConversation(context.Background(), id); err == nil {
+			out[id] = m
+		}
+	}
+	return out, nil
+}
 
 type fakeEventRepo struct{ items []*entity.ConversationEvent }
 

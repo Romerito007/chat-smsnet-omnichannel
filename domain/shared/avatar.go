@@ -11,3 +11,12 @@ import "context"
 type AvatarURLResolver interface {
 	SignedAvatarURLs(ctx context.Context, attachmentIDs []string) (map[string]string, error)
 }
+
+// DisplayCard is the resolved display info (name + short-lived signed avatar URL)
+// for a related entity embedded in another payload — e.g. the contact and the
+// assignee shown per row in the conversation inbox — so the client renders the
+// row without a per-item fetch. AvatarURL is empty when there is no ready avatar.
+type DisplayCard struct {
+	Name      string
+	AvatarURL string
+}

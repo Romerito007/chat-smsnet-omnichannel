@@ -59,6 +59,35 @@ func (s *UserService) AvatarURLs(ctx context.Context, attachmentIDs []string) (m
 	return s.avatarURLs.SignedAvatarURLs(ctx, attachmentIDs)
 }
 
+// AgentCards resolves a set of USER ids to their display cards (name + signed
+// avatar URL), keyed by user id, in two batch queries: load the users, then sign
+// their avatars. Used by the conversation inbox to render the assignee per row
+// without a second round-trip. Best-effort and nil-safe.
+func (s *UserService) AgentCards(ctx context.Context, userIDs []string) (map[string]shared.DisplayCard, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	users, err := s.users.FindByIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	avatarIDs := make([]string, 0, len(users))
+	for _, u := range users {
+		if u.AvatarAttachmentID != "" {
+			avatarIDs = append(avatarIDs, u.AvatarAttachmentID)
+		}
+	}
+	var urls map[string]string
+	if s.avatarURLs != nil {
+		urls, _ = s.avatarURLs.SignedAvatarURLs(ctx, avatarIDs) // best-effort: name still resolves
+	}
+	out := make(map[string]shared.DisplayCard, len(users))
+	for _, u := range users {
+		out[u.ID] = shared.DisplayCard{Name: u.Name, AvatarURL: urls[u.AvatarAttachmentID]}
+	}
+	return out, nil
+}
+
 // Create validates and persists a new user within the current tenant, hashing
 // the password. Email uniqueness is enforced by the repository (unique index →
 // conflict).

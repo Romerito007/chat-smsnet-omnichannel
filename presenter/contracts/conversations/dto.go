@@ -7,6 +7,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
 // ── requests ─────────────────────────────────────────────────────────────────
@@ -138,10 +139,15 @@ type ConversationResponse struct {
 	UpdatedAt     time.Time    `json:"updated_at"`
 	ClosedAt      *time.Time   `json:"closed_at,omitempty"`
 	LastMessage   *LastMessage `json:"last_message,omitempty"`
-	// ContactAvatarURL is the conversation contact's short-lived signed avatar URL
-	// (no JWT), resolved in batch so the inbox renders avatars without a per-row
-	// contact fetch. Read-only/derived; empty when the contact has no ready avatar.
+	// ContactName / ContactAvatarURL / AgentName / AgentAvatarURL are read-only,
+	// derived display fields, resolved in batch so the inbox renders each row
+	// (contact + assignee) without a per-row fetch. Avatar URLs are short-lived
+	// signed channel-media URLs (no JWT). Empty when the related entity or its
+	// ready avatar is absent.
+	ContactName      string `json:"contact_name,omitempty"`
 	ContactAvatarURL string `json:"contact_avatar_url,omitempty"`
+	AgentName        string `json:"agent_name,omitempty"`
+	AgentAvatarURL   string `json:"agent_avatar_url,omitempty"`
 }
 
 // LastMessage is a light preview of a conversation's most recent message, used on
@@ -175,19 +181,34 @@ func previewText(s string, n int) string {
 
 // NewConversationResponsesWithLastMessage maps a page of conversations, attaching
 // each one's last-message preview from last (keyed by conversation id).
-func NewConversationResponsesWithLastMessage(items []*entity.Conversation, last map[string]*entity.Message, contactAvatars map[string]string) []ConversationResponse {
+func NewConversationResponsesWithLastMessage(items []*entity.Conversation, last map[string]*entity.Message, contactCards, agentCards map[string]shared.DisplayCard) []ConversationResponse {
 	out := make([]ConversationResponse, len(items))
 	for i, c := range items {
 		r := NewConversationResponse(c)
 		if m, ok := last[c.ID]; ok {
 			r.LastMessage = newLastMessage(m)
 		}
-		if c.ContactID != "" {
-			r.ContactAvatarURL = contactAvatars[c.ContactID]
-		}
+		applyCards(&r, c, contactCards, agentCards)
 		out[i] = r
 	}
 	return out
+}
+
+// applyCards fills the read-only display fields (contact/agent name + avatar)
+// from the resolved cards. Empty when the related entity or its avatar is absent.
+func applyCards(r *ConversationResponse, c *entity.Conversation, contactCards, agentCards map[string]shared.DisplayCard) {
+	if c.ContactID != "" {
+		if card, ok := contactCards[c.ContactID]; ok {
+			r.ContactName = card.Name
+			r.ContactAvatarURL = card.AvatarURL
+		}
+	}
+	if c.AssignedTo != "" {
+		if card, ok := agentCards[c.AssignedTo]; ok {
+			r.AgentName = card.Name
+			r.AgentAvatarURL = card.AvatarURL
+		}
+	}
 }
 
 // NewConversationResponse maps a conversation entity to its DTO.
@@ -212,14 +233,12 @@ func NewConversationResponse(c *entity.Conversation) ConversationResponse {
 	}
 }
 
-// NewConversationResponseWithContactAvatar maps one conversation, attaching the
-// contact's signed avatar URL from contactAvatars (keyed by contact id), so the
-// detail endpoint stays consistent with the list. Empty when no ready avatar.
-func NewConversationResponseWithContactAvatar(c *entity.Conversation, contactAvatars map[string]string) ConversationResponse {
+// NewConversationResponseWithCards maps one conversation, attaching the resolved
+// contact/agent display cards, so the detail/create responses stay consistent
+// with the list. Empty fields when the related entity or its avatar is absent.
+func NewConversationResponseWithCards(c *entity.Conversation, contactCards, agentCards map[string]shared.DisplayCard) ConversationResponse {
 	r := NewConversationResponse(c)
-	if c.ContactID != "" {
-		r.ContactAvatarURL = contactAvatars[c.ContactID]
-	}
+	applyCards(&r, c, contactCards, agentCards)
 	return r
 }
 

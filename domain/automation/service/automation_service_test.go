@@ -129,6 +129,9 @@ func (r *fakeMsgRepo) ListByConversation(context.Context, string, shared.PageReq
 func (r *fakeMsgRepo) LatestByConversation(context.Context, string) (*conventity.Message, error) {
 	return nil, apperror.NotFound("none")
 }
+func (r *fakeMsgRepo) LatestByConversations(context.Context, []string) (map[string]*conventity.Message, error) {
+	return nil, nil
+}
 
 type fakeEventRepo struct {
 	items []*conventity.ConversationEvent
