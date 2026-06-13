@@ -25,4 +25,9 @@ type LoadCounter interface {
 	// CountOpenAssigned counts the conversations currently assigned to userID
 	// that are still open within the tenant on the context.
 	CountOpenAssigned(ctx context.Context, userID string) (int, error)
+	// OpenAssignedLoads returns, in ONE aggregation, the open-conversation load of
+	// every assigned agent in the tenant (keyed by user id), so a presence/routing
+	// listing computes loads without a count-per-agent N+1. Agents with no open
+	// assigned conversation are absent from the map (load 0).
+	OpenAssignedLoads(ctx context.Context) (map[string]int, error)
 }

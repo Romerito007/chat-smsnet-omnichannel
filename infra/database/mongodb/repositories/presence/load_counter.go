@@ -45,4 +45,39 @@ func (c *LoadCounter) CountOpenAssigned(ctx context.Context, userID string) (int
 	return int(n), nil
 }
 
+// OpenAssignedLoads aggregates the open, assigned conversations of the tenant by
+// assignee in a single query: $match {tenant, status open, assigned} → $group
+// {_id:$assigned_to, load:$sum 1}.
+func (c *LoadCounter) OpenAssignedLoads(ctx context.Context) (map[string]int, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"tenant_id":   tenantID,
+			"status":      bson.M{"$in": openStatuses},
+			"assigned_to": bson.M{"$nin": bson.A{"", nil}},
+		}}},
+		{{Key: "$group", Value: bson.M{"_id": "$assigned_to", "load": bson.M{"$sum": 1}}}},
+	}
+	cur, err := c.coll.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	out := map[string]int{}
+	for cur.Next(ctx) {
+		var row struct {
+			UserID string `bson:"_id"`
+			Load   int    `bson:"load"`
+		}
+		if err := cur.Decode(&row); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out[row.UserID] = row.Load
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
 var _ repository.LoadCounter = (*LoadCounter)(nil)

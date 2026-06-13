@@ -108,8 +108,10 @@ func (s *Service) SetStatus(ctx context.Context, targetUserID string, status ent
 	return presence, nil
 }
 
-// List returns every agent's presence with a freshly recomputed load.
-func (s *Service) List(ctx context.Context) ([]*entity.AgentPresence, error) {
+// List returns agent presence with a freshly recomputed load. When sectorID is
+// non-empty it returns only the agents linked to that sector. Load is derived in
+// ONE aggregation across the tenant (no count-per-agent N+1).
+func (s *Service) List(ctx context.Context, sectorID string) ([]*entity.AgentPresence, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return nil, err
 	}
@@ -117,10 +119,29 @@ func (s *Service) List(ctx context.Context) ([]*entity.AgentPresence, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, p := range items {
-		if load, err := s.load.CountOpenAssigned(ctx, p.UserID); err == nil {
-			p.CurrentLoad = load
+	if sectorID != "" {
+		users, err := s.users.ListBySector(ctx, sectorID)
+		if err != nil {
+			return nil, err
 		}
+		allowed := make(map[string]struct{}, len(users))
+		for _, u := range users {
+			allowed[u.ID] = struct{}{}
+		}
+		filtered := items[:0]
+		for _, p := range items {
+			if _, ok := allowed[p.UserID]; ok {
+				filtered = append(filtered, p)
+			}
+		}
+		items = filtered
+	}
+	loads, err := s.load.OpenAssignedLoads(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range items {
+		p.CurrentLoad = loads[p.UserID]
 	}
 	return items, nil
 }

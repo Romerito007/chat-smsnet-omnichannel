@@ -45,6 +45,7 @@ func registerOrg(p *paths) {
 	p.crud("/v1/queues", "queues", "queue", ref("Queue"), ref("CreateQueueRequest"), ref("UpdateQueueRequest"))
 
 	p.add("GET", "/v1/agents/presence", op(opConfig{tag: "presence", summary: "List agent presence",
+		params:    []M{queryParam("sector_id", "Scope to the agents of this sector (server-side); omit for the whole team.")},
 		responses: M{"200": jsonResp("Presence list", arr(ref("Presence")))}}))
 	p.add("POST", "/v1/agents/presence/status", op(opConfig{tag: "presence", summary: "Set own (or an agent's) status",
 		reqBody: body(ref("SetStatusRequest")), responses: M{"200": jsonResp("Presence", ref("Presence"))}}))

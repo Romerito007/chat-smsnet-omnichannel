@@ -175,18 +175,37 @@ func (s *Service) RunCheck(ctx context.Context) error {
 		return err
 	}
 	now := s.clock.Now()
+	// Group trackings by tenant and hydrate each tenant's conversations in ONE
+	// batch ($in), instead of a FindByID per tracking.
+	byTenant := make(map[string][]*entity.SLATracking)
 	for _, t := range items {
-		s.evaluate(ctx, t, now)
+		byTenant[t.TenantID] = append(byTenant[t.TenantID], t)
+	}
+	for tenantID, trackings := range byTenant {
+		tctx := authz.WithAuthContext(shared.WithTenant(ctx, tenantID), authz.SystemActor(tenantID))
+		ids := make([]string, 0, len(trackings))
+		for _, t := range trackings {
+			ids = append(ids, t.ConversationID)
+		}
+		convs, err := s.conversations.FindByIDs(tctx, ids)
+		if err != nil {
+			continue // best-effort per tenant: a hiccup must not block the others
+		}
+		byID := make(map[string]*conventity.Conversation, len(convs))
+		for _, c := range convs {
+			byID[c.ID] = c
+		}
+		for _, t := range trackings {
+			if conv, ok := byID[t.ConversationID]; ok {
+				s.evaluate(tctx, t, conv, now)
+			}
+		}
 	}
 	return nil
 }
 
-func (s *Service) evaluate(ctx context.Context, t *entity.SLATracking, now time.Time) {
-	tctx := authz.WithAuthContext(shared.WithTenant(ctx, t.TenantID), authz.SystemActor(t.TenantID))
-	conv, err := s.conversations.FindByID(tctx, t.ConversationID)
-	if err != nil {
-		return
-	}
+// evaluate measures one tracking against its (already-loaded) conversation.
+func (s *Service) evaluate(tctx context.Context, t *entity.SLATracking, conv *conventity.Conversation, now time.Time) {
 	// Pause: suppress alerts while waiting on the customer when configured.
 	if t.PauseOnWaitingCustomer && conv.Status == conventity.StatusWaitingCustomer {
 		return

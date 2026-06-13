@@ -17,6 +17,9 @@ type ConversationRepository interface {
 	Create(ctx context.Context, c *entity.Conversation) error
 	Update(ctx context.Context, c *entity.Conversation) error
 	FindByID(ctx context.Context, id string) (*entity.Conversation, error)
+	// FindByIDs batch-loads conversations by id within the tenant (missing ids
+	// absent), used to hydrate the SLA breach check without a FindByID per tracking.
+	FindByIDs(ctx context.Context, ids []string) ([]*entity.Conversation, error)
 	// FindOpenByContactChannel returns the most recent non-closed conversation
 	// for a contact on a channel, or a not_found AppError. Used by inbound to
 	// reuse an open conversation instead of creating a new one.

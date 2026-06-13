@@ -58,7 +58,7 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	pres, err := c.presence.List(r.Context())
+	pres, err := c.presence.List(r.Context(), sectorID)
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return

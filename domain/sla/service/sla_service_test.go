@@ -86,16 +86,29 @@ func (r *fakeTrackingRepo) ListRunningAcrossTenants(_ context.Context, _ int) ([
 }
 
 type fakeConvRepo struct {
-	items map[string]*conventity.Conversation
+	items      map[string]*conventity.Conversation
+	findByIDN  int // calls to the per-item FindByID
+	findByIDsN int // calls to the batch FindByIDs
 }
 
 func (r *fakeConvRepo) Create(context.Context, *conventity.Conversation) error { return nil }
 func (r *fakeConvRepo) Update(context.Context, *conventity.Conversation) error { return nil }
 func (r *fakeConvRepo) FindByID(_ context.Context, id string) (*conventity.Conversation, error) {
+	r.findByIDN++
 	if c, ok := r.items[id]; ok {
 		return c, nil
 	}
 	return nil, apperror.NotFound("nf")
+}
+func (r *fakeConvRepo) FindByIDs(_ context.Context, ids []string) ([]*conventity.Conversation, error) {
+	r.findByIDsN++
+	var out []*conventity.Conversation
+	for _, id := range ids {
+		if c, ok := r.items[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 func (r *fakeConvRepo) FindOpenByContactChannel(context.Context, string, string) (*conventity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
@@ -288,6 +301,26 @@ func TestResolved_FinalizesStatus(t *testing.T) {
 	tr := fx.tracking.byConv["cv1"]
 	if tr.ResolvedAt == nil || tr.Status != entity.StatusMet {
 		t.Errorf("expected met status, got %+v", tr.Status)
+	}
+}
+
+// RunCheck hydrates conversations in batch ($in per tenant), never one FindByID
+// per tracking.
+func TestRunCheck_BatchHydratesNoFindByIDPerItem(t *testing.T) {
+	start := mustT(t, t0)
+	fx := newFixture(policy(), conv(start))
+	fx.svc.OnConversationCreated(ctxT(), conv(start))
+	fx.convs.findByIDN, fx.convs.findByIDsN = 0, 0
+
+	fx.clock.set(start.Add(61 * time.Second))
+	if err := fx.svc.RunCheck(ctxT()); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if fx.convs.findByIDN != 0 {
+		t.Errorf("RunCheck must not FindByID per tracking, got %d calls", fx.convs.findByIDN)
+	}
+	if fx.convs.findByIDsN != 1 {
+		t.Errorf("RunCheck must batch-hydrate with one FindByIDs per tenant, got %d", fx.convs.findByIDsN)
 	}
 }
 

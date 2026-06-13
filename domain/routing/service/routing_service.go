@@ -331,6 +331,11 @@ func (s *Service) eligibleAgents(ctx context.Context, sectorID string) ([]candid
 	if err != nil {
 		return nil, err
 	}
+	// One aggregation for the whole tenant's loads, instead of a count per agent.
+	loads, err := s.load.OpenAssignedLoads(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var cands []candidate
 	for _, u := range users {
 		if !u.IsActive() {
@@ -343,10 +348,7 @@ func (s *Service) eligibleAgents(ctx context.Context, sectorID string) ([]candid
 		if p.Status != presenceentity.StatusAvailable {
 			continue
 		}
-		load, err := s.load.CountOpenAssigned(ctx, u.ID)
-		if err != nil {
-			return nil, err
-		}
+		load := loads[u.ID]
 		if u.MaxConcurrentChats > 0 && load >= u.MaxConcurrentChats {
 			continue
 		}

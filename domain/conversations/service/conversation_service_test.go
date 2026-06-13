@@ -45,6 +45,15 @@ func (r *fakeConvRepo) FindByID(ctx context.Context, id string) (*entity.Convers
 	}
 	return nil, apperror.NotFound("not found")
 }
+func (r *fakeConvRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.Conversation, error) {
+	var out []*entity.Conversation
+	for _, id := range ids {
+		if c, ok := r.items[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
 func (r *fakeConvRepo) FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*entity.Conversation, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	for _, c := range r.items {

@@ -52,9 +52,28 @@ func (s *fakeStore) List(ctx context.Context) ([]*entity.AgentPresence, error) {
 	return out, nil
 }
 
-type fakeLoad struct{ n int }
+type fakeLoad struct {
+	n          int
+	loads      map[string]int
+	countCalls *int
+	batchCalls *int
+}
 
-func (l fakeLoad) CountOpenAssigned(context.Context, string) (int, error) { return l.n, nil }
+func (l fakeLoad) CountOpenAssigned(_ context.Context, userID string) (int, error) {
+	if l.countCalls != nil {
+		*l.countCalls++
+	}
+	if l.loads != nil {
+		return l.loads[userID], nil
+	}
+	return l.n, nil
+}
+func (l fakeLoad) OpenAssignedLoads(context.Context) (map[string]int, error) {
+	if l.batchCalls != nil {
+		*l.batchCalls++
+	}
+	return l.loads, nil
+}
 
 type fakeUsers struct {
 	iamrepo.UserRepository
@@ -67,6 +86,18 @@ func (r *fakeUsers) FindByID(ctx context.Context, id string) (*iamentity.User, e
 		return u, nil
 	}
 	return nil, apperror.NotFound("resource not found")
+}
+
+func (r *fakeUsers) ListBySector(_ context.Context, sectorID string) ([]*iamentity.User, error) {
+	var out []*iamentity.User
+	for _, u := range r.users {
+		for _, s := range u.SectorIDs {
+			if s == sectorID {
+				out = append(out, u)
+			}
+		}
+	}
+	return out, nil
 }
 
 type capturedEvent struct {
@@ -92,7 +123,11 @@ func actorCtx(tenant, userID string, perms ...authz.Permission) context.Context 
 func newPresenceService(load int, users map[string]*iamentity.User) (*Service, *fakeStore, *fakePublisher) {
 	store := newFakeStore()
 	pub := &fakePublisher{}
-	svc := New(store, fakeLoad{n: load}, &fakeUsers{users: users}, pub, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	loads := make(map[string]int, len(users))
+	for id := range users {
+		loads[id] = load
+	}
+	svc := New(store, fakeLoad{n: load, loads: loads}, &fakeUsers{users: users}, pub, fixedClock{t: time.Unix(1700000000, 0).UTC()})
 	return svc, store, pub
 }
 
@@ -195,12 +230,56 @@ func TestList_RecomputesLoad(t *testing.T) {
 	if _, err := svc.SetStatus(ctx, "", entity.StatusOnline); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	list, err := svc.List(ctx)
+	list, err := svc.List(ctx, "")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	if len(list) != 1 || list[0].CurrentLoad != 4 {
 		t.Errorf("expected 1 agent with load 4, got %+v", list)
+	}
+}
+
+// List derives every agent's load from ONE aggregation, never a count per agent.
+func TestList_LoadFromSingleAggregation(t *testing.T) {
+	store := newFakeStore()
+	users := map[string]*iamentity.User{
+		"u1": {ID: "u1", TenantID: "t1", SectorIDs: []string{"s1"}},
+		"u2": {ID: "u2", TenantID: "t1", SectorIDs: []string{"s1"}},
+		"u3": {ID: "u3", TenantID: "t1", SectorIDs: []string{"s2"}},
+	}
+	var countCalls, batchCalls int
+	load := fakeLoad{loads: map[string]int{"u1": 3, "u2": 1}, countCalls: &countCalls, batchCalls: &batchCalls}
+	svc := New(store, load, &fakeUsers{users: users}, &fakePublisher{}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	ctx := actorCtx("t1", "u1")
+	for id := range users {
+		_ = store.Save(ctx, &entity.AgentPresence{TenantID: "t1", UserID: id, Status: entity.StatusOnline})
+	}
+
+	list, err := svc.List(ctx, "")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	got := map[string]int{}
+	for _, p := range list {
+		got[p.UserID] = p.CurrentLoad
+	}
+	if got["u1"] != 3 || got["u2"] != 1 || got["u3"] != 0 {
+		t.Errorf("loads from aggregation wrong: %+v", got)
+	}
+	if batchCalls != 1 {
+		t.Errorf("expected ONE aggregation, got %d", batchCalls)
+	}
+	if countCalls != 0 {
+		t.Errorf("expected NO per-agent counts, got %d", countCalls)
+	}
+
+	// sector_id filters server-side to that sector's agents.
+	s1, err := svc.List(ctx, "s1")
+	if err != nil {
+		t.Fatalf("list s1: %v", err)
+	}
+	if len(s1) != 2 {
+		t.Errorf("sector s1 must return 2 agents, got %d", len(s1))
 	}
 }
 

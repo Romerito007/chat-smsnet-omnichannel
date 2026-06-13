@@ -2983,6 +2983,13 @@ paths:
     /v1/agents/presence:
         get:
             operationId: getAgentsPresence
+            parameters:
+                - description: Scope to the agents of this sector (server-side); omit for the whole team.
+                  in: query
+                  name: sector_id
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:

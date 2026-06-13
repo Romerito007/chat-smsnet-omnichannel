@@ -121,6 +121,9 @@ func (r *fakeConvRepo) FindByID(_ context.Context, id string) (*conventity.Conve
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeConvRepo) FindByIDs(context.Context, []string) ([]*conventity.Conversation, error) {
+	return nil, nil
+}
 func (r *fakeConvRepo) FindOpenByContactChannel(context.Context, string, string) (*conventity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
 }

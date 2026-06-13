@@ -3,6 +3,7 @@ package presence
 
 import (
 	"net/http"
+	"strings"
 
 	presenceentity "github.com/romerito007/chat-smsnet-omnichannel/domain/presence/entity"
 	presenceservice "github.com/romerito007/chat-smsnet-omnichannel/domain/presence/service"
@@ -20,9 +21,10 @@ func NewController(presence *presenceservice.Service) *Controller {
 	return &Controller{presence: presence}
 }
 
-// List handles GET /v1/agents/presence.
+// List handles GET /v1/agents/presence. Optional ?sector_id= scopes the result
+// to the agents of that sector (server-side), instead of the whole team.
 func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
-	items, err := c.presence.List(r.Context())
+	items, err := c.presence.List(r.Context(), strings.TrimSpace(r.URL.Query().Get("sector_id")))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return

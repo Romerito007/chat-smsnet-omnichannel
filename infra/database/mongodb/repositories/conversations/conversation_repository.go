@@ -79,6 +79,30 @@ func (r *ConversationRepository) FindByID(ctx context.Context, id string) (*enti
 	return convToEntity(&m), nil
 }
 
+func (r *ConversationRepository) FindByIDs(ctx context.Context, ids []string) ([]*entity.Conversation, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	cur, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}, "tenant_id": tenantID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []*entity.Conversation
+	for cur.Next(ctx) {
+		var m models.Conversation
+		if err := cur.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, convToEntity(&m))
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
 // closedStatuses are the terminal conversation states excluded from "open".
 var closedStatuses = bson.A{
 	string(entity.StatusResolved), string(entity.StatusClosed), string(entity.StatusArchived),
