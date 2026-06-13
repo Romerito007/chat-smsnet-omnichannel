@@ -6,38 +6,72 @@
 > varreduras sem índice.
 > Metodologia: leitura/grep do código real — a documentação **não** foi tomada
 > como verdade; onde diverge, o código prevalece e a divergência virou achado.
-> **Nenhum código de produção foi alterado**; o único arquivo escrito é este.
-> Build/vet/lint/test permanecem verdes.
-> Data: 2026-06-13. Branch: `claude/admiring-knuth-2wk8xd`.
+> Data da auditoria: 2026-06-13. Branch: `claude/admiring-knuth-2wk8xd`.
+>
+> **Atualização de remediação (2026-06-13, mesma branch):** os achados **P0/P1**
+> foram **corrigidos em código** após a auditoria — ver `## 1b. Status de
+> remediação` para os commits. Este doc agora reflete o estado pós-correção; as
+> seções de achados originais mantêm a evidência e ganharam marcação
+> ✅ **RESOLVIDO (commit)**. Restam apenas **P2 defensivos** (ver `## 1c`).
 
 Severidades: **P0** (catastrófico/escala explosiva imediata) · **P1** (degrada
 caminho quente ou escala mal com tenants×entidades) · **P2** (defensivo/médio,
-sem impacto agudo hoje). Nenhuma recomendação foi aplicada.
+sem impacto agudo hoje).
 
 ---
 
 ## 1. Veredito executivo
 
-| # | Eixo | Status | Pior severidade |
-|---|------|--------|-----------------|
-| 1 | Payloads de lista com "id solto" → N+1 no cliente | **GAP** | **P1** |
-| 2 | N+1 dentro do backend (Mongo) em caminho de lista/job | **GAP** | **P1** |
-| 3 | Assinatura/storage em caminho quente (avatares, presigned) | **OK** | P2 |
-| 4 | Paginação e limites (default 25 / max 100) | **PARCIAL** | P2 |
-| 5 | Cache / leituras redundantes (ETag, Redis read-cache) | **GAP** | P2 |
-| 6 | Tempo real vs polling (sobreposição WS×REST) | **PARCIAL** | P2 |
-| 7 | Fan-out multi-tenant em jobs periódicos | **PARCIAL** | **P1** |
-| — | Build / vet / test / lint verdes (código não alterado) | **OK** | — |
+| # | Eixo | Status | Pendência |
+|---|------|--------|-----------|
+| 1 | Payloads de lista com "id solto" → N+1 no cliente | **OK** ✅ | — |
+| 2 | N+1 dentro do backend (Mongo) em caminho de lista/job | **OK** ✅ | — |
+| 3 | Assinatura/storage em caminho quente (avatares, presigned) | **OK** | — |
+| 4 | Paginação e limites | **OK (índices)** ✅ | paginações **P2** (presence/agents/copilot, ListBySector 1000) |
+| 5 | Cache / leituras redundantes | **OK (cache HTTP)** ✅ | Redis read-cache **P2** (documentado) |
+| 6 | Tempo real vs polling (sobreposição WS×REST) | **PARCIAL** | contrato anti-polling **P2** |
+| 7 | Fan-out multi-tenant em jobs periódicos | **OK (sla)** ✅ | health-check serial **P2** |
+| — | Build / vet / test / lint verdes | **OK** | — |
 
-**Resumo:** a base tem boa higiene de paginação (keyset, default 25 / máx 100 em
-~27 endpoints) e **já corrigiu** os dois piores amplificadores recentes
-(hidratação de anexos em batch e `avatar_url`/`contact_avatar_url` resolvidos no
-payload). Os achados materiais restantes são **três N+1 de backend em caminho
-quente** — `LastMessages` (inbox), `presence.List` (sidebar de agentes) e
-`sla.RunCheck` (job de minuto) —, **lacunas de índice** em filtros de lista de
-conversas (`assigned_to`, `tag`, fechamento inativo), **payloads de conversa que
-não embutem nome do contato nem do agente** (forçando N+1 no inbox), e **ausência
-total de cache HTTP/Redis-read** em leituras quase-estáticas e de alta frequência.
+**Resumo (pós-remediação):** todos os achados **P0/P1** foram corrigidos —
+os três N+1 de backend (`LastMessages` no inbox, `presence.List`, `sla.RunCheck`)
+viraram **agregações/batch em 1 query**; a conversa passou a **embutir
+`contact_name`/`agent_name`/`agent_avatar_url`** (mata o N+1 de tradução do
+cliente); as **lacunas de índice** (`assigned_to`, `tag`, fechamento inativo)
+foram fechadas pela **migração 0028**; e os catálogos quase-estáticos ganharam
+**cache HTTP condicional (ETag + 304)**. Restam apenas **P2 defensivos**
+(`## 1c`): paginação de algumas listas pequenas, read-cache de Redis, contrato
+anti-polling e paralelização do health-check.
+
+---
+
+## 1b. Status de remediação (RESOLVIDO + commit)
+
+| Achado | Sev. | Correção | Commit |
+|---|---|---|---|
+| **1.1** — Conversa não embute nome do contato/agente | P1 | `ConversationResponse` ganhou `contact_name`/`agent_name`/`agent_avatar_url` (e `contact_avatar_url`), resolvidos em **batch** no controller (ports `ContactDirectory`/`AgentDirectory`); detalhe/create idem | `97cfe53` (avatar base: `a46d412`, `257b579`) |
+| **2.1** — `LastMessages` 1 query por conversa | P1 | `MessageRepository.LatestByConversations`: **1 agregação** `$match $in → $sort → $group $first`; `LastMessages` só troca a impl | `97cfe53` |
+| **2.2** — `presence.List` 1 count por agente | P0 | `LoadCounter.OpenAssignedLoads`: **1 agregação** `$group $sum` p/ todos os agentes; reusada em `routing.eligibleAgents`; `?sector_id` no servidor | `d24d4dd` |
+| **2.3** — `sla.RunCheck` 1 `FindByID` por tracking | P1 | agrupa por tenant + `conversations.FindByIDs($in)` por tenant (novo `FindByIDs`); avaliação inalterada | `d24d4dd` |
+| **Índices §4/§9** — `assigned_to`/`tag`/fechamento inativo | P1/P2 | **migração 0028** idempotente: `{tenant,assigned_to,updated_at,_id}`, `{tenant,tags,updated_at,_id}`, `{tenant,status,last_message_at}` | `d24d4dd` |
+| **Eixo 5** — zero cache em quase-estáticos | P2 | `middleware.ConditionalCache` (ETag forte = hash do corpo + `Cache-Control: private, max-age=45` + **304**) em `/tags`,`/canned-responses`,`/close-reasons`,`/sectors`,`/queues`,`/me` | `706903d` |
+
+Cada correção tem teste (batch/constant-queries, 304/ETag tenant-scoped, índice).
+Build/vet/lint/test seguiram verdes em cada commit.
+
+## 1c. Pendências P2 (defensivas)
+
+Nenhuma é P0/P1; não há amplificação aguda hoje. Não aplicadas.
+
+| # | Pendência | Evidência | Recomendação |
+|---|---|---|---|
+| P2-a | **Paginação** de `GET /v1/agents/presence`, `/v1/agents`, copilot `tool-calls`/`approvals` (arrays crus) | `presence_controller.go`, `agents_controller.go:98`, `mcp/tool_controller.go:63,74` | cursor keyset; `agents/presence` já filtra por `?sector_id` |
+| P2-b | **`ListBySector` com `SetLimit(1000)`** fixo (sem cursor) | `infra/.../iam/user_repository.go:148` | trocar por keyset paginado |
+| P2-c | **Read-cache de Redis** com invalidação por escrita p/ catálogos | §7 (só cache HTTP hoje) | evolução documentada em `middleware.ConditionalCache`; opcional |
+| P2-d | **Contrato anti-polling** quando o WS está conectado | §8 / `docs/realtime-events.md` | documentar "WS conectado ⇒ não pollar `/conversations`/`/messages`/`/agents/presence`" |
+| P2-e | **Health-check serial** (1 HTTP GET bloqueante por conexão) | `channel_service.go:68` → `infra/channels/health.go:39` | worker pool com timeout agregado |
+| P2-f | **`tenant.ListActive`** e `search.conversationIDsBySLA` sem `SetLimit` | `tenant_repository.go:61`, `search/index.go:221` | limite defensivo |
+| P2-g | **`FindByIDs/$in`** sem `SetLimit` | contacts/attachments/tags/roles/users repos | já limitados a ≤100 ids nos caminhos de lista; limite defensivo opcional |
 
 ---
 
@@ -86,7 +120,7 @@ caso porque renderiza nome/avatar do contato e do agente por linha.
 `AssignableAgent.avatar_url` idem. A hidratação de anexos de mensagem
 (`url/content_type/filename/size`) também vem resolvida.
 
-**Achado 1.1 (P1) — Conversa não embute nome do contato nem do agente.**
+**Achado 1.1 (P1) — Conversa não embute nome do contato nem do agente.** ✅ **RESOLVIDO (`97cfe53`).**
 `ConversationResponse` (`presenter/contracts/conversations/dto.go:14-26`) tem
 `contact_id` e `assigned_to` mas **nenhum** `contact_name`/`agent_name`. O inbox
 precisa desses rótulos por linha, então o front faz uma busca por contato e por
@@ -101,7 +135,7 @@ controller (mesmo padrão de `LastMessages`/`ContactAvatarURLs` já presente em
 
 ## 4. Eixo 2 — N+1 dentro do backend (Mongo)
 
-**Achado 2.1 (P1) — `LastMessages` faz 1 query por conversa no inbox.**
+**Achado 2.1 (P1) — `LastMessages` faz 1 query por conversa no inbox.** ✅ **RESOLVIDO (`97cfe53`).**
 `domain/conversations/service/conversation_service.go:274-289`:
 
 ```go
@@ -123,7 +157,7 @@ adicionais só para os previews. O inbox por página hoje custa:
 (ou `$lookup` no list de conversas), retornando o mapa em 1 round-trip. O índice
 `tenant_conversation_created` (`migrations/0004:41-42`) já cobre o `$sort`.
 
-**Achado 2.2 (P1) — `presence.List` faz 1 query Mongo por agente.**
+**Achado 2.2 (P0) — `presence.List` faz 1 query Mongo por agente.** ✅ **RESOLVIDO (`d24d4dd`).**
 `domain/presence/service/presence_service.go:112-126`:
 
 ```go
@@ -145,7 +179,7 @@ agrupando `open assigned` por `assigned_to` (`$group`), devolvendo o load de tod
 os agentes em 1 query; opcionalmente paginar/filtrar a presença por setor no
 servidor.
 
-**Achado 2.3 (P1) — `sla.RunCheck` faz 1 `FindByID` por tracking, a cada minuto.**
+**Achado 2.3 (P1) — `sla.RunCheck` faz 1 `FindByID` por tracking, a cada minuto.** ✅ **RESOLVIDO (`d24d4dd`).**
 `domain/sla/service/sla_service.go:172-186` busca até `checkBatchLimit` (1000)
 trackings em 1 query (`tracking.ListRunningAcrossTenants`) e então:
 
@@ -236,7 +270,7 @@ Cursor keyset é consistente (sem `skip`/offset caro detectado). **Recomendaçã
 
 ---
 
-## 7. Eixo 5 — Cache / leituras redundantes
+## 7. Eixo 5 — Cache / leituras redundantes  ✅ **cache HTTP RESOLVIDO (`706903d`); Redis read-cache pendente (P2-c)**
 
 **GAP.** Não há cache HTTP nem read-cache de Redis em nenhuma leitura de domínio.
 
