@@ -76,7 +76,7 @@ func (r *fakeRepo) FindByPhone(_ context.Context, phone string) (*entity.Contact
 	}
 	return nil, apperror.NotFound("nf")
 }
-func (r *fakeRepo) List(context.Context, string, shared.PageRequest) ([]*entity.Contact, error) {
+func (r *fakeRepo) List(context.Context, contracts.ListFilter, shared.PageRequest) ([]*entity.Contact, error) {
 	return nil, nil
 }
 

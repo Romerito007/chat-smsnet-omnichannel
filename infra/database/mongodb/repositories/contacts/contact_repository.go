@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
@@ -126,7 +127,7 @@ func (r *Repository) FindByPhone(ctx context.Context, phone string) (*entity.Con
 	return toEntity(&m), nil
 }
 
-func (r *Repository) List(ctx context.Context, query string, page shared.PageRequest) ([]*entity.Contact, error) {
+func (r *Repository) List(ctx context.Context, f contracts.ListFilter, page shared.PageRequest) ([]*entity.Contact, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
@@ -136,7 +137,7 @@ func (r *Repository) List(ctx context.Context, query string, page shared.PageReq
 		return nil, err
 	}
 	base := bson.M{"tenant_id": tenantID}
-	if q := strings.TrimSpace(query); q != "" {
+	if q := strings.TrimSpace(f.Query); q != "" {
 		rx := primitive.Regex{Pattern: regexp.QuoteMeta(q), Options: "i"}
 		base["$or"] = bson.A{
 			bson.M{"name": rx},
@@ -145,6 +146,17 @@ func (r *Repository) List(ctx context.Context, query string, page shared.PageReq
 			bson.M{"document": rx},
 			bson.M{"email": rx},
 		}
+	}
+	// Field filters (AND), combinable with q. name/phone are case-insensitive
+	// substring; tag_id is exact membership in the tags array (ids).
+	if name := strings.TrimSpace(f.Name); name != "" {
+		base["name"] = primitive.Regex{Pattern: regexp.QuoteMeta(name), Options: "i"}
+	}
+	if phone := strings.TrimSpace(f.Phone); phone != "" {
+		base["phones"] = primitive.Regex{Pattern: regexp.QuoteMeta(phone), Options: "i"}
+	}
+	if tagID := strings.TrimSpace(f.TagID); tagID != "" {
+		base["tags"] = tagID
 	}
 	filter := mongodb.ApplyKeyset(base, cur)
 	opts := options.Find().SetSort(mongodb.KeysetSort()).SetLimit(int64(page.Limit) + 1)

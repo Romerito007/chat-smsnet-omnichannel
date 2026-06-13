@@ -65,13 +65,13 @@ func (s *Service) Get(ctx context.Context, id string) (*entity.Contact, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
-// List returns a page of contacts, optionally filtered by a free-text query
-// (name/phone/document/email).
-func (s *Service) List(ctx context.Context, query string, page shared.PageRequest) ([]*entity.Contact, error) {
+// List returns a page of contacts narrowed by filter: the free-text query plus
+// the optional name/phone substring and tag-id field filters (combined with AND).
+func (s *Service) List(ctx context.Context, filter contracts.ListFilter, page shared.PageRequest) ([]*entity.Contact, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return nil, err
 	}
-	return s.repo.List(ctx, query, page.Normalize())
+	return s.repo.List(ctx, filter, page.Normalize())
 }
 
 // Create stores a new CRM contact. It deduplicates within the tenant by document

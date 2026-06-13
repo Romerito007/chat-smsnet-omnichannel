@@ -10,6 +10,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	domainauth "github.com/romerito007/chat-smsnet-omnichannel/domain/auth"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	contactcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/contracts"
 	contactentity "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/entity"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
@@ -65,12 +66,24 @@ func (r *memRepo) FindByPhone(_ context.Context, phone string) (*contactentity.C
 	}
 	return nil, apperror.NotFound("nf")
 }
-func (r *memRepo) List(context.Context, string, shared.PageRequest) ([]*contactentity.Contact, error) {
+func (r *memRepo) List(_ context.Context, f contactcontracts.ListFilter, _ shared.PageRequest) ([]*contactentity.Contact, error) {
 	out := make([]*contactentity.Contact, 0, len(r.byID))
 	for _, c := range r.byID {
+		if f.TagID != "" && !hasTag(c.Tags, f.TagID) {
+			continue
+		}
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+func hasTag(tags []string, id string) bool {
+	for _, t := range tags {
+		if t == id {
+			return true
+		}
+	}
+	return false
 }
 
 func build(t *testing.T) (http.Handler, domainauth.TokenManager) {
@@ -119,6 +132,32 @@ func TestContacts_CreateGetUpdate_RoundTrip(t *testing.T) {
 	up := httpharness.Do(t, r, http.MethodPatch, "/contacts/"+created.ID, write, map[string]any{"notes": "vip"})
 	if up.Code != http.StatusOK {
 		t.Fatalf("update status = %d (%s)", up.Code, up.Body.String())
+	}
+}
+
+func TestContacts_ListFilterByTag(t *testing.T) {
+	r, tm := build(t)
+	write := httpharness.Token(t, tm, "t1", "u1", authz.ContactWrite, authz.ContactRead)
+
+	// Two contacts, only one carries the "vip" tag.
+	_ = httpharness.Do(t, r, http.MethodPost, "/contacts", write,
+		map[string]any{"name": "Ana", "tags": []string{"vip"}})
+	_ = httpharness.Do(t, r, http.MethodPost, "/contacts", write,
+		map[string]any{"name": "Bob"})
+
+	rec := httpharness.Do(t, r, http.MethodGet, "/contacts?tag_id=vip", write, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d (%s)", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Data []struct {
+			Name string   `json:"name"`
+			Tags []string `json:"tags"`
+		} `json:"data"`
+	}
+	httpharness.DecodeJSON(t, rec, &page)
+	if len(page.Data) != 1 || page.Data[0].Name != "Ana" {
+		t.Fatalf("expected only the vip-tagged contact, got %+v", page.Data)
 	}
 }
 

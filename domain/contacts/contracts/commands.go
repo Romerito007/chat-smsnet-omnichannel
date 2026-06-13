@@ -3,6 +3,22 @@ package contracts
 
 import "context"
 
+// ListFilter narrows a contact listing. All fields are optional and combine with
+// AND (and with the free-text Query). Empty fields are ignored; tenant scope is
+// applied separately by the repository. Kept deliberately lean for the pilot:
+// substring match on name/phone, exact membership on tag id — no operators yet.
+type ListFilter struct {
+	// Query is the free-text search (?q=): case-insensitive substring over
+	// name/phone/document/email.
+	Query string
+	// Name filters by case-insensitive substring of the contact name.
+	Name string
+	// Phone filters by substring of any phone in the contact's phones.
+	Phone string
+	// TagID keeps only contacts that carry this tag id (tags are stored as ids).
+	TagID string
+}
+
 // UpsertFromInbound carries the basic, locally-provided contact fields extracted
 // from an inbound channel message. No provider enrichment is performed.
 type UpsertFromInbound struct {

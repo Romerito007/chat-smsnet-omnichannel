@@ -117,7 +117,11 @@ func registerConversations(p *paths) {
 
 	// contacts (CRM)
 	p.add("GET", "/v1/contacts", op(opConfig{tag: "contacts", summary: "List contacts (contact.read)",
-		params:    append(paginationParams(), queryParam("q", "Free-text filter (name/phone/document/email)")),
+		params: append(paginationParams(),
+			queryParam("q", "Free-text filter (name/phone/document/email)"),
+			queryParam("name", "Filter by name (case-insensitive substring)"),
+			queryParam("phone", "Filter by phone (substring of any phone)"),
+			queryParam("tag_id", "Filter by tag id (contacts carrying this tag). Combines with the others (AND).")),
 		responses: M{"200": jsonResp("Contact page", pageOf(ref("Contact")))}}))
 	p.add("POST", "/v1/contacts", op(opConfig{tag: "contacts", summary: "Create a contact (contact.write)",
 		reqBody:   body(ref("CreateContactRequest")),

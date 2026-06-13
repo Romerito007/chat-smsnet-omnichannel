@@ -4344,6 +4344,24 @@ paths:
                   required: false
                   schema:
                     type: string
+                - description: Filter by name (case-insensitive substring)
+                  in: query
+                  name: name
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by phone (substring of any phone)
+                  in: query
+                  name: phone
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by tag id (contacts carrying this tag). Combines with the others (AND).
+                  in: query
+                  name: tag_id
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:

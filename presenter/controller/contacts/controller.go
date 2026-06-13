@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/contracts"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/contacts"
@@ -22,10 +23,18 @@ func NewController(contacts *contactservice.Service) *Controller {
 	return &Controller{contacts: contacts}
 }
 
-// List handles GET /v1/contacts (cursor-paginated; ?q= filters).
+// List handles GET /v1/contacts (cursor-paginated). Filters: ?q= free-text plus
+// ?name=, ?phone= (substring) and ?tag_id= (exact), combinable with AND.
 func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 	page := middleware.PageFromRequest(r)
-	items, err := c.contacts.List(r.Context(), r.URL.Query().Get("q"), page)
+	q := r.URL.Query()
+	filter := contracts.ListFilter{
+		Query: q.Get("q"),
+		Name:  q.Get("name"),
+		Phone: q.Get("phone"),
+		TagID: q.Get("tag_id"),
+	}
+	items, err := c.contacts.List(r.Context(), filter, page)
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return

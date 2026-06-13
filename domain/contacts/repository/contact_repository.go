@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
@@ -20,7 +21,7 @@ type ContactRepository interface {
 	// means there is no duplicate.
 	FindByDocument(ctx context.Context, document string) (*entity.Contact, error)
 	FindByPhone(ctx context.Context, phone string) (*entity.Contact, error)
-	// List returns a page of contacts; a non-empty query filters by name, phone,
-	// document or email (case-insensitive substring).
-	List(ctx context.Context, query string, page shared.PageRequest) ([]*entity.Contact, error)
+	// List returns a page of contacts matching filter (free-text query plus the
+	// optional name/phone substring and tag-id field filters, combined with AND).
+	List(ctx context.Context, filter contracts.ListFilter, page shared.PageRequest) ([]*entity.Contact, error)
 }
