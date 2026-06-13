@@ -87,19 +87,22 @@ func NewConversationPayload(c *entity.Conversation) ConversationPayload {
 	}
 }
 
-// MessagePayload is the realtime/event representation of a message.
+// MessagePayload is the realtime/event representation of a message. Attachments
+// carry the full hydrated media metadata (url/content_type/filename/size), the
+// same shape as the GET .../messages response.
 type MessagePayload struct {
-	ID             string     `json:"id"`
-	ConversationID string     `json:"conversation_id"`
-	SenderType     string     `json:"sender_type"`
-	SenderID       string     `json:"sender_id,omitempty"`
-	Direction      string     `json:"direction"`
-	MessageType    string     `json:"message_type"`
-	Text           string     `json:"text"`
-	Internal       bool       `json:"internal"`
-	DeliveryStatus string     `json:"delivery_status,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	EditedAt       *time.Time `json:"edited_at,omitempty"`
+	ID             string              `json:"id"`
+	ConversationID string              `json:"conversation_id"`
+	SenderType     string              `json:"sender_type"`
+	SenderID       string              `json:"sender_id,omitempty"`
+	Direction      string              `json:"direction"`
+	MessageType    string              `json:"message_type"`
+	Text           string              `json:"text"`
+	Attachments    []entity.Attachment `json:"attachments,omitempty"`
+	Internal       bool                `json:"internal"`
+	DeliveryStatus string              `json:"delivery_status,omitempty"`
+	CreatedAt      time.Time           `json:"created_at"`
+	EditedAt       *time.Time          `json:"edited_at,omitempty"`
 }
 
 // NewMessagePayload builds the payload from a message entity.
@@ -112,6 +115,7 @@ func NewMessagePayload(m *entity.Message) MessagePayload {
 		Direction:      string(m.Direction),
 		MessageType:    string(m.MessageType),
 		Text:           m.Text,
+		Attachments:    m.Attachments,
 		Internal:       m.Direction == entity.DirectionInternal,
 		DeliveryStatus: string(m.DeliveryStatus),
 		CreatedAt:      m.CreatedAt,

@@ -278,6 +278,13 @@ func (s *Service) Confirm(ctx context.Context, cmd contracts.ConfirmUpload) (*en
 		return nil, apperror.Validation("the file was not uploaded to storage")
 	}
 
+	// Metadata (content_type/filename/size) is captured at upload-url time from the
+	// client and validated there (non-empty content_type, size > 0). Guard against
+	// a record reaching "ready" with no content_type — a downstream message
+	// hydration must never yield an empty content_type. Default rather than fail.
+	if strings.TrimSpace(att.ContentType) == "" {
+		att.ContentType = "application/octet-stream"
+	}
 	att.Status = entity.StatusReady
 	att.SignedURL = s.downloadURL(att.ID)
 	if err := s.repo.Update(ctx, att); err != nil {
@@ -457,6 +464,86 @@ func (s *Service) ValidateReadyImage(ctx context.Context, attachmentID string) e
 // isImageContentType reports whether ct is an image/* MIME type.
 func isImageContentType(ct string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "image/")
+}
+
+// HydrateAttachments batch-resolves attachment ids to their full media metadata
+// (id, url=JWT-gated download, content_type, filename, size), keyed by id, for
+// the conversations read boundary. Missing ids are simply absent from the map.
+// Implements the conversations AttachmentResolver port.
+func (s *Service) HydrateAttachments(ctx context.Context, ids []string) (map[string]conventity.Attachment, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	cleaned := dedupeNonEmpty(ids)
+	if len(cleaned) == 0 {
+		return nil, nil
+	}
+	found, err := s.repo.FindByIDs(ctx, cleaned)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]conventity.Attachment, len(found))
+	for _, att := range found {
+		out[att.ID] = conventity.Attachment{
+			ID:          att.ID,
+			URL:         s.downloadURL(att.ID),
+			ContentType: att.ContentType,
+			Filename:    att.Filename,
+			Size:        att.Size,
+		}
+	}
+	return out, nil
+}
+
+// ValidateMessageAttachments verifies every id exists in the tenant and is ready
+// (uploaded + confirmed). Returns a 400 validation_error otherwise, so a message
+// is never stored referencing an orphan or unconfirmed attachment.
+func (s *Service) ValidateMessageAttachments(ctx context.Context, ids []string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	cleaned := dedupeNonEmpty(ids)
+	if len(cleaned) == 0 {
+		return nil
+	}
+	found, err := s.repo.FindByIDs(ctx, cleaned)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]*entity.Attachment, len(found))
+	for _, att := range found {
+		byID[att.ID] = att
+	}
+	for _, id := range cleaned {
+		att, ok := byID[id]
+		if !ok {
+			return apperror.Validation("attachment not found").
+				WithDetails(map[string]any{"attachments": "unknown attachment " + id})
+		}
+		if att.Status != entity.StatusReady {
+			return apperror.Validation("attachment not ready").
+				WithDetails(map[string]any{"attachments": "attachment " + id + " is not confirmed"})
+		}
+	}
+	return nil
+}
+
+// dedupeNonEmpty trims, drops empty entries and de-duplicates the ids.
+func dedupeNonEmpty(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func (s *Service) contentTypeAllowed(ct string) bool {

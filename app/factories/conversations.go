@@ -28,6 +28,9 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 	svc.SetNotifier(NotificationEnqueuer(c))
 	svc.SetAuditor(AuditService(c))
 	svc.SetQueueStatsNotifier(QueueService(c))
+	// Hydrate message attachments (url/content_type/filename/size) at read and
+	// validate attachment ids on send.
+	svc.SetAttachmentResolver(AttachmentService(c))
 	return svc
 }
 

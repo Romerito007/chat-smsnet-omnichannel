@@ -21,6 +21,20 @@ type TagCatalog interface {
 	ResolveTags(ctx context.Context, refs []string, strict bool) ([]string, error)
 }
 
+// AttachmentResolver hydrates message attachment ids into their full media
+// metadata at the read boundary, and validates ids on send. It is implemented by
+// the attachments service and wired into the conversations service. Optional:
+// when unset, attachments are returned/stored as the client sent them (id-only)
+// and no send-time validation runs.
+type AttachmentResolver interface {
+	// HydrateAttachments batch-resolves ids to full attachments (url/content_type/
+	// filename/size), keyed by id. Missing ids are absent from the map.
+	HydrateAttachments(ctx context.Context, ids []string) (map[string]entity.Attachment, error)
+	// ValidateMessageAttachments rejects (400) any id that does not exist in the
+	// tenant or is not yet confirmed (ready).
+	ValidateMessageAttachments(ctx context.Context, ids []string) error
+}
+
 // CloseReasonPolicy reports whether a close reason requires a note. It is
 // implemented by the conversationtools domain and wired into the conversations
 // service so Close can enforce "requires_note". Optional: when unset, no note is

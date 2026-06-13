@@ -34,6 +34,7 @@ type Service struct {
 	csat          contracts.CSATTrigger
 	auditor       shared.Auditor
 	queueStats    shared.QueueStatsNotifier
+	attachments   contracts.AttachmentResolver
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, conversation closes are
@@ -41,6 +42,15 @@ type Service struct {
 func (s *Service) SetAuditor(a shared.Auditor) {
 	if a != nil {
 		s.auditor = a
+	}
+}
+
+// SetAttachmentResolver wires the attachments hydrator/validator so message
+// attachments are returned with full metadata (url/content_type/filename/size)
+// and validated on send. Optional: when unset, attachments pass through id-only.
+func (s *Service) SetAttachmentResolver(a contracts.AttachmentResolver) {
+	if a != nil {
+		s.attachments = a
 	}
 }
 
@@ -317,6 +327,13 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 	}
 	if strings.TrimSpace(cmd.Text) == "" && len(cmd.Attachments) == 0 {
 		return nil, apperror.Validation("message text or attachments required")
+	}
+	// Reject a send that references a non-existent / cross-tenant / unconfirmed
+	// attachment, so we never store an orphan reference.
+	if s.attachments != nil && len(cmd.Attachments) > 0 {
+		if err := s.attachments.ValidateMessageAttachments(ctx, attachmentIDs(cmd.Attachments)); err != nil {
+			return nil, err
+		}
 	}
 
 	now := s.clock.Now()
@@ -651,7 +668,12 @@ func (s *Service) ListMessages(ctx context.Context, conversationID string, page 
 	if _, _, err := s.loadVisible(ctx, conversationID); err != nil {
 		return nil, err
 	}
-	return s.messages.ListByConversation(ctx, conversationID, page.Normalize())
+	msgs, err := s.messages.ListByConversation(ctx, conversationID, page.Normalize())
+	if err != nil {
+		return nil, err
+	}
+	s.hydrateMessages(ctx, msgs...)
+	return msgs, nil
 }
 
 // ListEvents returns the conversation timeline (lifecycle/automation events),
@@ -734,6 +756,8 @@ func (s *Service) EditMessage(ctx context.Context, conversationID, messageID str
 	if err := s.messages.Update(ctx, msg); err != nil {
 		return nil, err
 	}
+	// Hydrate attachments for the realtime payload and the response.
+	s.hydrateMessages(ctx, msg)
 
 	s.recordEvent(ctx, conv, entity.EventMessageEdited, map[string]any{"message_id": msg.ID})
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
@@ -813,9 +837,16 @@ func (s *Service) canManageMessage(ac authz.AuthContext, msg *entity.Message) bo
 // persistMessage stores a message, bumps conversation activity, records the
 // timeline event, and publishes realtime message.created + conversation.updated.
 func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation, msg *entity.Message, eventType string) (*entity.Message, error) {
+	// Resolve attachment metadata in-memory and derive message_type, then store
+	// attachment IDS ONLY (persistence unchanged); the realtime payload and the
+	// returned message carry the full, hydrated attachments.
+	s.hydrateMessages(ctx, msg)
+	hydrated := msg.Attachments
+	msg.Attachments = attachmentIDsOnly(hydrated)
 	if err := s.messages.Create(ctx, msg); err != nil {
 		return nil, err
 	}
+	msg.Attachments = hydrated
 
 	// Every message updates last activity on the conversation.
 	conv.LastMessageAt = msg.CreatedAt
@@ -836,6 +867,78 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, conv.SectorID, contracts.NewMessagePayload(msg))
 	}
 	return msg, nil
+}
+
+// hydrateMessages fills each message's attachments with their full media metadata
+// (url/content_type/filename/size) from the attachments domain — a single batch
+// lookup across all messages (no N+1) — and derives message_type from the
+// attachment when the message has an attachment and no text. Persistence is
+// unchanged (the stored message keeps attachment ids); this is the read boundary.
+func (s *Service) hydrateMessages(ctx context.Context, msgs ...*entity.Message) {
+	if s.attachments == nil || len(msgs) == 0 {
+		return
+	}
+	var ids []string
+	for _, m := range msgs {
+		for _, a := range m.Attachments {
+			if a.ID != "" {
+				ids = append(ids, a.ID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	resolved, err := s.attachments.HydrateAttachments(ctx, ids)
+	if err != nil || len(resolved) == 0 {
+		return // best-effort: never fail a read because hydration hiccuped
+	}
+	for _, m := range msgs {
+		for i, a := range m.Attachments {
+			if full, ok := resolved[a.ID]; ok {
+				m.Attachments[i] = full
+			}
+		}
+		m.MessageType = deriveMessageType(m)
+	}
+}
+
+// attachmentIDs returns the non-empty attachment ids of a message's attachments.
+func attachmentIDs(atts []entity.Attachment) []string {
+	ids := make([]string, 0, len(atts))
+	for _, a := range atts {
+		if a.ID != "" {
+			ids = append(ids, a.ID)
+		}
+	}
+	return ids
+}
+
+// attachmentIDsOnly reduces attachments to id-only references for persistence
+// (metadata is rehydrated at the read boundary, never stored on the message).
+func attachmentIDsOnly(atts []entity.Attachment) []entity.Attachment {
+	if len(atts) == 0 {
+		return atts
+	}
+	out := make([]entity.Attachment, len(atts))
+	for i, a := range atts {
+		out[i] = entity.Attachment{ID: a.ID}
+	}
+	return out
+}
+
+// deriveMessageType keeps an explicit text/template/system type, but for a media
+// message with no text it derives the type from the (hydrated) first attachment's
+// content type, so an attachment-only message is never reported as "text".
+func deriveMessageType(m *entity.Message) entity.MessageType {
+	if strings.TrimSpace(m.Text) != "" || len(m.Attachments) == 0 {
+		return m.MessageType
+	}
+	switch m.MessageType {
+	case entity.MessageTemplate, entity.MessageSystem:
+		return m.MessageType // honor an explicit non-media type
+	}
+	return entity.MessageTypeForContentType(m.Attachments[0].ContentType)
 }
 
 // recordEvent appends a timeline event. Failures are swallowed (best-effort

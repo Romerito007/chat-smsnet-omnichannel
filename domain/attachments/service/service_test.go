@@ -32,6 +32,15 @@ func (r *fakeAttachRepo) Update(_ context.Context, a *entity.Attachment) error {
 	r.items[a.ID] = a
 	return nil
 }
+func (r *fakeAttachRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.Attachment, error) {
+	var out []*entity.Attachment
+	for _, id := range ids {
+		if a, ok := r.items[id]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
 func (r *fakeAttachRepo) FindByID(_ context.Context, id string) (*entity.Attachment, error) {
 	a, ok := r.items[id]
 	if !ok {
@@ -171,6 +180,69 @@ func TestRequestUploadURL_AvatarRejectsNonImageAndOversize(t *testing.T) {
 		Avatar: &contracts.AvatarTarget{OwnerType: "robots", OwnerID: "c1"},
 	}); apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("invalid owner type must be rejected, got %v", err)
+	}
+}
+
+// HydrateAttachments fills full media metadata + a JWT-gated download URL, and
+// ValidateMessageAttachments rejects unknown/unconfirmed ids.
+func TestHydrateAndValidateMessageAttachments(t *testing.T) {
+	repo := newRepo()
+	svc := newSvc(repo, &fakeConvRepo{}, &fakeMsgRepo{}, &fakeStorage{provider: "s3"},
+		Config{DownloadBaseURL: "http://api"})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["a1"] = &entity.Attachment{ID: "a1", TenantID: "t1", ContentType: "image/jpeg", Filename: "p.jpg", Size: 1200, Status: entity.StatusReady}
+	repo.items["a2"] = &entity.Attachment{ID: "a2", TenantID: "t1", ContentType: "audio/mpeg", Filename: "v.mp3", Size: 900, Status: entity.StatusReady}
+	repo.items["pending"] = &entity.Attachment{ID: "pending", TenantID: "t1", ContentType: "image/png", Status: entity.StatusPending}
+
+	got, err := svc.HydrateAttachments(ctx, []string{"a1", "a2", "missing"})
+	if err != nil {
+		t.Fatalf("hydrate: %v", err)
+	}
+	a1 := got["a1"]
+	if a1.URL != "http://api/v1/attachments/a1/download" || a1.ContentType != "image/jpeg" || a1.Filename != "p.jpg" || a1.Size != 1200 {
+		t.Errorf("a1 not hydrated: %+v", a1)
+	}
+	if _, ok := got["missing"]; ok {
+		t.Errorf("missing id should be absent from the map")
+	}
+
+	if err := svc.ValidateMessageAttachments(ctx, []string{"a1", "a2"}); err != nil {
+		t.Errorf("ready ids must validate: %v", err)
+	}
+	if apperror.From(svc.ValidateMessageAttachments(ctx, []string{"a1", "missing"})).Code != apperror.CodeValidation {
+		t.Errorf("unknown id must be a validation error")
+	}
+	if apperror.From(svc.ValidateMessageAttachments(ctx, []string{"pending"})).Code != apperror.CodeValidation {
+		t.Errorf("unconfirmed id must be a validation error")
+	}
+}
+
+// Confirm preserves the metadata captured at upload-url and never leaves a ready
+// attachment with an empty content_type.
+func TestConfirm_PreservesMetadataAndContentType(t *testing.T) {
+	repo := newRepo()
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, &fakeStorage{provider: "s3"}, Config{DownloadBaseURL: "http://api"})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["a1"] = &entity.Attachment{ID: "a1", TenantID: "t1", ConversationID: "cv1", ContentType: "image/png", Filename: "p.png", Size: 50, Status: entity.StatusPending}
+	att, err := svc.Confirm(ctx, contracts.ConfirmUpload{AttachmentID: "a1"})
+	if err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if att.Status != entity.StatusReady || att.ContentType != "image/png" || att.Filename != "p.png" || att.Size != 50 {
+		t.Errorf("confirm lost metadata: %+v", att)
+	}
+
+	// A record that somehow has no content_type defaults instead of staying empty.
+	repo.items["a2"] = &entity.Attachment{ID: "a2", TenantID: "t1", ConversationID: "cv1", Status: entity.StatusPending}
+	att2, err := svc.Confirm(ctx, contracts.ConfirmUpload{AttachmentID: "a2"})
+	if err != nil {
+		t.Fatalf("confirm a2: %v", err)
+	}
+	if att2.ContentType == "" {
+		t.Errorf("ready attachment must never have empty content_type")
 	}
 }
 

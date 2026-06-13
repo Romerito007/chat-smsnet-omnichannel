@@ -102,4 +102,28 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*entity.Attachmen
 	return toEntity(&d), nil
 }
 
+func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]*entity.Attachment, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	cur, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}, "tenant_id": tenantID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []*entity.Attachment
+	for cur.Next(ctx) {
+		var d models.AttachmentRecord
+		if err := cur.Decode(&d); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, toEntity(&d))
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
 var _ repository.Repository = (*Repository)(nil)

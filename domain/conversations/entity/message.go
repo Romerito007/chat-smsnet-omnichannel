@@ -1,6 +1,9 @@
 package entity
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // SenderType identifies who authored a message.
 type SenderType string
@@ -30,6 +33,7 @@ const (
 	MessageImage    MessageType = "image"
 	MessageFile     MessageType = "file"
 	MessageAudio    MessageType = "audio"
+	MessageVideo    MessageType = "video"
 	MessageTemplate MessageType = "template"
 	MessageSystem   MessageType = "system"
 )
@@ -37,10 +41,25 @@ const (
 // Valid reports whether t is a known message type.
 func (t MessageType) Valid() bool {
 	switch t {
-	case MessageText, MessageImage, MessageFile, MessageAudio, MessageTemplate, MessageSystem:
+	case MessageText, MessageImage, MessageFile, MessageAudio, MessageVideo, MessageTemplate, MessageSystem:
 		return true
 	}
 	return false
+}
+
+// MessageTypeForContentType derives the media message type from a MIME type:
+// image/* -> image, audio/* -> audio, video/* -> video, anything else -> file.
+func MessageTypeForContentType(contentType string) MessageType {
+	switch {
+	case strings.HasPrefix(contentType, "image/"):
+		return MessageImage
+	case strings.HasPrefix(contentType, "audio/"):
+		return MessageAudio
+	case strings.HasPrefix(contentType, "video/"):
+		return MessageVideo
+	default:
+		return MessageFile
+	}
 }
 
 // DeliveryStatus tracks outbound delivery, owned by the channels domain.
