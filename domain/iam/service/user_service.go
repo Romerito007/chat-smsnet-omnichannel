@@ -249,6 +249,17 @@ func (s *UserService) List(ctx context.Context, page shared.PageRequest) ([]*ent
 	return s.users.List(ctx, page.Normalize())
 }
 
+// ListBySector returns the active users that belong to the sector — the exact set
+// the routing assign accepts for it (same source of truth: the user's sector_ids).
+// Used to filter the assignable-agents directory so the front never receives an
+// agent the assign would reject for membership.
+func (s *UserService) ListBySector(ctx context.Context, sectorID string) ([]*entity.User, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	return s.users.ListBySector(ctx, sectorID)
+}
+
 // ResolveEffective computes a user's effective permission set and sector scope
 // from its roles. Scope is ScopeAll when any role grants it; otherwise ScopeOwn.
 func ResolveEffective(roles []*entity.Role) ([]authz.Permission, authz.SectorScope) {

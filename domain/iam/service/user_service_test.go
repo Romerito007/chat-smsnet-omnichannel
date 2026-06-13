@@ -219,3 +219,19 @@ func isCode(err error, code apperror.Code) bool {
 	appErr := apperror.From(err)
 	return appErr != nil && appErr.Code == code
 }
+
+func TestListBySector_OnlySectorMembers(t *testing.T) {
+	svc, repo := newUserService()
+	ctx := tenantCtx("t1")
+	repo.users["a"] = &entity.User{ID: "a", TenantID: "t1", Status: entity.StatusActive, SectorIDs: []string{"s1", "s2"}}
+	repo.users["b"] = &entity.User{ID: "b", TenantID: "t1", Status: entity.StatusActive, SectorIDs: []string{"s2"}}
+	repo.users["c"] = &entity.User{ID: "c", TenantID: "t2", Status: entity.StatusActive, SectorIDs: []string{"s1"}} // other tenant
+
+	got, err := svc.ListBySector(ctx, "s1")
+	if err != nil {
+		t.Fatalf("list by sector: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "a" {
+		t.Errorf("want only agent a (member of s1, tenant t1), got %+v", got)
+	}
+}

@@ -6,6 +6,7 @@ package agents
 
 import (
 	"net/http"
+	"strings"
 
 	iamentity "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/entity"
 	iamservice "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/service"
@@ -36,8 +37,20 @@ type assignableAgent struct {
 }
 
 // List handles GET /v1/agents: the active tenant users merged with presence.
+// With ?sector_id=<id> it returns only the agents assignable to that sector — the
+// exact set the routing assign accepts (membership lives only in the backend), so
+// the assignment selector receives no agent it would have to discard.
 func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
-	users, err := c.users.List(r.Context(), shared.PageRequest{Limit: shared.MaxPageSize})
+	sectorID := strings.TrimSpace(r.URL.Query().Get("sector_id"))
+	var (
+		users []*iamentity.User
+		err   error
+	)
+	if sectorID != "" {
+		users, err = c.users.ListBySector(r.Context(), sectorID)
+	} else {
+		users, err = c.users.List(r.Context(), shared.PageRequest{Limit: shared.MaxPageSize})
+	}
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return

@@ -2878,6 +2878,13 @@ paths:
     /v1/agents:
         get:
             operationId: getAgents
+            parameters:
+                - description: Only agents assignable to this sector (matches what assign accepts).
+                  in: query
+                  name: sector_id
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:

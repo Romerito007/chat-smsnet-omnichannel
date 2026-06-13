@@ -50,6 +50,7 @@ func registerOrg(p *paths) {
 		reqBody: body(ref("SetStatusRequest")), responses: M{"200": jsonResp("Presence", ref("Presence"))}}))
 	p.add("GET", "/v1/agents", op(opConfig{tag: "presence",
 		summary:   "List assignable agents (id, name, presence) for the assignment selector — conversation.assign",
+		params:    []M{queryParam("sector_id", "Only agents assignable to this sector (matches what assign accepts).")},
 		responses: M{"200": jsonResp("Assignable agents", dataArr(ref("AssignableAgent")))}}))
 
 	p.add("GET", "/v1/sectors/{id}/business-status", op(opConfig{tag: "businesshours", summary: "Sector open/closed status",
