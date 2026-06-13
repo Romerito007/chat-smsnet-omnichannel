@@ -153,6 +153,51 @@ func TestRequestUploadURL_RejectsBadTypeAndSize(t *testing.T) {
 	}
 }
 
+// Empty AllowedContentTypes means "any" (per the config contract): every content
+// type is accepted, while the size limit still applies.
+func TestRequestUploadURL_EmptyAllowlistAcceptsAnyType(t *testing.T) {
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	svc := newSvc(newRepo(), conv, &fakeMsgRepo{}, &fakeStorage{provider: "s3"},
+		Config{MaxSizeBytes: 26214400}) // AllowedContentTypes nil = any
+
+	for _, ct := range []string{"image/jpeg", "video/mp4", "audio/mpeg", "application/pdf"} {
+		_, target, err := svc.RequestUploadURL(ctxAuth(authz.ScopeAll, nil, "u1"), contracts.CreateUploadURL{
+			ConversationID: "cv1", Filename: "f", ContentType: ct, Size: 500,
+		})
+		if err != nil {
+			t.Errorf("empty allowlist should accept %q, got %v", ct, err)
+		}
+		if target.URL == "" {
+			t.Errorf("expected an upload url for %q", ct)
+		}
+	}
+
+	// The size limit still applies even with an empty allowlist.
+	if _, _, err := svc.RequestUploadURL(ctxAuth(authz.ScopeAll, nil, "u1"), contracts.CreateUploadURL{
+		ConversationID: "cv1", Filename: "big", ContentType: "image/jpeg", Size: 26214401,
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("expected oversize rejection, got %v", err)
+	}
+}
+
+// A wildcard subtype (image/*) matches its types and rejects others.
+func TestRequestUploadURL_WildcardSubtype(t *testing.T) {
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	svc := newSvc(newRepo(), conv, &fakeMsgRepo{}, &fakeStorage{provider: "s3"},
+		Config{MaxSizeBytes: 1000, AllowedContentTypes: []string{"image/*"}})
+
+	if _, _, err := svc.RequestUploadURL(ctxAuth(authz.ScopeAll, nil, "u1"), contracts.CreateUploadURL{
+		ConversationID: "cv1", Filename: "p.jpg", ContentType: "image/jpeg", Size: 100,
+	}); err != nil {
+		t.Errorf("image/* should accept image/jpeg, got %v", err)
+	}
+	if _, _, err := svc.RequestUploadURL(ctxAuth(authz.ScopeAll, nil, "u1"), contracts.CreateUploadURL{
+		ConversationID: "cv1", Filename: "v.mp4", ContentType: "video/mp4", Size: 100,
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("image/* should reject video/mp4, got %v", err)
+	}
+}
+
 func TestRequestUploadURL_EnforcesConversationAccess(t *testing.T) {
 	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s9"}}
 	svc := newSvc(newRepo(), conv, &fakeMsgRepo{}, &fakeStorage{provider: "local"}, Config{})

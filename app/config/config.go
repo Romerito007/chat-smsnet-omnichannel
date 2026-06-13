@@ -481,6 +481,13 @@ func getDuration(key string, def time.Duration) time.Duration {
 
 func getList(key string, def []string) []string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
+		// Defensive: strip a leaked inline comment. godotenv only strips an inline
+		// "# comment" when the value before it is non-empty, so a line like
+		// `KEY=    # note` yields the comment AS the value. These keys are
+		// comma-lists where '#' is never a valid token, so cut at the first '#'.
+		if i := strings.IndexByte(v, '#'); i >= 0 {
+			v = v[:i]
+		}
 		parts := strings.Split(v, ",")
 		out := make([]string, 0, len(parts))
 		for _, p := range parts {
