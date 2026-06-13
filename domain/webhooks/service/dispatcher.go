@@ -37,21 +37,29 @@ func NewDispatcher(
 }
 
 // Emit creates a delivery record per matching subscription and enqueues each for
-// asynchronous, signed delivery. Unknown events and tenants with no matching
-// subscription are no-ops.
-func (d *Dispatcher) Emit(ctx context.Context, tenantID string, event string, payload any) {
-	if tenantID == "" || !entity.IsSupportedEvent(event) {
+// asynchronous, signed delivery. The internal event is mapped to its wire name;
+// delivery is filtered by the subscription's events[] (only what it subscribed to)
+// AND its sector scopes. Unknown events and no-match tenants are no-ops.
+func (d *Dispatcher) Emit(ctx context.Context, tenantID, event, sectorID string, payload any) {
+	if tenantID == "" {
 		return
 	}
-	subs, err := d.subs.ListEnabledByEvent(ctx, tenantID, event)
+	wire, ok := entity.WireEvent(event)
+	if !ok {
+		return // not a webhook event
+	}
+	subs, err := d.subs.ListEnabledByEvent(ctx, tenantID, wire)
 	if err != nil || len(subs) == 0 {
 		return
 	}
 
 	now := d.clock.Now()
 	for _, sub := range subs {
+		if !scopeAllows(sub.Scopes, sectorID) {
+			continue // out of the subscription's sector scope
+		}
 		id := shared.NewID()
-		body, berr := buildEnvelope(id, event, now, payload)
+		body, berr := buildEnvelope(id, wire, now, payload)
 		if berr != nil {
 			continue
 		}
@@ -59,7 +67,7 @@ func (d *Dispatcher) Emit(ctx context.Context, tenantID string, event string, pa
 			ID:        id,
 			TenantID:  tenantID,
 			WebhookID: sub.ID,
-			Event:     event,
+			Event:     wire,
 			Payload:   body,
 			Status:    entity.DeliveryPending,
 			CreatedAt: now,
@@ -72,6 +80,24 @@ func (d *Dispatcher) Emit(ctx context.Context, tenantID string, event string, pa
 			_ = d.enqueuer.EnqueueDeliver(contracts.DeliverTask{TenantID: tenantID, DeliveryID: delivery.ID})
 		}
 	}
+}
+
+// scopeAllows applies a subscription's sector scopes: empty scopes = every sector;
+// otherwise the event's sector must be listed. Events with no sector (e.g.
+// automation) are delivered only to unscoped subscriptions.
+func scopeAllows(scopes []string, sectorID string) bool {
+	if len(scopes) == 0 {
+		return true
+	}
+	if sectorID == "" {
+		return false
+	}
+	for _, s := range scopes {
+		if s == sectorID {
+			return true
+		}
+	}
+	return false
 }
 
 var _ shared.WebhookEmitter = (*Dispatcher)(nil)

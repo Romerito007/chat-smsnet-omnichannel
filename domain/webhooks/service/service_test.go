@@ -114,7 +114,9 @@ func TestDispatcher_EmitCreatesDeliveryAndEnqueues(t *testing.T) {
 	enq := &fakeEnqueuer{}
 	d := NewDispatcher(subs, del, enq, fixedClock{t: time.Unix(1700000000, 0).UTC()})
 
-	d.Emit(ctxTenant(), "t1", entity.EventConversationCreated, map[string]any{"id": "conv1"})
+	// Emit takes the INTERNAL event key (dot); the dispatcher maps it to the wire
+	// name (entity.EventConversationCreated) that the subscription registered for.
+	d.Emit(ctxTenant(), "t1", "conversation.created", "", map[string]any{"id": "conv1"})
 
 	if len(del.created) != 1 {
 		t.Fatalf("expected 1 delivery, got %d", len(del.created))
@@ -129,11 +131,45 @@ func TestDispatcher_EmitCreatesDeliveryAndEnqueues(t *testing.T) {
 	}
 }
 
+func TestDispatcher_SectorScopeFilters(t *testing.T) {
+	scoped := &entity.WebhookSubscription{ID: "scoped", TenantID: "t1", Enabled: true,
+		Events: []string{entity.EventConversationCreated}, Scopes: []string{"s1"}}
+	all := &entity.WebhookSubscription{ID: "all", TenantID: "t1", Enabled: true,
+		Events: []string{entity.EventConversationCreated}} // no scopes = every sector
+	subs := &fakeSubs{byEvent: map[string][]*entity.WebhookSubscription{
+		entity.EventConversationCreated: {scoped, all},
+	}}
+
+	webhookIDs := func(sectorID string) []string {
+		del := newFakeDeliveries()
+		d := NewDispatcher(subs, del, &fakeEnqueuer{}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+		d.Emit(ctxTenant(), "t1", "conversation.created", sectorID, map[string]any{"id": "c1"})
+		ids := make([]string, 0, len(del.created))
+		for _, dlv := range del.created {
+			ids = append(ids, dlv.WebhookID)
+		}
+		return ids
+	}
+
+	// In-scope sector → both the scoped and the unscoped subscription receive it.
+	if got := webhookIDs("s1"); len(got) != 2 {
+		t.Errorf("sector s1: want 2 deliveries (scoped + all), got %d (%v)", len(got), got)
+	}
+	// Out-of-scope sector → only the unscoped subscription.
+	if got := webhookIDs("s2"); len(got) != 1 || got[0] != "all" {
+		t.Errorf("sector s2: want only the unscoped sub, got %v", got)
+	}
+	// No sector → only the unscoped subscription (scoped never matches "").
+	if got := webhookIDs(""); len(got) != 1 || got[0] != "all" {
+		t.Errorf("no sector: want only the unscoped sub, got %v", got)
+	}
+}
+
 func TestDispatcher_UnsupportedEventIgnored(t *testing.T) {
 	del := newFakeDeliveries()
 	enq := &fakeEnqueuer{}
 	d := NewDispatcher(&fakeSubs{byEvent: map[string][]*entity.WebhookSubscription{}}, del, enq, fixedClock{})
-	d.Emit(ctxTenant(), "t1", "not.a.real.event", nil)
+	d.Emit(ctxTenant(), "t1", "not.a.real.event", "", nil)
 	if len(del.created) != 0 || len(enq.items) != 0 {
 		t.Errorf("unsupported event should be a no-op")
 	}

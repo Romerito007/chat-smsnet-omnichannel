@@ -406,7 +406,7 @@ func (s *Service) markRunFailed(ctx context.Context, run *entity.AutomationRun, 
 	run.Error = errMsg
 	run.UpdatedAt = s.clock.Now()
 	_ = s.runs.Update(ctx, run)
-	s.webhooks.Emit(ctx, run.TenantID, webhookAutomationFailed, runPayload(run))
+	s.webhooks.Emit(ctx, run.TenantID, webhookAutomationFailed, "", runPayload(run))
 }
 
 // completeRun marks a run completed and emits the automation.completed webhook.
@@ -416,7 +416,7 @@ func (s *Service) completeRun(ctx context.Context, run *entity.AutomationRun) er
 	if err := s.runs.Update(ctx, run); err != nil {
 		return err
 	}
-	s.webhooks.Emit(ctx, run.TenantID, webhookAutomationCompleted, runPayload(run))
+	s.webhooks.Emit(ctx, run.TenantID, webhookAutomationCompleted, "", runPayload(run))
 	return nil
 }
 

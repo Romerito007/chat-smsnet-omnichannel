@@ -125,7 +125,7 @@ func (p *fakePublisher) has(event string) bool {
 
 type fakeWebhooks struct{ events []string }
 
-func (w *fakeWebhooks) Emit(_ context.Context, _ string, event string, _ any) {
+func (w *fakeWebhooks) Emit(_ context.Context, _, event, _ string, _ any) {
 	w.events = append(w.events, event)
 }
 func (w *fakeWebhooks) has(event string) bool {

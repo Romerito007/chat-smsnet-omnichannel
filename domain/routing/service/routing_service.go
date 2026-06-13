@@ -214,7 +214,7 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 		if fromQueue != "" {
 			s.queueStats.QueueChanged(ctx, fromSector, fromQueue)
 		}
-		s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationTransferred, convcontracts.NewConversationPayload(conv))
+		s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationTransferred, conv.SectorID, convcontracts.NewConversationPayload(conv))
 		_ = s.auditor.Record(ctx, shared.AuditEntry{
 			Action: "conversation.transferred", ResourceType: "conversation", ResourceID: conv.ID,
 			Data: map[string]any{
@@ -452,7 +452,7 @@ func (s *Service) applyAssignment(ctx context.Context, conv *conventity.Conversa
 	s.publishAssigned(ctx, conv, agentID)
 	// The conversation left the queue (waiting--) and is now assigned (assigned++).
 	s.queueStats.QueueChanged(ctx, conv.SectorID, fromQueue)
-	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationAssigned, convcontracts.NewConversationPayload(conv))
+	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationAssigned, conv.SectorID, convcontracts.NewConversationPayload(conv))
 	s.notifier.Notify(ctx, shared.NotifyInput{
 		TenantID: conv.TenantID, UserID: agentID,
 		Type:  "conversation.assigned_to_you",

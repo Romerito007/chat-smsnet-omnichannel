@@ -234,7 +234,7 @@ func (s *Service) fire(ctx context.Context, t *entity.SLATracking, conv *convent
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(t.TenantID, t.ConversationID), event, payload)
 	_ = s.publisher.Publish(ctx, shared.TopicTenant(t.TenantID), event, payload)
 	if breach {
-		s.webhooks.Emit(ctx, t.TenantID, contracts.RealtimeSLABreached, payload)
+		s.webhooks.Emit(ctx, t.TenantID, contracts.RealtimeSLABreached, conv.SectorID, payload)
 	}
 	// Notify the assigned agent (in-app + maybe email per their preference).
 	if conv.AssignedTo != "" {

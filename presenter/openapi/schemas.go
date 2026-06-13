@@ -298,27 +298,34 @@ func schemas() M {
 		// ── webhooks ───────────────────────────────────────────────────────────
 		"Webhook": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),
-			"events": arr(str()), "scopes": arr(str()), "has_secret": boolean(), "enabled": boolean(),
+			"events": arr(webhookEventEnum()), "scopes": arr(str()), "has_secret": boolean(), "enabled": boolean(),
 			"rate_limit_per_minute": integer(), "created_by": str(), "created_at": dateTime(), "updated_at": dateTime(),
 		}),
 		"WebhookCreated": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),
-			"events": arr(str()), "scopes": arr(str()), "has_secret": boolean(), "enabled": boolean(),
+			"events": arr(webhookEventEnum()), "scopes": arr(str()), "has_secret": boolean(), "enabled": boolean(),
 			"rate_limit_per_minute": integer(), "created_at": dateTime(), "updated_at": dateTime(),
 			"secret": str(),
 		}),
 		"CreateWebhookRequest": object(M{
-			"name": str(), "url": str(), "events": arr(str()), "scopes": arr(str()),
+			"name": str(), "url": str(), "events": arr(webhookEventEnum()),
+			"scopes": arr(str()), // sector ids; empty = all sectors
 			"secret": str(), "enabled": boolean(), "rate_limit_per_minute": integer(),
 		}, "url", "events"),
 		"UpdateWebhookRequest": object(M{
-			"name": str(), "url": str(), "events": arr(str()), "scopes": arr(str()),
+			"name": str(), "url": str(), "events": arr(webhookEventEnum()), "scopes": arr(str()),
 			"enabled": boolean(), "rate_limit_per_minute": integer(),
 		}),
 		"WebhookDelivery": object(M{
-			"id": str(), "webhook_id": str(), "event": str(), "payload": freeObject(), "status": str(),
+			"id": str(), "webhook_id": str(), "event": webhookEventEnum(), "payload": ref("WebhookEnvelope"), "status": str(),
 			"attempts": integer(), "last_error": str(), "next_retry_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(),
+		}),
+		// WebhookEnvelope is the exact JSON body delivered (and HMAC-signed) for
+		// every event. data is the event payload: a conversation object for the
+		// conversation_* events, a message object for message_created, etc.
+		"WebhookEnvelope": object(M{
+			"id": str(), "event": webhookEventEnum(), "created_at": dateTime(), "data": freeObject(),
 		}),
 
 		// ── copilot ────────────────────────────────────────────────────────────

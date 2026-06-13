@@ -97,7 +97,7 @@ func newRouter(subs *fakeSubs) (http.Handler, auth.TokenManager) {
 
 func TestWebhooks_List_HappyPathAndCursorShape(t *testing.T) {
 	subs := &fakeSubs{items: []*wentity.WebhookSubscription{
-		{ID: "w1", TenantID: "t1", URL: "https://x", Events: []string{"conversation.created"}, CreatedAt: time.Now()},
+		{ID: "w1", TenantID: "t1", URL: "https://x", Events: []string{"conversation_created"}, CreatedAt: time.Now()},
 	}}
 	r, tm := newRouter(subs)
 	tok := httpharness.Token(t, tm, "t1", "u1", authz.WebhookManage)
@@ -148,7 +148,7 @@ func TestWebhooks_Create_HappyPathReturnsSecretOnce(t *testing.T) {
 	r, tm := newRouter(subs)
 	tok := httpharness.Token(t, tm, "t1", "u1", authz.WebhookManage)
 
-	body := map[string]any{"name": "crm", "url": "https://crm.example/hook", "events": []string{"conversation.created"}}
+	body := map[string]any{"name": "crm", "url": "https://crm.example/hook", "events": []string{"conversation_created"}}
 	rec := httpharness.Do(t, r, http.MethodPost, "/webhooks", tok, body)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (%s)", rec.Code, rec.Body.String())

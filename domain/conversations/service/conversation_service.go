@@ -201,7 +201,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 	s.recordEvent(ctx, conv, entity.EventConversationCreated, nil)
 	s.publishConversation(ctx, conv)
 	s.publishLifecycle(ctx, conv, contracts.RealtimeConversationCreated)
-	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationCreated, contracts.NewConversationPayload(conv))
+	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationCreated, conv.SectorID, contracts.NewConversationPayload(conv))
 	s.sla.OnConversationCreated(ctx, conv)
 	if conv.Status == entity.StatusQueued && conv.QueueID != "" {
 		s.queueStats.QueueChanged(ctx, conv.SectorID, conv.QueueID) // entered the queue
@@ -436,7 +436,7 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 	})
 	s.publishConversation(ctx, conv)
 	s.publishLifecycle(ctx, conv, contracts.RealtimeConversationClosed)
-	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
+	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, conv.SectorID, contracts.NewConversationPayload(conv))
 	s.sla.OnResolved(ctx, conv, now)
 	s.csat.OnConversationClosed(ctx, conv)
 	if wasQueued {
@@ -475,7 +475,7 @@ func (s *Service) CloseInactive(ctx context.Context, idleFor time.Duration) (int
 		s.recordEvent(ctx, conv, entity.EventConversationClosed, map[string]any{"reason": "inactivity"})
 		s.publishConversation(ctx, conv)
 		s.publishLifecycle(ctx, conv, contracts.RealtimeConversationClosed)
-		s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, contracts.NewConversationPayload(conv))
+		s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, conv.SectorID, contracts.NewConversationPayload(conv))
 		s.sla.OnResolved(ctx, conv, now)
 		s.csat.OnConversationClosed(ctx, conv)
 		if wasQueued {
@@ -820,7 +820,7 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 
 	// Outbound webhook: only real messages, not internal notes.
 	if eventType == entity.EventMessageCreated {
-		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, contracts.NewMessagePayload(msg))
+		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, conv.SectorID, contracts.NewMessagePayload(msg))
 	}
 	return msg, nil
 }

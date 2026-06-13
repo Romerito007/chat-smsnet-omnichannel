@@ -1101,6 +1101,15 @@ components:
                     type: boolean
                 events:
                     items:
+                        enum:
+                            - conversation_created
+                            - conversation_status_changed
+                            - conversation_assigned
+                            - conversation_transferred
+                            - message_created
+                            - sla_breached
+                            - automation_completed
+                            - automation_failed
                         type: string
                     type: array
                 name:
@@ -2632,6 +2641,15 @@ components:
                     type: boolean
                 events:
                     items:
+                        enum:
+                            - conversation_created
+                            - conversation_status_changed
+                            - conversation_assigned
+                            - conversation_transferred
+                            - message_created
+                            - sla_breached
+                            - automation_completed
+                            - automation_failed
                         type: string
                     type: array
                 name:
@@ -2716,6 +2734,15 @@ components:
                     type: boolean
                 events:
                     items:
+                        enum:
+                            - conversation_created
+                            - conversation_status_changed
+                            - conversation_assigned
+                            - conversation_transferred
+                            - message_created
+                            - sla_breached
+                            - automation_completed
+                            - automation_failed
                         type: string
                     type: array
                 has_secret:
@@ -2747,6 +2774,15 @@ components:
                     type: boolean
                 events:
                     items:
+                        enum:
+                            - conversation_created
+                            - conversation_status_changed
+                            - conversation_assigned
+                            - conversation_transferred
+                            - message_created
+                            - sla_breached
+                            - automation_completed
+                            - automation_failed
                         type: string
                     type: array
                 has_secret:
@@ -2779,6 +2815,15 @@ components:
                     format: date-time
                     type: string
                 event:
+                    enum:
+                        - conversation_created
+                        - conversation_status_changed
+                        - conversation_assigned
+                        - conversation_transferred
+                        - message_created
+                        - sla_breached
+                        - automation_completed
+                        - automation_failed
                     type: string
                 id:
                     type: string
@@ -2788,14 +2833,35 @@ components:
                     format: date-time
                     type: string
                 payload:
-                    additionalProperties: true
-                    type: object
+                    $ref: '#/components/schemas/WebhookEnvelope'
                 status:
                     type: string
                 updated_at:
                     format: date-time
                     type: string
                 webhook_id:
+                    type: string
+            type: object
+        WebhookEnvelope:
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                data:
+                    additionalProperties: true
+                    type: object
+                event:
+                    enum:
+                        - conversation_created
+                        - conversation_status_changed
+                        - conversation_assigned
+                        - conversation_transferred
+                        - message_created
+                        - sla_breached
+                        - automation_completed
+                        - automation_failed
+                    type: string
+                id:
                     type: string
             type: object
     securitySchemes:

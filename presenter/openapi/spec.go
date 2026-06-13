@@ -37,6 +37,16 @@ func conversationStatusEnum() M {
 		"waiting_agent", "transferred", "resolved", "closed", "archived")
 }
 
+// webhookEventEnum is the closed set of outbound-webhook wire events
+// (domain/webhooks/entity.SupportedEvents), following Chatwoot's underscore
+// convention. Names Chatwoot also has are identical (conversation_created,
+// conversation_status_changed, message_created).
+func webhookEventEnum() M {
+	return enum("conversation_created", "conversation_status_changed",
+		"conversation_assigned", "conversation_transferred", "message_created",
+		"sla_breached", "automation_completed", "automation_failed")
+}
+
 func object(props M, required ...string) M {
 	o := M{"type": "object", "properties": props}
 	if len(required) > 0 {
