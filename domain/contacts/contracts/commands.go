@@ -1,6 +1,8 @@
 // Package contracts holds the contact service inputs.
 package contracts
 
+import "context"
+
 // UpsertFromInbound carries the basic, locally-provided contact fields extracted
 // from an inbound channel message. No provider enrichment is performed.
 type UpsertFromInbound struct {
@@ -39,4 +41,12 @@ type UpdateContact struct {
 	Tags        *[]string
 	Notes       *string
 	ExternalIDs *[]ExternalIdentity
+}
+
+// TagResolver maps tag refs (id or name) to canonical ids, so contact tags are
+// normalized like conversation tags. It is implemented by the conversationtools
+// tag service. Lenient resolution (strict=false) keeps free-text labels that
+// don't match any catalog tag. Optional: when unset, tags are stored as-is.
+type TagResolver interface {
+	ResolveTags(ctx context.Context, refs []string, strict bool) ([]string, error)
 }

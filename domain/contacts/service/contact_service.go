@@ -17,6 +17,7 @@ type Service struct {
 	repo    repository.ContactRepository
 	clock   shared.Clock
 	auditor shared.Auditor
+	tags    contracts.TagResolver
 }
 
 // New builds the service.
@@ -33,6 +34,27 @@ func (s *Service) SetAuditor(a shared.Auditor) {
 	if a != nil {
 		s.auditor = a
 	}
+}
+
+// SetTagResolver wires the tag-catalog resolver so contact tags are normalized to
+// canonical ids (catalog names -> ids; free-text labels kept). Optional.
+func (s *Service) SetTagResolver(r contracts.TagResolver) {
+	if r != nil {
+		s.tags = r
+	}
+}
+
+// normalizeTags cleans the list and resolves catalog tag names to ids (lenient:
+// unknown free-text labels pass through), so contact.tags mirrors conversation.tags.
+func (s *Service) normalizeTags(ctx context.Context, tags []string) []string {
+	out := cleanList(tags)
+	if s.tags == nil || len(out) == 0 {
+		return out
+	}
+	if resolved, err := s.tags.ResolveTags(ctx, out, false); err == nil {
+		return resolved
+	}
+	return out
 }
 
 // Get returns a contact by id.
@@ -79,7 +101,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateContact) (*ent
 		Document:   document,
 		Email:      email,
 		Identities: toIdentities(cmd.ExternalIDs),
-		Tags:       cleanList(cmd.Tags),
+		Tags:       s.normalizeTags(ctx, cmd.Tags),
 		Notes:      strings.TrimSpace(cmd.Notes),
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -123,7 +145,7 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 		contact.Email = normalizeEmail(*cmd.Email)
 	}
 	if cmd.Tags != nil {
-		contact.Tags = cleanList(*cmd.Tags)
+		contact.Tags = s.normalizeTags(ctx, *cmd.Tags)
 	}
 	if cmd.Notes != nil {
 		contact.Notes = strings.TrimSpace(*cmd.Notes)

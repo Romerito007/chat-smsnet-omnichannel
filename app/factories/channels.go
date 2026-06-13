@@ -20,6 +20,8 @@ func channelRegistry() chcontracts.AdapterRegistry { return infrachannels.NewReg
 func ContactService(c *container.Container) *contactservice.Service {
 	svc := contactservice.New(contactrepo.New(c.Mongo.DB), clock)
 	svc.SetAuditor(AuditService(c))
+	// Normalize contact tags to canonical ids (catalog names -> ids, free labels kept).
+	svc.SetTagResolver(ConversationToolsTagService(c))
 	return svc
 }
 

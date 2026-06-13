@@ -20,7 +20,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 	// Global middleware chain (outermost first).
 	r.Use(middleware.Recover(c.Logger))
 	r.Use(middleware.Telemetry("http.server"))
-	r.Use(middleware.RequestID(c.Logger))
+	r.Use(middleware.RequestID(c.Logger, c.Config.LogRequestBody))
 	r.Use(middleware.CORS(c.Config.HTTP.AllowedOrigins))
 
 	// Health endpoints live outside /v1 and outside rate-limit scope.

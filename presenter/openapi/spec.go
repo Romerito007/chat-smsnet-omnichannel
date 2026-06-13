@@ -20,9 +20,17 @@ func integer() M        { return M{"type": "integer"} }
 func number() M         { return M{"type": "number"} }
 func dateTime() M       { return M{"type": "string", "format": "date-time"} }
 func arr(items M) M     { return M{"type": "array", "items": items} }
-func freeObject() M     { return M{"type": "object", "additionalProperties": true} }
-func stringMap() M      { return M{"type": "object", "additionalProperties": M{"type": "string"}} }
-func boolMap() M        { return M{"type": "object", "additionalProperties": M{"type": "boolean"}} }
+
+// tagIDArray documents the conversation/contact `tags` field, which always
+// stores canonical tag IDs (never names). Requests may send IDs or names; the
+// server resolves names to IDs, so what is stored and returned is always IDs.
+func tagIDArray() M {
+	return M{"type": "array", "items": str(),
+		"description": "Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs."}
+}
+func freeObject() M { return M{"type": "object", "additionalProperties": true} }
+func stringMap() M  { return M{"type": "object", "additionalProperties": M{"type": "string"}} }
+func boolMap() M    { return M{"type": "object", "additionalProperties": M{"type": "boolean"}} }
 func enum(vals ...string) M {
 	return M{"type": "string", "enum": anySlice(vals)}
 }

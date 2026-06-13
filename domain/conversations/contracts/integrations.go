@@ -7,12 +7,18 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 )
 
-// TagCatalog validates that tag ids belong to the tenant and are usable. It is
+// TagCatalog validates and resolves tags against the tenant's catalog. It is
 // implemented by the conversationtools domain and wired into the conversations
-// service so applying tags can reject unknown/disabled tags. Optional: when
-// unset, tag ids are accepted as-is.
+// service so applying tags can reject unknown/disabled tags and store canonical
+// ids. Optional: when unset, tags are accepted as-is.
 type TagCatalog interface {
 	ValidateTags(ctx context.Context, tagIDs []string) error
+	// ResolveTags maps each ref (a tag id OR a tag name) to its canonical id, so a
+	// conversation's tags array is ALWAYS ids. strict=true returns a validation
+	// error for an unknown/disabled ref (used for add); strict=false passes an
+	// unresolved ref through unchanged (used for remove, so a stale value can still
+	// be stripped). The result is de-duplicated.
+	ResolveTags(ctx context.Context, refs []string, strict bool) ([]string, error)
 }
 
 // CloseReasonPolicy reports whether a close reason requires a note. It is

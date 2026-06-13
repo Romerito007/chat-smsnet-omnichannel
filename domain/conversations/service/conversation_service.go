@@ -536,9 +536,22 @@ func (s *Service) ApplyTags(ctx context.Context, conversationID string, add, rem
 	if len(add) == 0 && len(remove) == 0 {
 		return nil, apperror.Validation("provide at least one tag to add or remove")
 	}
-	if len(add) > 0 && s.tags != nil {
-		if err := s.tags.ValidateTags(ctx, add); err != nil {
-			return nil, err
+	// Canonicalize to ids so conv.Tags is ALWAYS ids (never a name): add is strict
+	// (unknown tag -> 400), remove is lenient (a stale value still gets stripped).
+	if s.tags != nil {
+		if len(add) > 0 {
+			resolved, err := s.tags.ResolveTags(ctx, add, true)
+			if err != nil {
+				return nil, err
+			}
+			add = resolved
+		}
+		if len(remove) > 0 {
+			resolved, err := s.tags.ResolveTags(ctx, remove, false)
+			if err != nil {
+				return nil, err
+			}
+			remove = resolved
 		}
 	}
 

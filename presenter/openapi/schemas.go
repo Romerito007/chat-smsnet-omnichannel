@@ -88,7 +88,7 @@ func schemas() M {
 		"Conversation": object(M{
 			"id": str(), "tenant_id": str(), "contact_id": str(), "channel": str(),
 			"sector_id": str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
-			"priority": str(), "tags": arr(str()), "last_message_at": dateTime(),
+			"priority": str(), "tags": tagIDArray(), "last_message_at": dateTime(),
 			"unread_count": integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
 			"last_message": ref("LastMessage"),
@@ -112,11 +112,11 @@ func schemas() M {
 		}),
 		"CreateConversationRequest": object(M{
 			"contact_id": str(), "channel": str(), "sector_id": str(), "queue_id": str(),
-			"assigned_to": str(), "priority": str(), "tags": arr(str()),
+			"assigned_to": str(), "priority": str(), "tags": tagIDArray(),
 		}, "contact_id", "channel"),
 		"UpdateConversationRequest": object(M{
 			"sector_id": str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
-			"priority": str(), "tags": arr(str()),
+			"priority": str(), "tags": tagIDArray(),
 		}),
 		"Attachment": object(M{"id": str(), "url": str(), "content_type": str(), "filename": str(), "size": integer()}),
 		"Message": object(M{
@@ -136,7 +136,7 @@ func schemas() M {
 		"TransferRequest":     object(M{"sector_id": str(), "agent_id": str()}),
 		"EnqueueRequest":      object(M{"queue_id": str()}),
 		"RoutingRunRequest":   object(M{"conversation_id": str()}, "conversation_id"),
-		"ApplyTagsRequest":    object(M{"add": arr(str()), "remove": arr(str())}),
+		"ApplyTagsRequest":    object(M{"add": tagIDArray(), "remove": tagIDArray()}),
 
 		// ── channels ───────────────────────────────────────────────────────────
 		"Channel": object(M{
@@ -284,15 +284,15 @@ func schemas() M {
 		"Contact": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "phones": arr(str()),
 			"document": str(), "email": str(), "external_ids": arr(ref("ContactExternalID")),
-			"tags": arr(str()), "notes": str(), "created_at": dateTime(), "updated_at": dateTime(),
+			"tags": tagIDArray(), "notes": str(), "created_at": dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateContactRequest": object(M{
 			"name": str(), "phones": arr(str()), "document": str(), "email": str(),
-			"external_ids": arr(ref("ContactExternalID")), "tags": arr(str()), "notes": str(),
+			"external_ids": arr(ref("ContactExternalID")), "tags": tagIDArray(), "notes": str(),
 		}, "name"),
 		"UpdateContactRequest": object(M{
 			"name": str(), "phones": arr(str()), "document": str(), "email": str(),
-			"external_ids": arr(ref("ContactExternalID")), "tags": arr(str()), "notes": str(),
+			"external_ids": arr(ref("ContactExternalID")), "tags": tagIDArray(), "notes": str(),
 		}),
 
 		// ── webhooks ───────────────────────────────────────────────────────────
@@ -449,7 +449,7 @@ func schemas() M {
 		"SubmitCSATRequest": object(M{"score": integer(), "comment": str()}, "score"),
 
 		// ── search ─────────────────────────────────────────────────────────────
-		"ConversationHit": object(M{"id": str(), "contact_id": str(), "channel": str(), "sector_id": str(), "status": str(), "assigned_to": str(), "priority": str(), "tags": arr(str()), "last_message_at": dateTime(), "updated_at": dateTime()}),
+		"ConversationHit": object(M{"id": str(), "contact_id": str(), "channel": str(), "sector_id": str(), "status": str(), "assigned_to": str(), "priority": str(), "tags": tagIDArray(), "last_message_at": dateTime(), "updated_at": dateTime()}),
 		"ContactHit":      object(M{"id": str(), "name": str(), "phone": str(), "document": str()}),
 		"MessageHit":      object(M{"id": str(), "conversation_id": str(), "sender_type": str(), "direction": str(), "text": str(), "created_at": dateTime()}),
 

@@ -120,8 +120,8 @@ type demoSeeder struct {
 	queueIDs        map[string][]string // sector name -> queue ids
 	agentIDs        []string            // demo agent user ids
 	agentBySec      map[string][]string // sector name -> agent ids
-	tagNames        []string
-	channels        []string // channel type slugs created
+	tagIDs          []string            // canonical tag ids (conversations/contacts store ids, never names)
+	channels        []string            // channel type slugs created
 	contactIDs      []string
 	closeReasn      []string // close reason names
 	surveyID        string
@@ -180,11 +180,20 @@ func (d *demoSeeder) reset() error {
 	return err
 }
 
-// tagExists reports whether a tag with the given slug already exists in the tenant.
-func (d *demoSeeder) tagExists(name string) (bool, error) {
-	n, err := d.db.Collection("tags").CountDocuments(d.ctx,
-		bson.M{"tenant_id": d.tenantID, "name": name})
-	return n > 0, err
+// tagIDByName returns the id of the tenant tag with this slug, or "" if none.
+func (d *demoSeeder) tagIDByName(name string) (string, error) {
+	var doc struct {
+		ID string `bson:"_id"`
+	}
+	err := d.db.Collection("tags").FindOne(d.ctx,
+		bson.M{"tenant_id": d.tenantID, "name": name}).Decode(&doc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return "", nil
+		}
+		return "", err
+	}
+	return doc.ID, nil
 }
 
 // dedupeTags removes duplicate tag slugs in the target tenant, keeping one per
@@ -418,24 +427,24 @@ func (d *demoSeeder) seedTaxonomyCSAT() error {
 		{"segunda-via", "#14B8A6"}, {"financeiro", "#22C55E"},
 	}
 	for _, t := range tags {
-		d.tagNames = append(d.tagNames, t.name)
-		// Idempotent: never create a second tag with the same slug in the tenant
-		// (a duplicate slug collides on the front's list keys).
-		exists, err := d.tagExists(t.name)
+		// Idempotent: reuse the existing tag's id when the slug already exists
+		// (never create a duplicate); conversations/contacts store the ID.
+		id, err := d.tagIDByName(t.name)
 		if err != nil {
 			return err
 		}
-		if exists {
-			continue
+		if id == "" {
+			tag := &ctentity.Tag{
+				ID: shared.NewID(), TenantID: d.tenantID, Name: t.name, Color: t.color,
+				Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
+			}
+			if err := trepo.Create(d.ctx, tag); err != nil {
+				return err
+			}
+			d.mark("tags", tag.ID)
+			id = tag.ID
 		}
-		tag := &ctentity.Tag{
-			ID: shared.NewID(), TenantID: d.tenantID, Name: t.name, Color: t.color,
-			Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
-		}
-		if err := trepo.Create(d.ctx, tag); err != nil {
-			return err
-		}
-		d.mark("tags", tag.ID)
+		d.tagIDs = append(d.tagIDs, id)
 	}
 
 	crepo := ctrepo.NewCannedResponseRepository(d.db)
@@ -618,7 +627,7 @@ func (d *demoSeeder) seedContacts() error {
 		}
 		var tags []string
 		if d.rng.Intn(3) == 0 {
-			tags = []string{d.tagNames[d.rng.Intn(len(d.tagNames))]}
+			tags = []string{d.tagIDs[d.rng.Intn(len(d.tagIDs))]}
 		}
 		if err := add(name, phone, doc, email, tags); err != nil {
 			return err
@@ -706,9 +715,9 @@ func (d *demoSeeder) createConversation(status conventity.Status, assign, atRisk
 		priority = conventity.PriorityHigh
 	}
 
-	tags := []string{d.tagNames[d.rng.Intn(len(d.tagNames))]}
+	tags := []string{d.tagIDs[d.rng.Intn(len(d.tagIDs))]}
 	if d.rng.Intn(2) == 0 {
-		tags = append(tags, d.tagNames[d.rng.Intn(len(d.tagNames))])
+		tags = append(tags, d.tagIDs[d.rng.Intn(len(d.tagIDs))])
 	}
 
 	conv := &conventity.Conversation{

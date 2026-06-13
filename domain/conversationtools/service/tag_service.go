@@ -139,6 +139,54 @@ func (s *TagService) ValidateTags(ctx context.Context, tagIDs []string) error {
 	return nil
 }
 
+// ResolveTags maps each ref (a tag id OR a tag name) to its canonical id so a
+// tags array is always stored as ids. strict rejects unknown/disabled refs (add);
+// lenient passes unresolved refs through (remove). De-duplicates the result.
+func (s *TagService) ResolveTags(ctx context.Context, refs []string, strict bool) ([]string, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	tags, err := s.repo.List(ctx, shared.PageRequest{Limit: shared.MaxPageSize})
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]*entity.Tag, len(tags))
+	byName := make(map[string]*entity.Tag, len(tags))
+	for _, t := range tags {
+		byID[t.ID] = t
+		byName[t.Name] = t
+	}
+
+	out := make([]string, 0, len(refs))
+	seen := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		id := ref
+		var tag *entity.Tag
+		if t, ok := byID[ref]; ok {
+			tag = t
+		} else if t, ok := byName[ref]; ok {
+			id, tag = t.ID, t
+		} else if strict {
+			return nil, apperror.Validation("tag not found: " + ref).
+				WithDetails(map[string]any{"tags": "unknown tag " + ref})
+		}
+		if strict && tag != nil && !tag.Enabled {
+			return nil, apperror.Validation("tag is disabled: " + ref).
+				WithDetails(map[string]any{"tags": "disabled tag " + ref})
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 func boolOr(p *bool, def bool) bool {
 	if p != nil {
 		return *p

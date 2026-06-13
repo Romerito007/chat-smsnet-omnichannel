@@ -157,6 +157,46 @@ func TestTag_CRUDAndValidate(t *testing.T) {
 	}
 }
 
+func TestTag_ResolveTagsNormalizesToIDs(t *testing.T) {
+	svc := NewTagService(newTagRepo(), fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	vip, err := svc.Create(ctxT(), contracts.CreateTag{Name: "vip"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// A name resolves to the canonical id; an id passes through; duplicates collapse.
+	got, err := svc.ResolveTags(ctxT(), []string{"vip", vip.ID, "vip"}, true)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(got) != 1 || got[0] != vip.ID {
+		t.Fatalf("expected [%s], got %v", vip.ID, got)
+	}
+
+	// strict rejects an unknown ref with a validation error (add path).
+	if _, err := svc.ResolveTags(ctxT(), []string{"ghost"}, true); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("expected validation error for unknown tag (strict), got %v", err)
+	}
+
+	// lenient passes an unknown ref through unchanged (remove/contacts path).
+	got, err = svc.ResolveTags(ctxT(), []string{"vip", "ghost"}, false)
+	if err != nil {
+		t.Fatalf("resolve lenient: %v", err)
+	}
+	if len(got) != 2 || got[0] != vip.ID || got[1] != "ghost" {
+		t.Errorf("expected [%s ghost], got %v", vip.ID, got)
+	}
+
+	// strict rejects a disabled tag.
+	off := false
+	if _, err := svc.Update(ctxT(), vip.ID, contracts.UpdateTag{Enabled: &off}); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	if _, err := svc.ResolveTags(ctxT(), []string{"vip"}, true); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("expected validation error for disabled tag (strict), got %v", err)
+	}
+}
+
 func TestTag_CreateRequiresName(t *testing.T) {
 	svc := NewTagService(newTagRepo(), fixedClock{})
 	if _, err := svc.Create(ctxT(), contracts.CreateTag{}); apperror.From(err).Code != apperror.CodeValidation {

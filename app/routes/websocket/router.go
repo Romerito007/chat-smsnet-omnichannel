@@ -16,5 +16,5 @@ import (
 // exposes it at both /realtime/ws (canonical) and /ws (alias).
 func Handler(c *container.Container) http.Handler {
 	h := ws.NewHandler(c.Realtime.Hub, c.Tokens, c.Logger, c.Config.Realtime.MaxConnPerUser)
-	return middleware.Recover(c.Logger)(middleware.RequestID(c.Logger)(h))
+	return middleware.Recover(c.Logger)(middleware.RequestID(c.Logger, c.Config.LogRequestBody)(h))
 }

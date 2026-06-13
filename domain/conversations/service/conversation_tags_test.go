@@ -12,6 +12,12 @@ import (
 type fakeTagCatalog struct{ err error }
 
 func (f fakeTagCatalog) ValidateTags(context.Context, []string) error { return f.err }
+func (f fakeTagCatalog) ResolveTags(_ context.Context, refs []string, _ bool) ([]string, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return refs, nil // passthrough: the test treats its inputs as canonical ids
+}
 
 type fakeCloseReasonPolicy struct {
 	requiresNote bool
@@ -120,6 +126,47 @@ func TestApplyTags_RemoveAndReject(t *testing.T) {
 	svc.SetTagCatalog(fakeTagCatalog{err: apperror.Validation("unknown tag")})
 	if _, err := svc.ApplyTags(adminCtx(), id, []string{"ghost"}, nil); apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("expected validation error for unknown tag, got %v", err)
+	}
+}
+
+// mappingTagCatalog resolves names to canonical ids (and ids pass through), so
+// the stored array is always id-only — mirroring the real TagService.
+type mappingTagCatalog struct{ nameToID map[string]string }
+
+func (mappingTagCatalog) ValidateTags(context.Context, []string) error { return nil }
+func (c mappingTagCatalog) ResolveTags(_ context.Context, refs []string, _ bool) ([]string, error) {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if id, ok := c.nameToID[r]; ok {
+			out = append(out, id)
+			continue
+		}
+		out = append(out, r) // already an id
+	}
+	return out, nil
+}
+
+// Applying a tag by NAME stores its ID; removing by that same ID empties the
+// array — the mixed name/id bug that broke front removal.
+func TestApplyTags_NameResolvesToIDAndRemovesByID(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	svc.SetTagCatalog(mappingTagCatalog{nameToID: map[string]string{"vip": "id-vip"}})
+	id := openConv(t, svc)
+
+	conv, err := svc.ApplyTags(adminCtx(), id, []string{"vip"}, nil)
+	if err != nil {
+		t.Fatalf("add by name: %v", err)
+	}
+	if len(conv.Tags) != 1 || conv.Tags[0] != "id-vip" {
+		t.Fatalf("expected [id-vip] stored, got %v", conv.Tags)
+	}
+
+	conv, err = svc.ApplyTags(adminCtx(), id, nil, []string{"id-vip"})
+	if err != nil {
+		t.Fatalf("remove by id: %v", err)
+	}
+	if len(conv.Tags) != 0 {
+		t.Errorf("expected empty tags after removal, got %v", conv.Tags)
 	}
 }
 

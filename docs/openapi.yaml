@@ -68,10 +68,12 @@ components:
         ApplyTagsRequest:
             properties:
                 add:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
                 remove:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
@@ -553,6 +555,7 @@ components:
                         type: string
                     type: array
                 tags:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
@@ -638,6 +641,7 @@ components:
                         - archived
                     type: string
                 tags:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
@@ -694,6 +698,7 @@ components:
                 status:
                     type: string
                 tags:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
@@ -854,6 +859,7 @@ components:
                         type: string
                     type: array
                 tags:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
@@ -875,6 +881,7 @@ components:
                 sector_id:
                     type: string
                 tags:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
@@ -2394,6 +2401,7 @@ components:
                         type: string
                     type: array
                 tags:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array
@@ -2422,6 +2430,7 @@ components:
                         - archived
                     type: string
                 tags:
+                    description: Tag IDs (never names). On write you may send a tag ID or a tag name; the server resolves names to canonical IDs, so values are always stored and returned as IDs.
                     items:
                         type: string
                     type: array

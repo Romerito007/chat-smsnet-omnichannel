@@ -57,15 +57,18 @@ func (p Priority) Valid() bool {
 
 // Conversation is a thread of messages between a contact and the operation.
 type Conversation struct {
-	ID            string
-	TenantID      string
-	ContactID     string
-	Channel       string
-	SectorID      string
-	QueueID       string
-	Status        Status
-	AssignedTo    string
-	Priority      Priority
+	ID         string
+	TenantID   string
+	ContactID  string
+	Channel    string
+	SectorID   string
+	QueueID    string
+	Status     Status
+	AssignedTo string
+	Priority   Priority
+	// Tags always stores canonical tag IDs (never names). The service resolves any
+	// name supplied on write to its ID, so the array stays ID-only — keeping the
+	// front render and tag removal (which match by ID) consistent.
 	Tags          []string
 	LastMessageAt time.Time
 	// UnreadCount is the number of inbound (customer) messages since an agent last

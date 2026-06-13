@@ -23,7 +23,9 @@ type Contact struct {
 	Document   string
 	Email      string
 	Identities []ChannelIdentity
-	// Tags are free-form labels applied by agents (CRM-style).
+	// Tags are CRM labels. Catalog tags are normalized to their canonical IDs
+	// (names resolved server-side, mirroring conversation tags); free-text labels
+	// that match no catalog tag are kept as-is.
 	Tags []string
 	// Notes is a free-text agent note about the contact.
 	Notes     string

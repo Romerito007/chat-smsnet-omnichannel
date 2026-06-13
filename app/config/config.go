@@ -28,7 +28,10 @@ const (
 type Config struct {
 	AppEnv   string // development | staging | production
 	LogLevel string
-	RunRole  Role
+	// LogRequestBody logs the (redacted, truncated) request body + error code/message
+	// per request. Dev-only diagnostic; default false. Never logs credentials.
+	LogRequestBody bool
+	RunRole        Role
 
 	HTTP          HTTPConfig
 	Mongo         MongoConfig
@@ -277,9 +280,10 @@ func Load() (Config, error) {
 	_ = godotenv.Load() // best-effort; real env always wins
 
 	cfg := Config{
-		AppEnv:   getString("APP_ENV", "development"),
-		LogLevel: getString("LOG_LEVEL", "info"),
-		RunRole:  Role(getString("RUN_ROLE", string(RoleAll))),
+		AppEnv:         getString("APP_ENV", "development"),
+		LogLevel:       getString("LOG_LEVEL", "info"),
+		LogRequestBody: getBool("LOG_REQUEST_BODY", false),
+		RunRole:        Role(getString("RUN_ROLE", string(RoleAll))),
 		HTTP: HTTPConfig{
 			Port:             getInt("HTTP_PORT", 8080),
 			ReadTimeout:      getDuration("HTTP_READ_TIMEOUT", 15*time.Second),
