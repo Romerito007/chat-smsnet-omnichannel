@@ -222,6 +222,32 @@ func TestAnonymize_RefusesUnderLegalHold(t *testing.T) {
 	}
 }
 
+func TestAnonymize_IdempotentWhenAlreadyAnonymized(t *testing.T) {
+	store, files, enq, aud := newFakeStore(), newFakeFiles(), &fakeEnqueuer{}, &fakeAuditor{}
+	// Contact already anonymized → re-anonymize must be a clean no-op (never 500).
+	store.bundle = &repository.ExportBundle{
+		Contact: repository.ContactData{ID: "c1", Name: anonymizedName, Anonymized: true},
+		Conversations: []repository.ConversationData{{
+			ID:       "cv1",
+			Messages: []repository.MessageData{{ID: "m1", Text: "already [REDACTED]"}},
+		}},
+	}
+	svc := newSvc(store, files, enq, aud)
+
+	if err := svc.Anonymize(ctxT(), "c1"); err != nil {
+		t.Fatalf("re-anonymize must be a no-op success, got: %v", err)
+	}
+	if store.anonymized != nil {
+		t.Errorf("an already-anonymized contact must not be re-written")
+	}
+	if len(store.updatedMsgs) != 0 {
+		t.Errorf("no messages should be re-masked, got %v", store.updatedMsgs)
+	}
+	if !aud.has("privacy.contact.anonymize_noop") {
+		t.Errorf("expected a no-op audit entry")
+	}
+}
+
 func TestUpdateRetention_PartialUpdateClampsAndAudits(t *testing.T) {
 	store, files, enq, aud := newFakeStore(), newFakeFiles(), &fakeEnqueuer{}, &fakeAuditor{}
 	svc := newSvc(store, files, enq, aud)

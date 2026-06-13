@@ -72,7 +72,10 @@ type ContactData struct {
 	Phone      string         `json:"phone"`
 	Document   string         `json:"document"`
 	Identities []IdentityData `json:"identities"`
-	CreatedAt  time.Time      `json:"created_at"`
+	// Anonymized reports whether the contact's PII was already scrubbed, so the
+	// anonymize use case can short-circuit idempotently.
+	Anonymized bool      `json:"anonymized,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // IdentityData is one channel identity.

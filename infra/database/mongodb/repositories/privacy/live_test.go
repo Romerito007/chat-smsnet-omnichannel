@@ -46,6 +46,64 @@ func adminCtx(tenantID, userID string) context.Context {
 	return authz.WithAuthContext(ctx, authz.NewAuthContext(tenantID, userID, authz.AllPermissions(), nil, authz.ScopeAll))
 }
 
+// TestPrivacyAnonymize_NoIdentitiesAndIdempotent reproduces the 500 "database
+// error" bug: anonymizing a contact that has NO identities array used to fail on
+// the all-positional `identities.$[]` update. It also covers a SECOND such
+// contact (no unique-index collision on the cleared PII) and a re-anonymize
+// (idempotent no-op). Requires a live Mongo (-tags e2e).
+func TestPrivacyAnonymize_NoIdentitiesAndIdempotent(t *testing.T) {
+	db := connect(t)
+	_ = db.Drop(context.Background())
+	bg := context.Background()
+	const tenant = "t-anon"
+	ctx := adminCtx(tenant, "owner-1")
+	now := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
+
+	// Two contacts WITHOUT any identities array (the root-cause shape), with PII.
+	mustInsert(t, db, "contacts", bson.M{
+		"_id": "ca", "tenant_id": tenant, "name": "Ana Lima", "phone": "11999990000",
+		"phones": bson.A{"11999990000"}, "document": "111.444.777-35", "email": "ana@x.com",
+		"created_at": now,
+	})
+	mustInsert(t, db, "contacts", bson.M{
+		"_id": "cb", "tenant_id": tenant, "name": "Bruno Costa", "phone": "11888880000",
+		"phones": bson.A{"11888880000"}, "document": "529.982.247-25", "email": "bruno@x.com",
+		"created_at": now,
+	})
+
+	store := New(db)
+	auditor := auditservice.NewService(auditrepo.New(db), fixedClock{now})
+	svc := privservice.NewService(store, storage.NewLocalFileStore(t.TempDir(), "s", "http://x"), &captureEnqueuer{}, auditor, fixedClock{now}, time.Hour)
+
+	// 1) First contact (no identities) anonymizes — no 500.
+	if err := svc.Anonymize(ctx, "ca"); err != nil {
+		t.Fatalf("anonymize ca (no identities) must succeed, got: %v", err)
+	}
+	// 2) Second contact anonymizes — both end with email/document="" but there is
+	// no unique index on contacts PII, so no E11000 collision.
+	if err := svc.Anonymize(ctx, "cb"); err != nil {
+		t.Fatalf("anonymize a SECOND contact must succeed (no unique collision), got: %v", err)
+	}
+	// 3) Re-anonymize the first — idempotent, no error.
+	if err := svc.Anonymize(ctx, "ca"); err != nil {
+		t.Fatalf("re-anonymize must be idempotent, got: %v", err)
+	}
+
+	for _, id := range []string{"ca", "cb"} {
+		var c bson.M
+		_ = db.Collection("contacts").FindOne(bg, bson.M{"_id": id}).Decode(&c)
+		if c["name"] != "Contato Anonimizado" || c["phone"] != "" || c["document"] != "" || c["email"] != "" {
+			t.Errorf("%s PII not fully cleared: %v", id, c)
+		}
+		if phones, ok := c["phones"].(bson.A); !ok || len(phones) != 0 {
+			t.Errorf("%s phones must be cleared, got %v", id, c["phones"])
+		}
+		if c["anonymized"] != true {
+			t.Errorf("%s must be flagged anonymized", id)
+		}
+	}
+}
+
 func TestPrivacyLiveEndToEnd(t *testing.T) {
 	db := connect(t)
 	_ = db.Drop(context.Background())
@@ -162,11 +220,21 @@ func TestPrivacyLiveEndToEnd(t *testing.T) {
 	}
 	var c1 bson.M
 	_ = db.Collection("contacts").FindOne(bg, bson.M{"_id": "c1"}).Decode(&c1)
-	if c1["name"] != "Contato Anonimizado" || c1["phone"] != "" || c1["document"] != "" {
+	if c1["name"] != "Contato Anonimizado" || c1["phone"] != "" || c1["document"] != "" || c1["email"] != "" {
 		t.Errorf("PII not cleared: %v", c1)
+	}
+	if ids, ok := c1["identities"].(bson.A); !ok || len(ids) != 0 {
+		t.Errorf("channel-identity handles (PII) must be cleared, got %v", c1["identities"])
+	}
+	if c1["anonymized"] != true {
+		t.Errorf("contact must be flagged anonymized: %v", c1["anonymized"])
 	}
 	if c1["_id"] != "c1" {
 		t.Errorf("contact id/integrity lost")
+	}
+	// Re-anonymizing the same contact is idempotent (no 500, no-op).
+	if err := svc.Anonymize(ctx, "c1"); err != nil {
+		t.Fatalf("re-anonymize must be idempotent, got: %v", err)
 	}
 	var m1 bson.M
 	_ = db.Collection("messages").FindOne(bg, bson.M{"_id": "m1"}).Decode(&m1)

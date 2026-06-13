@@ -40,6 +40,7 @@ type PrivacyContact struct {
 	Phone      string            `bson:"phone"`
 	Document   string            `bson:"document"`
 	Identities []ChannelIdentity `bson:"identities"`
+	Anonymized bool              `bson:"anonymized"`
 	CreatedAt  time.Time         `bson:"created_at"`
 }
 

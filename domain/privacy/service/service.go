@@ -177,16 +177,23 @@ func (s *Service) Anonymize(ctx context.Context, contactID string) error {
 	if err != nil {
 		return err
 	}
-	pii := piiOf(bundle.Contact)
 
-	if err := s.store.AnonymizeContact(ctx, contactID, repository.Anonymized{
-		Name:     anonymizedName,
-		Phone:    "",
-		Document: "",
-	}); err != nil {
-		return err
+	// Idempotent: a contact already anonymized is a no-op success. Re-processing
+	// after the commit point has nothing to scrub (the original PII is gone) and
+	// must never 500.
+	if bundle.Contact.Anonymized {
+		return s.audit(ctx, "privacy.contact.anonymize_noop", "contact", contactID, map[string]any{"reason": "already_anonymized"})
 	}
 
+	pii := piiOf(bundle.Contact)
+
+	// Order matters for crash-safety WITHOUT a transaction: mask the messages
+	// FIRST (using the original PII), then flip the contact's anonymized flag LAST
+	// as the commit point. Each step is idempotent (re-masking already-masked text
+	// is a no-op; the $set writes the same values), so a partial failure is
+	// recovered by a retry — the contact is still un-flagged, the bundle still
+	// carries the original PII, and re-masking is harmless. Conversations and
+	// messages are never deleted; only the contact PII literals are scrubbed.
 	masked := 0
 	for _, conv := range bundle.Conversations {
 		for _, m := range conv.Messages {
@@ -198,6 +205,14 @@ func (s *Service) Anonymize(ctx context.Context, contactID string) error {
 				masked++
 			}
 		}
+	}
+
+	if err := s.store.AnonymizeContact(ctx, contactID, repository.Anonymized{
+		Name:     anonymizedName,
+		Phone:    "",
+		Document: "",
+	}); err != nil {
+		return err
 	}
 
 	return s.audit(ctx, "privacy.contact.anonymized", "contact", contactID, map[string]any{

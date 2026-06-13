@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
@@ -35,6 +36,15 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 // envelope, attaching the request id from the context.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	appErr := apperror.From(err)
+	// A server-side failure (5xx) carries a real cause that must NOT reach the
+	// client (the body keeps the generic message); log it server-side, enriched
+	// with request_id/tenant_id, so the actual error is diagnosable. Known causes
+	// (e.g. a duplicate key) are already mapped to 4xx by apperror/MapError and so
+	// are not logged here as internal failures.
+	if appErr.HTTPStatus() >= 500 {
+		shared.LoggerFrom(r.Context(), slog.Default()).Error("request failed",
+			"code", string(appErr.Code), "error", appErr.Error())
+	}
 	WriteJSON(w, appErr.HTTPStatus(), errorEnvelope{
 		Error: errorBody{
 			Code:      appErr.Code,

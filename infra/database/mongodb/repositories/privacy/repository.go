@@ -182,11 +182,12 @@ func (r *Repository) CollectBundle(ctx context.Context, contactID string) (*priv
 	}
 	bundle := &privrepo.ExportBundle{
 		Contact: privrepo.ContactData{
-			ID:        c.ID,
-			Name:      c.Name,
-			Phone:     c.Phone,
-			Document:  c.Document,
-			CreatedAt: c.CreatedAt,
+			ID:         c.ID,
+			Name:       c.Name,
+			Phone:      c.Phone,
+			Document:   c.Document,
+			Anonymized: c.Anonymized,
+			CreatedAt:  c.CreatedAt,
 		},
 	}
 	for _, id := range c.Identities {
@@ -287,18 +288,26 @@ func (r *Repository) AnonymizeContact(ctx context.Context, contactID string, a p
 	if err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 	res, err := r.contacts.UpdateOne(ctx,
 		bson.M{"_id": contactID, "tenant_id": tenantID},
 		bson.M{
 			"$set": bson.M{
-				"name":       a.Name,
-				"phone":      a.Phone,
-				"document":   a.Document,
-				"anonymized": true,
-				// Clear channel-identity handles (PII) while keeping the contact row
-				// and id so conversations/metrics stay linked (integrity).
-				"identities.$[].external_id": "",
-				"updated_at":                 time.Now().UTC(),
+				"name":     a.Name,
+				"phone":    a.Phone,
+				"document": a.Document,
+				// Scrub the remaining PII. email + phones were previously left
+				// intact (LGPD gap). identities (the channel handles) are cleared
+				// by REPLACING the whole array — never with the all-positional
+				// `identities.$[]`, which errors on a contact that has no
+				// identities array (the root cause of the 500 "database error").
+				// The row + id are kept so conversations/metrics stay linked.
+				"email":         "",
+				"phones":        bson.A{},
+				"identities":    bson.A{},
+				"anonymized":    true,
+				"anonymized_at": now,
+				"updated_at":    now,
 			},
 		},
 	)
