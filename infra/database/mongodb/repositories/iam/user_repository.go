@@ -44,7 +44,7 @@ func (r *UserRepository) Update(ctx context.Context, u *entity.User) error {
 			"password_hash":        u.PasswordHash,
 			"status":               string(u.Status),
 			"role_ids":             u.RoleIDs,
-			"sector_ids":           u.SectorIDs,
+			"sector_ids":           entity.NormalizeSectorIDs(u.SectorIDs),
 			"max_concurrent_chats": u.MaxConcurrentChats,
 			"avatar_attachment_id": u.AvatarAttachmentID,
 			"updated_at":           u.UpdatedAt,
@@ -163,12 +163,14 @@ func (r *UserRepository) ListBySector(ctx context.Context, sectorID string) ([]*
 
 func userToModel(u *entity.User) models.User {
 	m := models.User{
-		Name:               u.Name,
-		Email:              u.Email,
-		PasswordHash:       u.PasswordHash,
-		Status:             string(u.Status),
-		RoleIDs:            u.RoleIDs,
-		SectorIDs:          u.SectorIDs,
+		Name:         u.Name,
+		Email:        u.Email,
+		PasswordHash: u.PasswordHash,
+		Status:       string(u.Status),
+		RoleIDs:      u.RoleIDs,
+		// Persist sector membership clean: never null, never [""] — so dirty input
+		// (e.g. an empty sector id) can't corrupt the assign/listing filters.
+		SectorIDs:          entity.NormalizeSectorIDs(u.SectorIDs),
 		MaxConcurrentChats: u.MaxConcurrentChats,
 		AvatarAttachmentID: u.AvatarAttachmentID,
 	}
@@ -188,7 +190,7 @@ func userToEntity(m *models.User) *entity.User {
 		PasswordHash:       m.PasswordHash,
 		Status:             entity.Status(m.Status),
 		RoleIDs:            m.RoleIDs,
-		SectorIDs:          m.SectorIDs,
+		SectorIDs:          entity.NormalizeSectorIDs(m.SectorIDs),
 		MaxConcurrentChats: m.MaxConcurrentChats,
 		AvatarAttachmentID: m.AvatarAttachmentID,
 		CreatedAt:          m.CreatedAt,

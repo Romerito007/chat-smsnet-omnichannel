@@ -330,6 +330,22 @@ func TestEvaluateAgent_Reasons(t *testing.T) {
 	}
 }
 
+// A junk empty entry in sector_ids (the corrupted-seed shape) must never count as
+// belonging to a real sector — assignment is rejected, not falsely allowed.
+func TestEvaluateAgent_EmptySectorEntryNeverMatches(t *testing.T) {
+	dirty := &iamentity.User{ID: "dirty", TenantID: "t1", Status: iamentity.StatusActive,
+		SectorIDs: []string{""}, MaxConcurrentChats: 2}
+	users := &fakeUsers{byID: map[string]*iamentity.User{"dirty": dirty}}
+	presence := &fakePresence{byUser: map[string]*presenceentity.AgentPresence{
+		"dirty": presenceOf("dirty", presenceentity.StatusAvailable, 0, 2),
+	}}
+	fx := newFixture(shared.NoopLocker{}, users, presence, nil, map[string]*conventity.Conversation{}, nil, nil)
+
+	if c := apperror.From(fx.svc.evaluateAgent(adminCtx(), "dirty", "s1")).Code; c != apperror.CodeValidation {
+		t.Errorf("agent with sector_ids:[\"\"] must not belong to sector s1: got %s", c)
+	}
+}
+
 // ── auto assignment ──────────────────────────────────────────────────────────
 
 func TestAutoAssign_PicksLeastLoadedAndEmitsEvent(t *testing.T) {

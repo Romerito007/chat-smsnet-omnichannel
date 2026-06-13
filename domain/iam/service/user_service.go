@@ -84,7 +84,7 @@ func (s *UserService) Create(ctx context.Context, cmd contracts.CreateUser) (*en
 		PasswordHash:       hash,
 		Status:             entity.StatusActive,
 		RoleIDs:            cmd.RoleIDs,
-		SectorIDs:          cmd.SectorIDs,
+		SectorIDs:          entity.NormalizeSectorIDs(cmd.SectorIDs),
 		MaxConcurrentChats: maxChats,
 		CreatedAt:          now,
 		UpdatedAt:          now,
@@ -137,7 +137,7 @@ func (s *UserService) Update(ctx context.Context, id string, cmd contracts.Updat
 		user.RoleIDs = *cmd.RoleIDs
 	}
 	if cmd.SectorIDs != nil {
-		user.SectorIDs = *cmd.SectorIDs
+		user.SectorIDs = entity.NormalizeSectorIDs(*cmd.SectorIDs)
 	}
 	if cmd.MaxConcurrentChats != nil {
 		if *cmd.MaxConcurrentChats < 0 {

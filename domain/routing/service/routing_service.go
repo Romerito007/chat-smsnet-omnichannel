@@ -546,7 +546,13 @@ func (s *Service) visibility(ctx context.Context) (convcontracts.Visibility, err
 	}, nil
 }
 
+// contains reports whether v is a non-empty member of ss. Empty entries are
+// ignored defensively: a junk "" in a user's sector_ids must never be treated as
+// belonging to a (real, non-empty) sector id.
 func contains(ss []string, v string) bool {
+	if v == "" {
+		return false
+	}
 	for _, s := range ss {
 		if s == v {
 			return true

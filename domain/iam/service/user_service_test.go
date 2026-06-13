@@ -161,6 +161,38 @@ func TestCreateUser_HashesAndScopes(t *testing.T) {
 	}
 }
 
+func TestCreateUser_NormalizesSectorIDs(t *testing.T) {
+	svc, repo := newUserService()
+	ctx := tenantCtx("t1")
+
+	// Dirty input: an empty string and a duplicate (the [""] / junk shape the
+	// broken seed produced) must never reach storage.
+	u, err := svc.Create(ctx, contracts.CreateUser{
+		Name: "Bruno", Email: "bruno@demo.local", Password: "supersecret",
+		SectorIDs: []string{"", "s1", "s1", "  "},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(u.SectorIDs) != 1 || u.SectorIDs[0] != "s1" {
+		t.Fatalf("sector_ids not normalized: %v", u.SectorIDs)
+	}
+	if got := repo.users[u.ID].SectorIDs; len(got) != 1 || got[0] != "s1" {
+		t.Errorf("persisted sector_ids not normalized: %v", got)
+	}
+
+	// "Sem setor" is the empty slice, never nil.
+	u2, err := svc.Create(ctx, contracts.CreateUser{
+		Name: "Ana", Email: "ana@demo.local", Password: "supersecret", SectorIDs: nil,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if u2.SectorIDs == nil {
+		t.Errorf("expected empty (non-nil) sector_ids, got nil")
+	}
+}
+
 func TestCreateUser_Validation(t *testing.T) {
 	svc, _ := newUserService()
 	ctx := tenantCtx("t1")

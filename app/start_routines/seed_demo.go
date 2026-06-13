@@ -240,8 +240,11 @@ func (d *demoSeeder) run() error {
 		name string
 		fn   func() error
 	}{
-		{"team", d.seedTeam},
+		// Sectors MUST be seeded before the team so agents get real sector ids
+		// (d.sectorIDs is populated here); otherwise the lookup returns "" and
+		// agents end up with sector_ids: [""], which breaks sector assignment.
 		{"sectors_queues", d.seedSectorsQueues},
+		{"team", d.seedTeam},
 		{"business_hours", d.seedBusinessHours},
 		{"sla", d.seedSLAPolicy},
 		{"privacy", d.seedPrivacy},
@@ -329,6 +332,9 @@ func (d *demoSeeder) seedTeam() error {
 	}
 	for _, a := range agents {
 		secID := d.sectorIDs[a.sector]
+		if secID == "" {
+			return fmt.Errorf("sector %q not seeded before team; cannot assign agent %q", a.sector, a.email)
+		}
 		u := newUser(d.tenantID, a.name, a.email, hash, []string{agentRole}, []string{secID}, 5, d.now)
 		if err := repo.Create(d.ctx, u); err != nil {
 			return err
