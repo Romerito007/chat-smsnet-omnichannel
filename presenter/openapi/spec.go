@@ -39,6 +39,31 @@ func enum(vals ...string) M {
 // validation/normalization rules a typed client should know about.
 func describedStr(desc string) M { return M{"type": "string", "description": desc} }
 
+// describedBool / describedInt / describedArr are the boolean/integer/array
+// counterparts of describedStr, for fields that carry a per-field description
+// (e.g. the ProviderHubConfig source mapping).
+func describedBool(desc string) M { return M{"type": "boolean", "description": desc} }
+func describedInt(desc string) M  { return M{"type": "integer", "description": desc} }
+func describedArr(items M, desc string) M {
+	return M{"type": "array", "items": items, "description": desc}
+}
+
+// withDesc returns a copy of schema with desc appended to (or set as) its
+// description, so a reused schema (e.g. ispTypeStr) can carry a context-specific
+// note without mutating the shared value.
+func withDesc(schema M, desc string) M {
+	out := M{}
+	for k, v := range schema {
+		out[k] = v
+	}
+	if existing, ok := out["description"].(string); ok && existing != "" {
+		out["description"] = existing + " " + desc
+	} else {
+		out["description"] = desc
+	}
+	return out
+}
+
 // ispTypeStr documents the isp_type slug (config.type). It is a closed set: the
 // 19 ISPs the smsnet-integrations API supports (the slugs returned by
 // GET /v1/providerhub/catalog) plus the legacy aliases voalle/sgp, kept accepted

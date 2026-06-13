@@ -1853,24 +1853,31 @@ components:
         ProviderHubConfig:
             properties:
                 bot_id:
+                    description: 'Origin: tenant. Editable: yes. source=env: absent.'
                     type: string
                 configured:
+                    description: 'True for source tenant or env. Origin: derived. Editable: no. source=env: present (true).'
                     type: boolean
                 created_at:
+                    description: 'Origin: derived. Editable: no. source=env: absent.'
                     format: date-time
                     type: string
                 enabled:
+                    description: 'Origin: tenant (forced true in env mode). Editable: yes when tenant-owned. source=env: present (true).'
                     type: boolean
                 has_api_key:
+                    description: 'True when the SMSNET API key (x-api-key) is set, from tenant OR env. Origin: derived. Editable: no. The key VALUE is never returned in any mode — only this flag. source=env: present.'
                     type: boolean
                 id:
+                    description: 'Origin: derived (DB id). Editable: no. source=env: absent.'
                     type: string
                 isp_credential_keys:
+                    description: 'ISP credential KEYS only (e.g. hubsoft_host); values are never returned. Origin: tenant. Editable: yes (send isp_credentials on write). source=env: absent.'
                     items:
                         type: string
                     type: array
                 isp_type:
-                    description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
+                    description: 'ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted). Origin: tenant. Editable: yes. source=env: absent.'
                     enum:
                         - altarede
                         - beesweb
@@ -1895,25 +1902,33 @@ components:
                         - sgp
                     type: string
                 name:
+                    description: 'Origin: tenant. Editable: yes. source=env: absent.'
                     type: string
                 smsnet_base_url:
+                    description: 'SMSNET gateway host. Origin: tenant OR env (ISP_GATEWAY_API_HOST). Editable: yes when tenant-owned. source=env: ALWAYS ABSENT — the infra host never leaks to the front.'
                     type: string
                 source:
+                    description: 'Where the effective config resolves from: tenant (DB, full payload) | env (infra default ISP_GATEWAY_API_HOST/KEY; only has_api_key/enabled exposed) | none (unconfigured). Origin: derived. Editable: no.'
                     enum:
                         - tenant
                         - env
                         - none
                     type: string
                 tenant_id:
+                    description: 'Origin: derived. Editable: no. source=env: absent.'
                     type: string
                 timeout_ms:
+                    description: 'Origin: tenant (default 8000). Editable: yes. source=env: absent.'
                     type: integer
                 updated_at:
+                    description: 'Origin: derived. Editable: no. source=env: absent.'
                     format: date-time
                     type: string
                 usa_extrair_linha_digitavel_pdf:
+                    description: 'Origin: tenant. Editable: yes. source=env: absent (false).'
                     type: boolean
                 usa_pegar_fatura_atrasada:
+                    description: 'Origin: tenant. Editable: yes. source=env: absent (false).'
                     type: boolean
             type: object
         Queue:

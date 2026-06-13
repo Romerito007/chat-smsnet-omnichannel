@@ -223,15 +223,33 @@ func schemas() M {
 		}),
 
 		// ── providerhub ────────────────────────────────────────────────────────
+		// ProviderHubConfig is the GET /v1/providerhub/config response. Every field
+		// is annotated with its origin/source so the front knows what to render:
+		//   • origin tenant  → persisted per tenant; editable via POST/PATCH.
+		//   • origin env     → backend infra default (ISP_GATEWAY_API_HOST/KEY);
+		//                      read-only for the tenant. To override, the tenant
+		//                      creates its own config (which then resolves as tenant).
+		//   • origin derived → computed by the server; read-only.
+		// When source="env" only has_api_key, enabled, source and configured are
+		// populated; all tenant-owned fields are absent/zero and the infra host/key
+		// are never returned.
 		"ProviderHubConfig": object(M{
-			"id": str(), "tenant_id": str(), "name": str(), "smsnet_base_url": str(),
-			"isp_type": ispTypeStr(),
-			"bot_id":   str(), "has_api_key": boolean(), "isp_credential_keys": arr(str()),
-			"usa_pegar_fatura_atrasada": boolean(), "usa_extrair_linha_digitavel_pdf": boolean(),
-			"enabled": boolean(), "timeout_ms": integer(), "created_at": dateTime(), "updated_at": dateTime(),
-			// source: "tenant" | "env" | "none". For "env" the host/key are never
-			// returned — only that the integration is configured in the backend.
-			"source": enum("tenant", "env", "none"), "configured": boolean(),
+			"id":                              describedStr("Origin: derived (DB id). Editable: no. source=env: absent."),
+			"tenant_id":                       describedStr("Origin: derived. Editable: no. source=env: absent."),
+			"name":                            describedStr("Origin: tenant. Editable: yes. source=env: absent."),
+			"smsnet_base_url":                 describedStr("SMSNET gateway host. Origin: tenant OR env (ISP_GATEWAY_API_HOST). Editable: yes when tenant-owned. source=env: ALWAYS ABSENT — the infra host never leaks to the front."),
+			"isp_type":                        withDesc(ispTypeStr(), "Origin: tenant. Editable: yes. source=env: absent."),
+			"bot_id":                          describedStr("Origin: tenant. Editable: yes. source=env: absent."),
+			"has_api_key":                     describedBool("True when the SMSNET API key (x-api-key) is set, from tenant OR env. Origin: derived. Editable: no. The key VALUE is never returned in any mode — only this flag. source=env: present."),
+			"isp_credential_keys":             describedArr(str(), "ISP credential KEYS only (e.g. hubsoft_host); values are never returned. Origin: tenant. Editable: yes (send isp_credentials on write). source=env: absent."),
+			"usa_pegar_fatura_atrasada":       describedBool("Origin: tenant. Editable: yes. source=env: absent (false)."),
+			"usa_extrair_linha_digitavel_pdf": describedBool("Origin: tenant. Editable: yes. source=env: absent (false)."),
+			"enabled":                         describedBool("Origin: tenant (forced true in env mode). Editable: yes when tenant-owned. source=env: present (true)."),
+			"timeout_ms":                      describedInt("Origin: tenant (default 8000). Editable: yes. source=env: absent."),
+			"created_at":                      withDesc(dateTime(), "Origin: derived. Editable: no. source=env: absent."),
+			"updated_at":                      withDesc(dateTime(), "Origin: derived. Editable: no. source=env: absent."),
+			"source":                          withDesc(enum("tenant", "env", "none"), "Where the effective config resolves from: tenant (DB, full payload) | env (infra default ISP_GATEWAY_API_HOST/KEY; only has_api_key/enabled exposed) | none (unconfigured). Origin: derived. Editable: no."),
+			"configured":                      describedBool("True for source tenant or env. Origin: derived. Editable: no. source=env: present (true)."),
 		}),
 		// ProviderHubCatalog is the static, versioned catalog of supported ISPs
 		// (GET /v1/providerhub/catalog): per ISP the credential fields to render and

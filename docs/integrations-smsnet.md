@@ -22,6 +22,38 @@ Configuração por **env default** com **override por tenant** no banco. Nada di
   `GET /v1/providerhub/config` nunca devolve a chave em claro nem o host de env:
   retorna `has_api_key`, `source` (`tenant|env|none`) e `configured` (bool). Para
   `source:"env"` só informa que está configurado (sem host/chave).
+
+### Comportamento por `source` (mapa de campos para o front)
+
+Origem de cada campo de `GET /v1/providerhub/config` e o que o front deve fazer.
+**Origem:** `tenant` (persistido por tenant, editável via POST/PATCH) · `env`
+(infra default `ISP_GATEWAY_API_HOST/KEY`, só-leitura) · `derivado` (calculado
+pelo servidor). Quando `source:"env"`, **só** `has_api_key`, `enabled`, `source`
+e `configured` vêm preenchidos; os campos do tenant ficam ausentes/zerados e o
+host/chave de infra **nunca** são retornados.
+
+| Campo | Origem | Editável pelo tenant | Presente em `source:"env"`? |
+|---|---|---|---|
+| `smsnet_base_url` | tenant **ou** env (`ISP_GATEWAY_API_HOST`) | sim (quando tenant) | **Não** — host de infra nunca vaza |
+| `smsnet_api_key` (valor) | tenant **ou** env (`ISP_GATEWAY_API_KEY`) | sim (write-only) | **Nunca** retornado em modo nenhum |
+| `has_api_key` | derivado | não | **Sim** |
+| `isp_type` | tenant | sim | Não (ausente) |
+| `isp_credential_keys` (+ valores) | tenant (cifrado; só keys) | sim | Não |
+| `bot_id` | tenant | sim | Não |
+| `usa_pegar_fatura_atrasada` | tenant | sim | Não (false) |
+| `usa_extrair_linha_digitavel_pdf` | tenant | sim | Não (false) |
+| `enabled` | tenant (fixo `true` em env) | sim (quando tenant) | **Sim** (`true`) |
+| `timeout_ms` | tenant (default 8000) | sim | Não |
+| `name` | tenant | sim | Não |
+| `source` / `configured` | derivado | não | **Sim** |
+| `id` / `tenant_id` / `created_at` / `updated_at` | derivado (DB) | não | Não |
+
+> **UI:** trate `source` como chave de exibição. `env` → esconda/disable host e
+> chave (são infra); ofereça "configurar para este tenant" (POST) para sobrescrever
+> → passa a `tenant`. `tenant` → exiba os campos editáveis. `none` → nada
+> configurado, ofereça criar. `smsnet_api_key` é sempre write-only (só
+> `has_api_key` na leitura). Os toggles `use_smsnet/use_email/use_whatsapp` **não
+> existem** neste contrato — os únicos toggles são `enabled` e os dois `usa_*`.
 - **MCP:** os servidores `SMSNET_CONSULTAS` (read) e `SMSNET_OPERACOES` (write)
   entram no substrato MCP genérico via env default; um servidor **registrado pelo
   tenant com o mesmo nome** sobrescreve a URL (tenant DB override → env default).
