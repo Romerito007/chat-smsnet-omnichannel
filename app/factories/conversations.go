@@ -22,6 +22,8 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 	)
 	svc.SetOutboundDispatcher(OutboundService(c))
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	// Evaluate automation rules off the hot path (async via Asynq).
+	svc.SetRuleEventSink(AutomationRuleSink(c))
 	svc.SetTagCatalog(ConversationToolsTagService(c))
 	svc.SetCloseReasonPolicy(ConversationToolsCloseReasonService(c))
 	svc.SetSLAHook(SLAService(c))

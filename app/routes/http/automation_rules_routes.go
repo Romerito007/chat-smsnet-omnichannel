@@ -26,6 +26,7 @@ func registerAutomationRulesRoutes(r chi.Router, c *container.Container) {
 			ar.Get("/{id}", ctl.Get)
 			ar.Patch("/{id}", ctl.Update)
 			ar.Delete("/{id}", ctl.Delete)
+			ar.Get("/{id}/logs", ctl.Logs)
 		})
 	})
 }

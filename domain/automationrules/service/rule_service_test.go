@@ -83,6 +83,23 @@ func (r *fakeWebhookSubs) ListEnabledByEvent(context.Context, string, string) ([
 	return nil, nil
 }
 
+// fakeLogRepo is an in-memory LogRepository.
+type fakeLogRepo struct{ created []*entity.RuleEvaluationLog }
+
+func (r *fakeLogRepo) Create(_ context.Context, l *entity.RuleEvaluationLog) error {
+	r.created = append(r.created, l)
+	return nil
+}
+func (r *fakeLogRepo) ListByRule(_ context.Context, ruleID string, _ shared.PageRequest) ([]*entity.RuleEvaluationLog, error) {
+	var out []*entity.RuleEvaluationLog
+	for _, l := range r.created {
+		if l.RuleID == ruleID {
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
 func ruleCtx() context.Context { return shared.WithTenant(context.Background(), "t1") }
 
 func newRuleSvc(webhookIDs ...string) (*RuleService, *fakeRuleRepo) {
@@ -91,7 +108,7 @@ func newRuleSvc(webhookIDs ...string) (*RuleService, *fakeRuleRepo) {
 	for _, id := range webhookIDs {
 		ids[id] = true
 	}
-	svc := NewRuleService(repo, &fakeWebhookSubs{ids: ids}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	svc := NewRuleService(repo, &fakeWebhookSubs{ids: ids}, &fakeLogRepo{}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
 	return svc, repo
 }
 

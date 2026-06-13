@@ -13,10 +13,11 @@ import (
 func emitClock() fixedClock { return fixedClock{t: time.Unix(1700000000, 0).UTC()} }
 
 func TestEmitTo_DeliversToSpecificWebhookBypassingEventFilter(t *testing.T) {
-	// The webhook subscribes only to "something_else"; EmitTo must still deliver the
-	// rule's event to it (the rule decides, not the subscription's events[]).
+	// The webhook subscribes only to "something_else" AND is scoped to another
+	// sector; EmitTo must still deliver the rule's event to it — the rule decides,
+	// not the subscription's events[] NOR its scopes.
 	subs := &fakeSubs{byID: map[string]*entity.WebhookSubscription{
-		"wh1": {ID: "wh1", TenantID: "t1", Enabled: true, Events: []string{"something_else"}},
+		"wh1": {ID: "wh1", TenantID: "t1", Enabled: true, Events: []string{"something_else"}, Scopes: []string{"other-sector"}},
 	}}
 	del := newFakeDeliveries()
 	enq := &fakeEnqueuer{}

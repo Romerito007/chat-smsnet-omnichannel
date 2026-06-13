@@ -138,3 +138,36 @@ func toActions(in []ActionDTO) []entity.Action {
 	}
 	return out
 }
+
+// EvaluationLogResponse is one rule-firing log entry.
+type EvaluationLogResponse struct {
+	ID             string    `json:"id"`
+	RuleID         string    `json:"rule_id"`
+	Event          string    `json:"event"`
+	ConversationID string    `json:"conversation_id,omitempty"`
+	Status         string    `json:"status"`
+	ErrorSummary   string    `json:"error_summary,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// NewEvaluationLogResponses maps a slice of log entities to DTOs.
+func NewEvaluationLogResponses(ls []*entity.RuleEvaluationLog) []EvaluationLogResponse {
+	out := make([]EvaluationLogResponse, 0, len(ls))
+	for _, l := range ls {
+		out = append(out, NewEvaluationLogResponse(l))
+	}
+	return out
+}
+
+// NewEvaluationLogResponse maps a log entity to the DTO.
+func NewEvaluationLogResponse(l *entity.RuleEvaluationLog) EvaluationLogResponse {
+	return EvaluationLogResponse{
+		ID:             l.ID,
+		RuleID:         l.RuleID,
+		Event:          string(l.Event),
+		ConversationID: l.ConversationID,
+		Status:         string(l.Status),
+		ErrorSummary:   l.ErrorSummary,
+		CreatedAt:      l.CreatedAt,
+	}
+}

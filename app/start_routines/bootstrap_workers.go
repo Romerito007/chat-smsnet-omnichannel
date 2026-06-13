@@ -12,6 +12,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
 	autocontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automation/contracts"
+	arcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automationrules/contracts"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	ccontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/contracts"
 	ncontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/notifications/contracts"
@@ -56,6 +57,17 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		}
 		ctx = shared.WithTenant(ctx, p.TenantID)
 		return automation.StartConversationAutomation(ctx, p.ConversationID, p.MessageID)
+	})
+
+	// automationrule.evaluate: evaluate the tenant's automation rules for one
+	// conversation/message event and fire matching actions (send_webhook).
+	ruleEvaluator := factories.AutomationRuleEvaluator(c)
+	mux.HandleFunc(infraasynq.TaskRuleEvaluate, func(ctx context.Context, t *asynq.Task) error {
+		var p arcontracts.EvaluateTask
+		if err := json.Unmarshal(t.Payload(), &p); err != nil {
+			return err
+		}
+		return ruleEvaluator.Evaluate(ctx, p)
 	})
 
 	// automation.timeout: escalate a run still waiting for its callback.

@@ -254,6 +254,11 @@ func schemas() M {
 			"name": str(), "description": str(), "event": automationRuleEventEnum(), "enabled": boolean(),
 			"conditions": arr(ref("AutomationRuleCondition")), "actions": arr(ref("AutomationRuleAction")),
 		}),
+		"RuleEvaluationLog": object(M{
+			"id": str(), "rule_id": str(), "event": automationRuleEventEnum(), "conversation_id": str(),
+			"status":        withDesc(enum("action_enqueued", "skipped_dedup", "error"), "Outcome of a rule firing. skipped_dedup is the anti-loop guard (same rule+conversation+event fired within a short window)."),
+			"error_summary": str(), "created_at": dateTime(),
+		}),
 
 		// ── providerhub ────────────────────────────────────────────────────────
 		// ProviderHubGatewayStatus is the GET /v1/providerhub/config response. The

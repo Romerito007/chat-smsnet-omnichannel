@@ -192,6 +192,9 @@ func registerIntegrations(p *paths) {
 		params: ruleIDP, reqBody: body(ref("UpdateAutomationRuleRequest")), responses: M{"200": jsonResp("Updated", ref("AutomationRule")), "404": errorResponse("Not found.")}}))
 	p.add("DELETE", "/v1/automation-rules/{id}", op(opConfig{tag: "automationrules", summary: "Delete an automation rule",
 		params: ruleIDP, responses: M{"204": emptyResp("Deleted"), "404": errorResponse("Not found.")}}))
+	p.add("GET", "/v1/automation-rules/{id}/logs", op(opConfig{tag: "automationrules", summary: "List a rule's evaluation logs",
+		params:    append([]M{pathParam("id", "automation rule id")}, paginationParams()...),
+		responses: M{"200": jsonResp("Evaluation log page", pageOf(ref("RuleEvaluationLog")))}}))
 
 	// providerhub: catalog, gateway status and ISP profiles (many per tenant)
 	p.add("GET", "/v1/providerhub/catalog", op(opConfig{tag: "providerhub", summary: "Supported ISP catalog (credential fields + actions per ISP)",

@@ -35,19 +35,33 @@ type UpdateRule struct {
 	Actions     *[]entity.Action
 }
 
-// RuleService manages automation rules and validates referenced webhooks.
+// RuleService manages automation rules, validates referenced webhooks, and reads
+// evaluation logs.
 type RuleService struct {
 	repo     repository.RuleRepository
 	webhooks whrepo.SubscriptionRepository
+	logs     repository.LogRepository
 	clock    shared.Clock
 }
 
 // NewRuleService builds the service.
-func NewRuleService(repo repository.RuleRepository, webhooks whrepo.SubscriptionRepository, clock shared.Clock) *RuleService {
+func NewRuleService(repo repository.RuleRepository, webhooks whrepo.SubscriptionRepository, logs repository.LogRepository, clock shared.Clock) *RuleService {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &RuleService{repo: repo, webhooks: webhooks, clock: clock}
+	return &RuleService{repo: repo, webhooks: webhooks, logs: logs, clock: clock}
+}
+
+// Logs returns a rule's evaluation logs (GET /v1/automation-rules/{id}/logs),
+// after verifying the rule belongs to the tenant.
+func (s *RuleService) Logs(ctx context.Context, ruleID string, page shared.PageRequest) ([]*entity.RuleEvaluationLog, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := s.repo.FindByID(ctx, ruleID); err != nil {
+		return nil, err
+	}
+	return s.logs.ListByRule(ctx, ruleID, page)
 }
 
 // List returns the tenant's rules.
