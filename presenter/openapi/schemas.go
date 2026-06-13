@@ -280,18 +280,29 @@ func schemas() M {
 		"Chamado":   object(M{"protocolo": str(), "msg": str()}),
 
 		// ── contacts ───────────────────────────────────────────────────────────
-		"ContactExternalID": object(M{"channel": str(), "external_id": str()}),
+		"ContactExternalID": object(M{
+			"channel":     contactIdentityChannelEnum(),
+			"external_id": str(),
+		}),
 		"Contact": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "phones": arr(str()),
 			"document": str(), "email": str(), "external_ids": arr(ref("ContactExternalID")),
 			"tags": tagIDArray(), "notes": str(), "created_at": dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateContactRequest": object(M{
-			"name": str(), "phones": arr(str()), "document": str(), "email": str(),
+			"name": str(),
+			"phones": arr(describedStr("Phone number; normalized to E.164 on write (default region BR). " +
+				"Invalid numbers are rejected with 400 validation_error.")),
+			"document":     describedStr("CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask)."),
+			"email":        describedStr("Email address; format-validated and stored lowercased."),
 			"external_ids": arr(ref("ContactExternalID")), "tags": tagIDArray(), "notes": str(),
 		}, "name"),
 		"UpdateContactRequest": object(M{
-			"name": str(), "phones": arr(str()), "document": str(), "email": str(),
+			"name": str(),
+			"phones": arr(describedStr("Phone number; normalized to E.164 on write (default region BR). " +
+				"Invalid numbers are rejected with 400 validation_error.")),
+			"document":     describedStr("CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask)."),
+			"email":        describedStr("Email address; format-validated and stored lowercased."),
 			"external_ids": arr(ref("ContactExternalID")), "tags": tagIDArray(), "notes": str(),
 		}),
 

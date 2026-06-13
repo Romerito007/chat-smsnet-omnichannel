@@ -130,7 +130,7 @@ func TestCreate_NormalizesAndPersists(t *testing.T) {
 	svc := newSvc()
 	c, err := svc.Create(tenantCtx(), contracts.CreateContact{
 		Name: "  Jane  ", Phones: []string{"+55 (11) 99999-0000", "11 98888 1111"},
-		Document: "12345678900", Email: "  JANE@x.com ", Tags: []string{"vip", " "},
+		Document: "111.444.777-35", Email: "  JANE@x.com ", Tags: []string{"vip", " "},
 		ExternalIDs: []contracts.ExternalIdentity{{Channel: "whatsapp", ExternalID: "5511"}},
 	})
 	if err != nil {
@@ -138,6 +138,9 @@ func TestCreate_NormalizesAndPersists(t *testing.T) {
 	}
 	if c.Name != "Jane" || c.Email != "jane@x.com" {
 		t.Errorf("trim/lowercase failed: %+v", c)
+	}
+	if c.Document != "11144477735" {
+		t.Errorf("document not stored digits-only: %q", c.Document)
 	}
 	if len(c.Phones) != 2 || c.Phones[0] != "+5511999990000" || c.Phone != "+5511999990000" {
 		t.Errorf("phones not normalized/primary set: %+v", c.Phones)
@@ -159,27 +162,64 @@ func TestCreate_RequiresName(t *testing.T) {
 func TestCreate_DedupByDocumentAndPhone(t *testing.T) {
 	svc := newSvc()
 	ctx := tenantCtx()
-	if _, err := svc.Create(ctx, contracts.CreateContact{Name: "A", Document: "999", Phones: []string{"5511"}}); err != nil {
+	if _, err := svc.Create(ctx, contracts.CreateContact{Name: "A", Document: "111.444.777-35", Phones: []string{"+5511999990000"}}); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
 	// Same document → conflict.
-	if _, err := svc.Create(ctx, contracts.CreateContact{Name: "B", Document: "999"}); apperror.From(err).Code != apperror.CodeConflict {
+	if _, err := svc.Create(ctx, contracts.CreateContact{Name: "B", Document: "11144477735"}); apperror.From(err).Code != apperror.CodeConflict {
 		t.Errorf("duplicate document must conflict, got %v", err)
 	}
-	// Same phone → conflict.
-	if _, err := svc.Create(ctx, contracts.CreateContact{Name: "C", Phones: []string{"55 11"}}); apperror.From(err).Code != apperror.CodeConflict {
+	// Same phone (different representation, same E.164) → conflict.
+	if _, err := svc.Create(ctx, contracts.CreateContact{Name: "C", Phones: []string{"11 99999-0000"}}); apperror.From(err).Code != apperror.CodeConflict {
 		t.Errorf("duplicate phone must conflict, got %v", err)
+	}
+}
+
+func TestCreate_RejectsInvalidPhoneDocumentEmailChannel(t *testing.T) {
+	svc := newSvc()
+	ctx := tenantCtx()
+	_, err := svc.Create(ctx, contracts.CreateContact{
+		Name:        "Bad",
+		Phones:      []string{"abc123"},
+		Document:    "12345678900", // invalid CPF check digits
+		Email:       "not-an-email",
+		ExternalIDs: []contracts.ExternalIdentity{{Channel: "carrier-pigeon", ExternalID: "x"}},
+	})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("expected validation_error, got %v", err)
+	}
+	details := apperror.From(err).Details
+	for _, want := range []string{"phones[0]", "document", "email", "external_ids[0].channel"} {
+		if _, ok := details[want]; !ok {
+			t.Errorf("missing detail for %q in %v", want, details)
+		}
+	}
+}
+
+func TestCreate_RejectsDuplicateChannelIdentity(t *testing.T) {
+	svc := newSvc()
+	ctx := tenantCtx()
+	if _, err := svc.Create(ctx, contracts.CreateContact{
+		Name: "A", ExternalIDs: []contracts.ExternalIdentity{{Channel: "whatsapp", ExternalID: "5544999"}},
+	}); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	// Another contact claiming the same (channel, external_id) → conflict.
+	if _, err := svc.Create(ctx, contracts.CreateContact{
+		Name: "B", ExternalIDs: []contracts.ExternalIdentity{{Channel: "whatsapp", ExternalID: "5544999"}},
+	}); apperror.From(err).Code != apperror.CodeConflict {
+		t.Errorf("duplicate channel identity must conflict, got %v", err)
 	}
 }
 
 func TestUpdate_PartialAndDedupExcludesSelf(t *testing.T) {
 	svc := newSvc()
 	ctx := tenantCtx()
-	c, _ := svc.Create(ctx, contracts.CreateContact{Name: "A", Document: "111", Phones: []string{"5511"}, Notes: "old"})
+	c, _ := svc.Create(ctx, contracts.CreateContact{Name: "A", Document: "111.444.777-35", Phones: []string{"+5511999990000"}, Notes: "old"})
 
 	// Re-saving the same contact's own phone/document must NOT conflict with itself.
 	name := "A2"
-	got, err := svc.Update(ctx, c.ID, contracts.UpdateContact{Name: &name, Phones: &[]string{"5511"}})
+	got, err := svc.Update(ctx, c.ID, contracts.UpdateContact{Name: &name, Phones: &[]string{"11 99999-0000"}})
 	if err != nil {
 		t.Fatalf("update self: %v", err)
 	}
@@ -188,8 +228,8 @@ func TestUpdate_PartialAndDedupExcludesSelf(t *testing.T) {
 	}
 
 	// A second contact, then updating it to the first's document → conflict.
-	c2, _ := svc.Create(ctx, contracts.CreateContact{Name: "B", Document: "222"})
-	doc := "111"
+	c2, _ := svc.Create(ctx, contracts.CreateContact{Name: "B", Document: "529.982.247-25"})
+	doc := "11144477735"
 	if _, err := svc.Update(ctx, c2.ID, contracts.UpdateContact{Document: &doc}); apperror.From(err).Code != apperror.CodeConflict {
 		t.Errorf("update to an existing document must conflict, got %v", err)
 	}

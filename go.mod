@@ -14,6 +14,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/hibiken/asynq v0.26.0
 	github.com/joho/godotenv v1.5.1
+	github.com/nyaruka/phonenumbers v1.8.0
 	github.com/redis/go-redis/v9 v9.20.0
 	go.mongodb.org/mongo-driver v1.17.9
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
@@ -59,7 +60,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.17.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )

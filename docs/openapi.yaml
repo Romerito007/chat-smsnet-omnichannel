@@ -568,6 +568,16 @@ components:
         ContactExternalID:
             properties:
                 channel:
+                    enum:
+                        - whatsapp
+                        - telegram
+                        - instagram
+                        - webchat
+                        - sms
+                        - email
+                        - api
+                        - crm
+                        - custom
                     type: string
                 external_id:
                     type: string
@@ -843,8 +853,10 @@ components:
         CreateContactRequest:
             properties:
                 document:
+                    description: CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask).
                     type: string
                 email:
+                    description: Email address; format-validated and stored lowercased.
                     type: string
                 external_ids:
                     items:
@@ -856,6 +868,7 @@ components:
                     type: string
                 phones:
                     items:
+                        description: Phone number; normalized to E.164 on write (default region BR). Invalid numbers are rejected with 400 validation_error.
                         type: string
                     type: array
                 tags:
@@ -2385,8 +2398,10 @@ components:
         UpdateContactRequest:
             properties:
                 document:
+                    description: CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask).
                     type: string
                 email:
+                    description: Email address; format-validated and stored lowercased.
                     type: string
                 external_ids:
                     items:
@@ -2398,6 +2413,7 @@ components:
                     type: string
                 phones:
                     items:
+                        description: Phone number; normalized to E.164 on write (default region BR). Invalid numbers are rejected with 400 validation_error.
                         type: string
                     type: array
                 tags:

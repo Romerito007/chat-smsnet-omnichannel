@@ -78,6 +78,15 @@ padrões transversais, Asynq/Redis/Mongo bootstrap, health) já está implementa
 - Push mobile fica para depois (notifications cobre in-app + e-mail).
 - Relatórios = `reports.snapshot` simples; BI dedicado fora do MVP.
 
+## Backlog pós-piloto
+
+- **Merge de contatos** (`POST /v1/contacts/{id}/merge`): empresas importam muitos
+  duplicados, então merge será necessário — mas só DEPOIS do piloto. Quando for a
+  hora, especificar: unir `phones`/`tags`/`external_ids` (sem duplicar), reapontar
+  as conversas do contato source para o target, soft-delete do source, e operação
+  **transacional e idempotente** (re-merge não duplica nem perde dados). Por ora a
+  rota NÃO existe.
+
 ---
 
 ## Dúvidas que BLOQUEIAM implementação

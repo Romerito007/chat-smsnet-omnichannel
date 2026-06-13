@@ -81,15 +81,32 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateContact) (*ent
 	if err != nil {
 		return nil, err
 	}
+	// Validate + normalize all fields, collecting every field error into one 400.
+	v := map[string]any{}
 	name := strings.TrimSpace(cmd.Name)
 	if name == "" {
-		return nil, apperror.Validation("name is required").WithDetails(map[string]any{"name": "is required"})
+		v["name"] = "is required"
 	}
-	phones := normalizePhones(cmd.Phones)
-	document := strings.TrimSpace(cmd.Document)
-	email := normalizeEmail(cmd.Email)
+	phones, perr := normalizePhonesValidated(cmd.Phones)
+	mergeDetails(v, perr)
+	document, docOK := normalizeDocument(cmd.Document)
+	if !docOK {
+		v["document"] = "is not a valid CPF or CNPJ"
+	}
+	email, emailOK := normalizeEmailStrict(cmd.Email)
+	if !emailOK {
+		v["email"] = "is not a valid email"
+	}
+	identities, ierr := normalizeIdentitiesValidated(cmd.ExternalIDs)
+	mergeDetails(v, ierr)
+	if len(v) > 0 {
+		return nil, apperror.Validation("invalid contact").WithDetails(v)
+	}
 
 	if err := s.checkDuplicate(ctx, "", document, phones); err != nil {
+		return nil, err
+	}
+	if err := s.checkIdentityUnique(ctx, "", identities); err != nil {
 		return nil, err
 	}
 
@@ -100,7 +117,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateContact) (*ent
 		Name:       name,
 		Document:   document,
 		Email:      email,
-		Identities: toIdentities(cmd.ExternalIDs),
+		Identities: identities,
 		Tags:       s.normalizeTags(ctx, cmd.Tags),
 		Notes:      strings.TrimSpace(cmd.Notes),
 		CreatedAt:  now,
@@ -128,21 +145,35 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 		return nil, err
 	}
 
+	// Validate every provided field first, collecting all errors into one 400,
+	// and only mutate the contact once everything is valid.
+	v := map[string]any{}
+	var newPhones []string
 	if cmd.Name != nil {
-		name := strings.TrimSpace(*cmd.Name)
-		if name == "" {
-			return nil, apperror.Validation("name cannot be empty")
+		if name := strings.TrimSpace(*cmd.Name); name == "" {
+			v["name"] = "cannot be empty"
+		} else {
+			contact.Name = name
 		}
-		contact.Name = name
 	}
 	if cmd.Phones != nil {
-		contact.SetPhones(normalizePhones(*cmd.Phones))
+		phones, perr := normalizePhonesValidated(*cmd.Phones)
+		mergeDetails(v, perr)
+		newPhones = phones
 	}
 	if cmd.Document != nil {
-		contact.Document = strings.TrimSpace(*cmd.Document)
+		if doc, ok := normalizeDocument(*cmd.Document); ok {
+			contact.Document = doc
+		} else {
+			v["document"] = "is not a valid CPF or CNPJ"
+		}
 	}
 	if cmd.Email != nil {
-		contact.Email = normalizeEmail(*cmd.Email)
+		if email, ok := normalizeEmailStrict(*cmd.Email); ok {
+			contact.Email = email
+		} else {
+			v["email"] = "is not a valid email"
+		}
 	}
 	if cmd.Tags != nil {
 		contact.Tags = s.normalizeTags(ctx, *cmd.Tags)
@@ -151,11 +182,22 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 		contact.Notes = strings.TrimSpace(*cmd.Notes)
 	}
 	if cmd.ExternalIDs != nil {
-		contact.Identities = toIdentities(*cmd.ExternalIDs)
+		identities, ierr := normalizeIdentitiesValidated(*cmd.ExternalIDs)
+		mergeDetails(v, ierr)
+		contact.Identities = identities
+	}
+	if len(v) > 0 {
+		return nil, apperror.Validation("invalid contact").WithDetails(v)
+	}
+	if cmd.Phones != nil {
+		contact.SetPhones(newPhones)
 	}
 
-	// Re-check dedup against OTHER contacts for the (possibly changed) keys.
+	// Re-check dedup + identity uniqueness against OTHER contacts.
 	if err := s.checkDuplicate(ctx, contact.ID, contact.Document, contact.Phones); err != nil {
+		return nil, err
+	}
+	if err := s.checkIdentityUnique(ctx, contact.ID, contact.Identities); err != nil {
 		return nil, err
 	}
 
@@ -191,6 +233,31 @@ func (s *Service) checkDuplicate(ctx context.Context, selfID, document string, p
 		}
 	}
 	return nil
+}
+
+// checkIdentityUnique returns a conflict when another contact (id != selfID) in
+// the tenant already carries one of the given channel identities — so a (channel,
+// external_id) pair never matches two contacts (which would split conversation
+// routing).
+func (s *Service) checkIdentityUnique(ctx context.Context, selfID string, ids []entity.ChannelIdentity) error {
+	for _, id := range ids {
+		other, err := s.repo.FindByChannelIdentity(ctx, id.Channel, id.ExternalID)
+		if err == nil && other.ID != selfID {
+			return apperror.Conflict("a contact with this channel identity already exists").
+				WithDetails(map[string]any{"external_ids": id.Channel + ":" + id.ExternalID + " already in use"})
+		}
+		if err != nil && !isNotFound(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// mergeDetails copies all entries of src into dst (field-error accumulation).
+func mergeDetails(dst, src map[string]any) {
+	for k, v := range src {
+		dst[k] = v
+	}
 }
 
 func isNotFound(err error) bool { return apperror.From(err).Code == apperror.CodeNotFound }
@@ -277,25 +344,6 @@ func normalizePhone(phone string) string {
 	return b.String()
 }
 
-// normalizePhones normalizes each phone and drops empties/duplicates, preserving
-// order (the first becomes the primary).
-func normalizePhones(phones []string) []string {
-	out := make([]string, 0, len(phones))
-	seen := map[string]struct{}{}
-	for _, p := range phones {
-		n := normalizePhone(p)
-		if n == "" {
-			continue
-		}
-		if _, ok := seen[n]; ok {
-			continue
-		}
-		seen[n] = struct{}{}
-		out = append(out, n)
-	}
-	return out
-}
-
 func containsPhone(phones []string, phone string) bool {
 	for _, p := range phones {
 		if p == phone {
@@ -305,11 +353,6 @@ func containsPhone(phones []string, phone string) bool {
 	return false
 }
 
-// normalizeEmail trims and lowercases an email (no validation beyond trimming).
-func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-
 // cleanList trims and drops empty entries, preserving order.
 func cleanList(items []string) []string {
 	out := make([]string, 0, len(items))
@@ -317,21 +360,6 @@ func cleanList(items []string) []string {
 		if t := strings.TrimSpace(it); t != "" {
 			out = append(out, t)
 		}
-	}
-	return out
-}
-
-// toIdentities maps CRM external-id inputs to channel identities, dropping
-// incomplete pairs.
-func toIdentities(ids []contracts.ExternalIdentity) []entity.ChannelIdentity {
-	out := make([]entity.ChannelIdentity, 0, len(ids))
-	for _, id := range ids {
-		ch := strings.TrimSpace(id.Channel)
-		ex := strings.TrimSpace(id.ExternalID)
-		if ch == "" || ex == "" {
-			continue
-		}
-		out = append(out, entity.ChannelIdentity{Channel: ch, ExternalID: ex})
 	}
 	return out
 }

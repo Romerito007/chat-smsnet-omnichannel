@@ -109,7 +109,7 @@ func TestContacts_CreateGetUpdate_RoundTrip(t *testing.T) {
 
 	// Create.
 	rec := httpharness.Do(t, r, http.MethodPost, "/contacts", write,
-		map[string]any{"name": "Jane", "phones": []string{"+55 11 99999-0000"}, "document": "12345678900", "email": "Jane@x.com"})
+		map[string]any{"name": "Jane", "phones": []string{"+55 11 99999-0000"}, "document": "111.444.777-35", "email": "Jane@x.com"})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -164,8 +164,8 @@ func TestContacts_ListFilterByTag(t *testing.T) {
 func TestContacts_DuplicateDocument_409(t *testing.T) {
 	r, tm := build(t)
 	write := httpharness.Token(t, tm, "t1", "u1", authz.ContactWrite)
-	_ = httpharness.Do(t, r, http.MethodPost, "/contacts", write, map[string]any{"name": "A", "document": "999"})
-	rec := httpharness.Do(t, r, http.MethodPost, "/contacts", write, map[string]any{"name": "B", "document": "999"})
+	_ = httpharness.Do(t, r, http.MethodPost, "/contacts", write, map[string]any{"name": "A", "document": "111.444.777-35"})
+	rec := httpharness.Do(t, r, http.MethodPost, "/contacts", write, map[string]any{"name": "B", "document": "11144477735"})
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("duplicate document status = %d, want 409", rec.Code)
 	}

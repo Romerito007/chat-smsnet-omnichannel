@@ -35,6 +35,17 @@ func enum(vals ...string) M {
 	return M{"type": "string", "enum": anySlice(vals)}
 }
 
+// describedStr is a string schema with a human description, used to document
+// validation/normalization rules a typed client should know about.
+func describedStr(desc string) M { return M{"type": "string", "description": desc} }
+
+// contactIdentityChannelEnum is the closed set of channels a contact external
+// identity may use (domain/contacts/entity.SupportedIdentityChannels): the real
+// channel-connection types plus the CRM-only identity channels (sms/email/crm).
+func contactIdentityChannelEnum() M {
+	return enum("whatsapp", "telegram", "instagram", "webchat", "sms", "email", "api", "crm", "custom")
+}
+
 // conversationStatusEnum is the single source of truth for the conversation
 // status vocabulary (domain/conversations/entity.Status). The same set is used by
 // the Conversation schema, the PATCH /conversations/{id} body and the

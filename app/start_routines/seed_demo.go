@@ -831,11 +831,21 @@ func (d *demoSeeder) createMessages(conv *conventity.Conversation, assignee stri
 		d.mark("messages", m.ID)
 	}
 	// An internal note on some conversations (never delivered to the customer).
+	// Pick from a small pool so a contact's history doesn't show the same note
+	// text twice (an internal note is per-conversation, so identical text across
+	// two conversations of the same contact looks like a duplicate).
 	if assignee != "" && d.rng.Intn(3) == 0 {
+		notes := []string{
+			"Nota interna: cliente recorrente, tratar com prioridade.",
+			"Nota interna: já houve contato anterior sobre o mesmo assunto.",
+			"Nota interna: cliente prefere atendimento por WhatsApp.",
+			"Nota interna: aguardando retorno do financeiro antes de prosseguir.",
+			"Nota interna: verificar histórico de pagamentos antes de oferecer plano.",
+		}
 		note := &conventity.Message{
 			ID: shared.NewID(), TenantID: d.tenantID, ConversationID: conv.ID,
 			SenderType: conventity.SenderAgent, SenderID: assignee, Direction: conventity.DirectionInternal,
-			MessageType: conventity.MessageText, Text: "Nota interna: cliente recorrente, tratar com prioridade.",
+			MessageType: conventity.MessageText, Text: notes[d.rng.Intn(len(notes))],
 			CreatedAt: conv.LastMessageAt,
 		}
 		if err := repo.Create(d.ctx, note); err != nil {
