@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math/rand"
 	"net/mail"
 	"strings"
 
@@ -15,10 +16,11 @@ import (
 // (DDI). Brazilian numbers without "+55" are parsed as BR.
 const defaultPhoneRegion = "BR"
 
-// normalizePhoneE164 parses a phone (with libphonenumber, default region BR) and
+// NormalizePhoneE164 parses a phone (with libphonenumber, default region BR) and
 // returns it formatted as E.164 (e.g. +5544941049474). ok is false when the
-// number is empty or not a valid number.
-func normalizePhoneE164(raw string) (string, bool) {
+// number is empty or not a valid number. Exported so the seed writes exactly the
+// same shape the create/update validation accepts (one source of truth).
+func NormalizePhoneE164(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", false
@@ -44,10 +46,12 @@ func digitsOnly(s string) string {
 	return b.String()
 }
 
-// normalizeDocument validates a CPF (11 digits) or CNPJ (14 digits) by its check
+// NormalizeDocument validates a CPF (11 digits) or CNPJ (14 digits) by its check
 // digits and returns the digits-only form (no mask). An empty document is valid
 // (optional field) and returns ("", true). ok is false for an invalid document.
-func normalizeDocument(raw string) (string, bool) {
+// Exported so the seed can validate the documents it generates with the very same
+// rule the create/update path enforces.
+func NormalizeDocument(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", true
@@ -86,6 +90,26 @@ func isValidCPF(d string) bool {
 		return false
 	}
 	return cpfDigit(d, 9, 10) == int(d[9]-'0') && cpfDigit(d, 10, 11) == int(d[10]-'0')
+}
+
+// GenerateValidCPF returns an 11-digit CPF (digits only) with correct check
+// digits, drawn from rng. It computes the DVs with cpfDigit — the same function
+// isValidCPF/NormalizeDocument use — so a generated CPF is valid by construction.
+// Used by the demo seed so seeded contacts pass the document validation.
+func GenerateValidCPF(rng *rand.Rand) string {
+	d := make([]byte, 11)
+	for {
+		for i := 0; i < 9; i++ {
+			d[i] = byte('0' + rng.Intn(10))
+		}
+		base := string(d[:9])
+		d[9] = byte('0' + cpfDigit(base, 9, 10))
+		d[10] = byte('0' + cpfDigit(string(d[:10]), 10, 11))
+		out := string(d)
+		if !allEqual(out) { // reject the degenerate all-equal CPFs
+			return out
+		}
+	}
 }
 
 // cpfDigit computes a CPF check digit over the first n digits with the standard
@@ -156,7 +180,7 @@ func normalizePhonesValidated(phones []string) ([]string, map[string]any) {
 		if strings.TrimSpace(p) == "" {
 			continue
 		}
-		e164, ok := normalizePhoneE164(p)
+		e164, ok := NormalizePhoneE164(p)
 		if !ok {
 			details[fmt.Sprintf("phones[%d]", i)] = "is not a valid phone number"
 			continue

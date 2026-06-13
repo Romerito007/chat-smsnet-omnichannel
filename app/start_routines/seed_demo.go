@@ -19,6 +19,7 @@ import (
 	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	channelservice "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/service"
 	contactentity "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/entity"
+	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	ctentity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversationtools/entity"
 	cpentity "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
@@ -603,10 +604,21 @@ func (d *demoSeeder) seedContacts() error {
 	last := []string{"Silva", "Souza", "Oliveira", "Santos", "Pereira", "Lima", "Costa", "Almeida",
 		"Ferreira", "Rodrigues", "Gomes", "Martins", "Araújo", "Barbosa", "Ribeiro"}
 
+	// add is the single write path: it normalizes phone (E.164) and document
+	// (CPF/CNPJ) with the SAME domain functions the create/update validation uses,
+	// so every seeded contact passes that validation (editing it never 400s).
 	add := func(name, phone, doc, email string, tags []string) error {
+		e164, ok := contactservice.NormalizePhoneE164(phone)
+		if !ok {
+			return fmt.Errorf("seed: invalid phone %q for contact %q", phone, name)
+		}
+		document, ok := contactservice.NormalizeDocument(doc)
+		if !ok {
+			return fmt.Errorf("seed: invalid document %q for contact %q", doc, name)
+		}
 		ct := &contactentity.Contact{
-			ID: shared.NewID(), TenantID: d.tenantID, Name: name, Phone: phone,
-			Phones: []string{phone}, Document: doc, Email: email, Tags: tags,
+			ID: shared.NewID(), TenantID: d.tenantID, Name: name, Phone: e164,
+			Phones: []string{e164}, Document: document, Email: email, Tags: tags,
 			CreatedAt: d.now, UpdatedAt: d.now,
 		}
 		if err := repo.Create(d.ctx, ct); err != nil {
@@ -632,10 +644,10 @@ func (d *demoSeeder) seedContacts() error {
 	}
 	for i := 0; i < 34; i++ {
 		name := first[d.rng.Intn(len(first))] + " " + last[d.rng.Intn(len(last))]
-		phone := fmt.Sprintf("+5544%09d", 900000000+d.rng.Intn(99999999))
+		phone := d.validE164Phone()
 		doc, email := "", ""
 		if d.rng.Intn(2) == 0 {
-			doc = fmt.Sprintf("%011d", 10000000000+d.rng.Int63n(89999999999))
+			doc = contactservice.GenerateValidCPF(d.rng)
 		}
 		if d.rng.Intn(2) == 0 {
 			email = fmt.Sprintf("cliente%d@demo.local", i+1)
@@ -649,6 +661,21 @@ func (d *demoSeeder) seedContacts() error {
 		}
 	}
 	return nil
+}
+
+// validE164Phone generates a Brazilian mobile and returns it in E.164, looping
+// until libphonenumber accepts it (via the same NormalizePhoneE164 the backend
+// validation uses) — so the seeded number is exactly what an edit would accept.
+// Uses real area codes (DDDs) and the 9-prefixed 9-digit mobile format.
+func (d *demoSeeder) validE164Phone() string {
+	ddds := []string{"11", "19", "21", "27", "31", "41", "44", "47", "48", "51", "61", "62", "71", "81", "85"}
+	for {
+		ddd := ddds[d.rng.Intn(len(ddds))]
+		raw := fmt.Sprintf("+55%s9%08d", ddd, d.rng.Intn(100000000))
+		if e164, ok := contactservice.NormalizePhoneE164(raw); ok {
+			return e164
+		}
+	}
 }
 
 // ── 4.9 conversations + messages + timeline + sla + csat ───────────────────────

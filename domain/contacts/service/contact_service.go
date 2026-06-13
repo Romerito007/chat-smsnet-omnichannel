@@ -89,7 +89,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateContact) (*ent
 	}
 	phones, perr := normalizePhonesValidated(cmd.Phones)
 	mergeDetails(v, perr)
-	document, docOK := normalizeDocument(cmd.Document)
+	document, docOK := NormalizeDocument(cmd.Document)
 	if !docOK {
 		v["document"] = "is not a valid CPF or CNPJ"
 	}
@@ -162,7 +162,7 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 		newPhones = phones
 	}
 	if cmd.Document != nil {
-		if doc, ok := normalizeDocument(*cmd.Document); ok {
+		if doc, ok := NormalizeDocument(*cmd.Document); ok {
 			contact.Document = doc
 		} else {
 			v["document"] = "is not a valid CPF or CNPJ"
