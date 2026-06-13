@@ -39,6 +39,23 @@ func enum(vals ...string) M {
 // validation/normalization rules a typed client should know about.
 func describedStr(desc string) M { return M{"type": "string", "description": desc} }
 
+// ispTypeStr documents the isp_type slug (config.type). It is a closed set: the
+// 19 ISPs the smsnet-integrations API supports (the slugs returned by
+// GET /v1/providerhub/catalog) plus the legacy aliases voalle/sgp, kept accepted
+// for already-stored configs. Mirrors domain/providerhub/entity.KnownISPTypes;
+// keep both in sync. The catalog endpoint is the source of truth for which
+// credential fields and actions each slug supports.
+func ispTypeStr() M {
+	m := enum(
+		"altarede", "beesweb", "hubsoft", "ispcloud", "ispcontrollr", "ispfy",
+		"ixcsoft", "mikweb", "mkauth", "mksolutions", "netcontrol", "radiusnet",
+		"rbfull", "rbxsoft", "receitanet", "sgmcloud", "sgpnet", "topsapp", "whmcs",
+		"voalle", "sgp",
+	)
+	m["description"] = "ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted)."
+	return m
+}
+
 // contactIdentityChannelEnum is the closed set of channels a contact external
 // identity may use (domain/contacts/entity.SupportedIdentityChannels): the real
 // channel-connection types plus the CRM-only identity channels (sms/email/crm).

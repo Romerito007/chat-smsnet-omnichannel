@@ -990,6 +990,29 @@ components:
                         type: string
                     type: object
                 isp_type:
+                    description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
+                    enum:
+                        - altarede
+                        - beesweb
+                        - hubsoft
+                        - ispcloud
+                        - ispcontrollr
+                        - ispfy
+                        - ixcsoft
+                        - mikweb
+                        - mkauth
+                        - mksolutions
+                        - netcontrol
+                        - radiusnet
+                        - rbfull
+                        - rbxsoft
+                        - receitanet
+                        - sgmcloud
+                        - sgpnet
+                        - topsapp
+                        - whmcs
+                        - voalle
+                        - sgp
                     type: string
                 name:
                     type: string
@@ -1304,6 +1327,45 @@ components:
                     type: string
                 updated_at:
                     format: date-time
+                    type: string
+            type: object
+        ISPCatalogEntry:
+            properties:
+                actions:
+                    items:
+                        enum:
+                            - cliente
+                            - planos
+                            - empresa
+                            - liberacao
+                            - chamado
+                        type: string
+                    type: array
+                credentials:
+                    items:
+                        $ref: '#/components/schemas/ISPCredentialField'
+                    type: array
+                label:
+                    type: string
+                search_by:
+                    items:
+                        enum:
+                            - cpfcnpj
+                            - phone
+                            - email
+                        type: string
+                    type: array
+                slug:
+                    type: string
+            type: object
+        ISPCredentialField:
+            properties:
+                key:
+                    type: string
+                label:
+                    type: string
+                secret:
+                    description: True → render a masked input; the value is never echoed back by the config endpoints.
                     type: string
             type: object
         InboundMessageMultipart:
@@ -1779,6 +1841,15 @@ components:
                 tool:
                     type: string
             type: object
+        ProviderHubCatalog:
+            properties:
+                isps:
+                    items:
+                        $ref: '#/components/schemas/ISPCatalogEntry'
+                    type: array
+                version:
+                    type: string
+            type: object
         ProviderHubConfig:
             properties:
                 bot_id:
@@ -1799,6 +1870,29 @@ components:
                         type: string
                     type: array
                 isp_type:
+                    description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
+                    enum:
+                        - altarede
+                        - beesweb
+                        - hubsoft
+                        - ispcloud
+                        - ispcontrollr
+                        - ispfy
+                        - ixcsoft
+                        - mikweb
+                        - mkauth
+                        - mksolutions
+                        - netcontrol
+                        - radiusnet
+                        - rbfull
+                        - rbxsoft
+                        - receitanet
+                        - sgmcloud
+                        - sgpnet
+                        - topsapp
+                        - whmcs
+                        - voalle
+                        - sgp
                     type: string
                 name:
                     type: string
@@ -2555,6 +2649,29 @@ components:
                         type: string
                     type: object
                 isp_type:
+                    description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
+                    enum:
+                        - altarede
+                        - beesweb
+                        - hubsoft
+                        - ispcloud
+                        - ispcontrollr
+                        - ispfy
+                        - ixcsoft
+                        - mikweb
+                        - mkauth
+                        - mksolutions
+                        - netcontrol
+                        - radiusnet
+                        - rbfull
+                        - rbxsoft
+                        - receitanet
+                        - sgmcloud
+                        - sgpnet
+                        - topsapp
+                        - whmcs
+                        - voalle
+                        - sgp
                     type: string
                 name:
                     type: string
@@ -6958,6 +7075,29 @@ paths:
             summary: Update retention settings
             tags:
                 - privacy
+    /v1/providerhub/catalog:
+        get:
+            operationId: getProviderhubCatalog
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProviderHubCatalog'
+                    description: Catalog
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Supported ISP catalog (credential fields + actions per ISP)
+            tags:
+                - providerhub
     /v1/providerhub/config:
         get:
             operationId: getProviderhubConfig

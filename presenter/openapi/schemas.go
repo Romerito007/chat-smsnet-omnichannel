@@ -224,22 +224,41 @@ func schemas() M {
 
 		// ── providerhub ────────────────────────────────────────────────────────
 		"ProviderHubConfig": object(M{
-			"id": str(), "tenant_id": str(), "name": str(), "smsnet_base_url": str(), "isp_type": str(),
-			"bot_id": str(), "has_api_key": boolean(), "isp_credential_keys": arr(str()),
+			"id": str(), "tenant_id": str(), "name": str(), "smsnet_base_url": str(),
+			"isp_type": ispTypeStr(),
+			"bot_id":   str(), "has_api_key": boolean(), "isp_credential_keys": arr(str()),
 			"usa_pegar_fatura_atrasada": boolean(), "usa_extrair_linha_digitavel_pdf": boolean(),
 			"enabled": boolean(), "timeout_ms": integer(), "created_at": dateTime(), "updated_at": dateTime(),
 			// source: "tenant" | "env" | "none". For "env" the host/key are never
 			// returned — only that the integration is configured in the backend.
 			"source": enum("tenant", "env", "none"), "configured": boolean(),
 		}),
+		// ProviderHubCatalog is the static, versioned catalog of supported ISPs
+		// (GET /v1/providerhub/catalog): per ISP the credential fields to render and
+		// the actions it supports — the front hard-codes nothing.
+		"ProviderHubCatalog": object(M{
+			"version": str(),
+			"isps":    arr(ref("ISPCatalogEntry")),
+		}),
+		"ISPCatalogEntry": object(M{
+			"slug": str(), "label": str(),
+			"credentials": arr(ref("ISPCredentialField")),
+			"actions":     arr(enum("cliente", "planos", "empresa", "liberacao", "chamado")),
+			"search_by":   arr(enum("cpfcnpj", "phone", "email")),
+		}),
+		"ISPCredentialField": object(M{
+			"key": str(), "label": str(),
+			"secret": describedStr("True → render a masked input; the value is never echoed back by the config endpoints."),
+		}),
 		"CreateProviderHubConfigRequest": object(M{
-			"name": str(), "smsnet_base_url": str(), "smsnet_api_key": str(), "isp_type": str(),
+			"name": str(), "smsnet_base_url": str(), "smsnet_api_key": str(),
+			"isp_type":        ispTypeStr(),
 			"isp_credentials": stringMap(), "bot_id": str(), "timeout_ms": integer(),
 			"usa_pegar_fatura_atrasada": boolean(), "usa_extrair_linha_digitavel_pdf": boolean(),
 			"dados_planos": freeObject(), "dados_empresa": freeObject(),
 		}, "smsnet_base_url", "isp_type"),
 		"UpdateProviderHubConfigRequest": object(M{
-			"name": str(), "smsnet_base_url": str(), "smsnet_api_key": str(), "isp_type": str(),
+			"name": str(), "smsnet_base_url": str(), "smsnet_api_key": str(), "isp_type": ispTypeStr(),
 			"isp_credentials": stringMap(), "bot_id": str(), "enabled": boolean(), "timeout_ms": integer(),
 			"usa_pegar_fatura_atrasada": boolean(), "usa_extrair_linha_digitavel_pdf": boolean(),
 			"dados_planos": freeObject(), "dados_empresa": freeObject(),

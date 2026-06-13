@@ -26,6 +26,13 @@ func NewController(config *phservice.ConfigService, queries *phservice.QueryServ
 
 // ── config ───────────────────────────────────────────────────────────────────
 
+// Catalog handles GET /v1/providerhub/catalog: the static, versioned catalog of
+// supported ISPs (per-ISP credential fields + supported actions), so the front
+// renders the config form and shows/hides external actions without hard-coding.
+func (c *Controller) Catalog(w http.ResponseWriter, r *http.Request) {
+	middleware.WriteJSON(w, http.StatusOK, dto.NewCatalogResponse())
+}
+
 // GetConfig handles GET /v1/providerhub/config.
 func (c *Controller) GetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, source, err := c.config.Resolved(r.Context())

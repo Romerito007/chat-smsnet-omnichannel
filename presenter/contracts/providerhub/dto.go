@@ -154,3 +154,47 @@ type ChamadoRequest struct {
 	Subject   string `json:"subject"`
 	Message   string `json:"message"`
 }
+
+// ── ISP catalog (GET /v1/providerhub/catalog) ────────────────────────────────
+
+// CatalogResponse is the static, versioned catalog of supported ISPs: per ISP,
+// the credential fields the UI must render and the actions it supports. The
+// backend is the single source of truth so the front hard-codes nothing.
+type CatalogResponse struct {
+	Version string            `json:"version"`
+	ISPs    []ISPCatalogEntry `json:"isps"`
+}
+
+// ISPCatalogEntry is one ISP in the catalog.
+type ISPCatalogEntry struct {
+	Slug        string               `json:"slug"`
+	Label       string               `json:"label"`
+	Credentials []ISPCredentialEntry `json:"credentials"`
+	Actions     []string             `json:"actions"`   // cliente|planos|empresa|liberacao|chamado
+	SearchBy    []string             `json:"search_by"` // cpfcnpj|phone|email
+}
+
+// ISPCredentialEntry is one credential input for an ISP. Secret fields must be
+// rendered masked; the value is never echoed back by the config endpoints.
+type ISPCredentialEntry struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Secret bool   `json:"secret"`
+}
+
+// NewCatalogResponse maps the entity catalog (source of truth) to the DTO.
+func NewCatalogResponse() CatalogResponse {
+	out := CatalogResponse{Version: phentity.ISPCatalogVersion, ISPs: make([]ISPCatalogEntry, 0, len(phentity.ISPCatalog))}
+	for _, d := range phentity.ISPCatalog {
+		entry := ISPCatalogEntry{Slug: d.Slug, Label: d.Label}
+		for _, c := range d.Credentials {
+			entry.Credentials = append(entry.Credentials, ISPCredentialEntry{Key: c.Key, Label: c.Label, Secret: c.Secret})
+		}
+		for _, a := range d.Actions {
+			entry.Actions = append(entry.Actions, string(a))
+		}
+		entry.SearchBy = append(entry.SearchBy, d.SearchBy...)
+		out.ISPs = append(out.ISPs, entry)
+	}
+	return out
+}

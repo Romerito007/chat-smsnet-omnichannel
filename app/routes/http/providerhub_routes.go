@@ -18,6 +18,10 @@ func registerProviderHubRoutes(r chi.Router, c *container.Container) {
 	r.Group(func(p chi.Router) {
 		p.Use(middleware.AuthContext(c.Tokens))
 
+		// Static ISP catalog (slugs/labels/credential fields/actions) — quasi-static,
+		// so it carries an ETag for a cheap 304 on re-fetch.
+		p.With(middleware.RequirePermission(authz.IntegrationRead), catalogCache).Get("/providerhub/catalog", ctl.Catalog)
+
 		// Config management.
 		p.With(middleware.RequirePermission(authz.IntegrationRead)).Get("/providerhub/config", ctl.GetConfig)
 		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Post("/providerhub/config", ctl.CreateConfig)

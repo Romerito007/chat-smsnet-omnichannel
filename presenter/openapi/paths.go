@@ -181,6 +181,8 @@ func registerIntegrations(p *paths) {
 		public: true, params: []M{pathParam("tenant_id", "tenant id")}, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
 
 	// providerhub (singleton config)
+	p.add("GET", "/v1/providerhub/catalog", op(opConfig{tag: "providerhub", summary: "Supported ISP catalog (credential fields + actions per ISP)",
+		responses: M{"200": jsonResp("Catalog", ref("ProviderHubCatalog"))}}))
 	p.add("GET", "/v1/providerhub/config", op(opConfig{tag: "providerhub", summary: "Get the providerhub config",
 		responses: M{"200": jsonResp("Config", ref("ProviderHubConfig"))}}))
 	p.add("POST", "/v1/providerhub/config", op(opConfig{tag: "providerhub", summary: "Create the providerhub config",
