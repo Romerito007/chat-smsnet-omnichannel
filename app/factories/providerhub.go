@@ -10,11 +10,10 @@ import (
 	providerhubctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/providerhub"
 )
 
-// ProviderHubConfigService builds the config service.
-func ProviderHubConfigService(c *container.Container) *phservice.ConfigService {
-	svc := phservice.NewConfigService(
-		providerhubrepo.NewConfigRepository(c.Mongo.DB, c.Cipher),
-		providerhubrepo.NewQueryLogRepository(c.Mongo.DB),
+// ProviderHubProfileService builds the ISP-profile service (CRUD + gateway status).
+func ProviderHubProfileService(c *container.Container) *phservice.ProfileService {
+	svc := phservice.NewProfileService(
+		providerhubrepo.NewProfileRepository(c.Mongo.DB, c.Cipher),
 		infraproviderhub.NewGateway(),
 		clock,
 	)
@@ -40,5 +39,5 @@ func ProviderHubQueryService(c *container.Container) *phservice.QueryService {
 
 // ProviderHubController builds the providerhub controller.
 func ProviderHubController(c *container.Container) *providerhubctl.Controller {
-	return providerhubctl.NewController(ProviderHubConfigService(c), ProviderHubQueryService(c))
+	return providerhubctl.NewController(ProviderHubProfileService(c), ProviderHubQueryService(c))
 }

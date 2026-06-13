@@ -955,40 +955,19 @@ components:
                 - date
                 - name
             type: object
-        CreateMcpServerRequest:
+        CreateISPProfileRequest:
             properties:
-                auth_header:
-                    type: string
-                auth_token:
-                    type: string
-                base_url:
-                    type: string
-                kind:
-                    enum:
-                        - read
-                        - write
-                    type: string
-                name:
-                    type: string
-            required:
-                - name
-                - base_url
-                - kind
-            type: object
-        CreateProviderHubConfigRequest:
-            properties:
-                bot_id:
-                    type: string
-                dados_empresa:
-                    additionalProperties: true
-                    type: object
-                dados_planos:
-                    additionalProperties: true
-                    type: object
-                isp_credentials:
+                credentials:
                     additionalProperties:
                         type: string
+                    description: ISP credentials; keys must match the catalog for isp_type 1:1 (GET /v1/providerhub/catalog). Values are write-only and never returned.
                     type: object
+                enabled:
+                    description: Defaults to true when omitted.
+                    type: boolean
+                is_default:
+                    description: Make this the default profile. The first profile of a tenant is always the default.
+                    type: boolean
                 isp_type:
                     description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
                     enum:
@@ -1014,11 +993,8 @@ components:
                         - voalle
                         - sgp
                     type: string
-                name:
-                    type: string
-                smsnet_api_key:
-                    type: string
-                smsnet_base_url:
+                label:
+                    description: Required. Human label distinguishing profiles.
                     type: string
                 timeout_ms:
                     type: integer
@@ -1027,8 +1003,28 @@ components:
                 usa_pegar_fatura_atrasada:
                     type: boolean
             required:
-                - smsnet_base_url
+                - label
                 - isp_type
+            type: object
+        CreateMcpServerRequest:
+            properties:
+                auth_header:
+                    type: string
+                auth_token:
+                    type: string
+                base_url:
+                    type: string
+                kind:
+                    enum:
+                        - read
+                        - write
+                    type: string
+                name:
+                    type: string
+            required:
+                - name
+                - base_url
+                - kind
             type: object
         CreateQueueRequest:
             properties:
@@ -1365,8 +1361,85 @@ components:
                 label:
                     type: string
                 secret:
-                    description: True → render a masked input; the value is never echoed back by the config endpoints.
+                    description: True → render a masked input; the value is never echoed back by the profile endpoints.
                     type: string
+            type: object
+        ISPProfile:
+            properties:
+                actions:
+                    description: Actions this profile's ISP supports, from the catalog — gate per-ISP actions with this.
+                    items:
+                        enum:
+                            - cliente
+                            - planos
+                            - empresa
+                            - liberacao
+                            - chamado
+                        type: string
+                    type: array
+                created_at:
+                    format: date-time
+                    type: string
+                credential_keys:
+                    description: ISP credential KEYS only (e.g. hubsoft_host); values are never returned.
+                    items:
+                        type: string
+                    type: array
+                enabled:
+                    type: boolean
+                id:
+                    type: string
+                is_default:
+                    description: True for the tenant's default profile (at most one).
+                    type: boolean
+                isp_type:
+                    description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
+                    enum:
+                        - altarede
+                        - beesweb
+                        - hubsoft
+                        - ispcloud
+                        - ispcontrollr
+                        - ispfy
+                        - ixcsoft
+                        - mikweb
+                        - mkauth
+                        - mksolutions
+                        - netcontrol
+                        - radiusnet
+                        - rbfull
+                        - rbxsoft
+                        - receitanet
+                        - sgmcloud
+                        - sgpnet
+                        - topsapp
+                        - whmcs
+                        - voalle
+                        - sgp
+                    type: string
+                label:
+                    description: Human label distinguishing profiles (e.g. "IXC matriz").
+                    type: string
+                tenant_id:
+                    type: string
+                timeout_ms:
+                    type: integer
+                updated_at:
+                    format: date-time
+                    type: string
+                usa_extrair_linha_digitavel_pdf:
+                    type: boolean
+                usa_pegar_fatura_atrasada:
+                    type: boolean
+            type: object
+        ISPProfileTestResult:
+            properties:
+                error:
+                    type: string
+                latency_ms:
+                    type: integer
+                ok:
+                    type: boolean
             type: object
         InboundMessageMultipart:
             properties:
@@ -1850,86 +1923,26 @@ components:
                 version:
                     type: string
             type: object
-        ProviderHubConfig:
+        ProviderHubGatewayStatus:
             properties:
-                bot_id:
-                    description: 'Origin: tenant. Editable: yes. source=env: absent.'
-                    type: string
                 configured:
-                    description: 'True for source tenant or env. Origin: derived. Editable: no. source=env: present (true).'
+                    description: True when the shared SMSNET gateway (env host) is configured.
                     type: boolean
-                created_at:
-                    description: 'Origin: derived. Editable: no. source=env: absent.'
-                    format: date-time
+                default_profile_id:
+                    description: Id of the tenant's default ISP profile, if any.
                     type: string
-                enabled:
-                    description: 'Origin: tenant (forced true in env mode). Editable: yes when tenant-owned. source=env: present (true).'
+                has_profiles:
+                    description: True when the tenant has at least one ISP profile.
                     type: boolean
-                has_api_key:
-                    description: 'True when the SMSNET API key (x-api-key) is set, from tenant OR env. Origin: derived. Editable: no. The key VALUE is never returned in any mode — only this flag. source=env: present.'
-                    type: boolean
-                id:
-                    description: 'Origin: derived (DB id). Editable: no. source=env: absent.'
-                    type: string
-                isp_credential_keys:
-                    description: 'ISP credential KEYS only (e.g. hubsoft_host); values are never returned. Origin: tenant. Editable: yes (send isp_credentials on write). source=env: absent.'
-                    items:
-                        type: string
-                    type: array
-                isp_type:
-                    description: 'ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted). Origin: tenant. Editable: yes. source=env: absent.'
-                    enum:
-                        - altarede
-                        - beesweb
-                        - hubsoft
-                        - ispcloud
-                        - ispcontrollr
-                        - ispfy
-                        - ixcsoft
-                        - mikweb
-                        - mkauth
-                        - mksolutions
-                        - netcontrol
-                        - radiusnet
-                        - rbfull
-                        - rbxsoft
-                        - receitanet
-                        - sgmcloud
-                        - sgpnet
-                        - topsapp
-                        - whmcs
-                        - voalle
-                        - sgp
-                    type: string
-                name:
-                    description: 'Origin: tenant. Editable: yes. source=env: absent.'
-                    type: string
-                smsnet_base_url:
-                    description: 'SMSNET gateway host. Origin: tenant OR env (ISP_GATEWAY_API_HOST). Editable: yes when tenant-owned. source=env: ALWAYS ABSENT — the infra host never leaks to the front.'
-                    type: string
+                profiles_count:
+                    description: Number of ISP profiles the tenant has.
+                    type: integer
                 source:
-                    description: 'Where the effective config resolves from: tenant (DB, full payload) | env (infra default ISP_GATEWAY_API_HOST/KEY; only has_api_key/enabled exposed) | none (unconfigured). Origin: derived. Editable: no.'
+                    description: 'Gateway resolution: env (infra default ISP_GATEWAY_API_HOST/KEY is set) | none (gateway not configured). The host/key are never returned.'
                     enum:
-                        - tenant
                         - env
                         - none
                     type: string
-                tenant_id:
-                    description: 'Origin: derived. Editable: no. source=env: absent.'
-                    type: string
-                timeout_ms:
-                    description: 'Origin: tenant (default 8000). Editable: yes. source=env: absent.'
-                    type: integer
-                updated_at:
-                    description: 'Origin: derived. Editable: no. source=env: absent.'
-                    format: date-time
-                    type: string
-                usa_extrair_linha_digitavel_pdf:
-                    description: 'Origin: tenant. Editable: yes. source=env: absent (false).'
-                    type: boolean
-                usa_pegar_fatura_atrasada:
-                    description: 'Origin: tenant. Editable: yes. source=env: absent (false).'
-                    type: boolean
             type: object
         Queue:
             properties:
@@ -2615,6 +2628,49 @@ components:
                         type: string
                     type: array
             type: object
+        UpdateISPProfileRequest:
+            properties:
+                credentials:
+                    additionalProperties:
+                        type: string
+                    description: Replaces the credentials; keys must match the catalog for the (possibly new) isp_type 1:1. Write-only.
+                    type: object
+                enabled:
+                    type: boolean
+                isp_type:
+                    description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
+                    enum:
+                        - altarede
+                        - beesweb
+                        - hubsoft
+                        - ispcloud
+                        - ispcontrollr
+                        - ispfy
+                        - ixcsoft
+                        - mikweb
+                        - mkauth
+                        - mksolutions
+                        - netcontrol
+                        - radiusnet
+                        - rbfull
+                        - rbxsoft
+                        - receitanet
+                        - sgmcloud
+                        - sgpnet
+                        - topsapp
+                        - whmcs
+                        - voalle
+                        - sgp
+                    type: string
+                label:
+                    type: string
+                timeout_ms:
+                    type: integer
+                usa_extrair_linha_digitavel_pdf:
+                    type: boolean
+                usa_pegar_fatura_atrasada:
+                    type: boolean
+            type: object
         UpdateMcpServerRequest:
             properties:
                 auth_header:
@@ -2646,60 +2702,6 @@ components:
                     type: string
                 name:
                     type: string
-            type: object
-        UpdateProviderHubConfigRequest:
-            properties:
-                bot_id:
-                    type: string
-                dados_empresa:
-                    additionalProperties: true
-                    type: object
-                dados_planos:
-                    additionalProperties: true
-                    type: object
-                enabled:
-                    type: boolean
-                isp_credentials:
-                    additionalProperties:
-                        type: string
-                    type: object
-                isp_type:
-                    description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
-                    enum:
-                        - altarede
-                        - beesweb
-                        - hubsoft
-                        - ispcloud
-                        - ispcontrollr
-                        - ispfy
-                        - ixcsoft
-                        - mikweb
-                        - mkauth
-                        - mksolutions
-                        - netcontrol
-                        - radiusnet
-                        - rbfull
-                        - rbxsoft
-                        - receitanet
-                        - sgmcloud
-                        - sgpnet
-                        - topsapp
-                        - whmcs
-                        - voalle
-                        - sgp
-                    type: string
-                name:
-                    type: string
-                smsnet_api_key:
-                    type: string
-                smsnet_base_url:
-                    type: string
-                timeout_ms:
-                    type: integer
-                usa_extrair_linha_digitavel_pdf:
-                    type: boolean
-                usa_pegar_fatura_atrasada:
-                    type: boolean
             type: object
         UpdateQueueRequest:
             properties:
@@ -7121,8 +7123,8 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ProviderHubConfig'
-                    description: Config
+                                $ref: '#/components/schemas/ProviderHubGatewayStatus'
+                    description: Gateway status
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
@@ -7133,24 +7135,24 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Get the providerhub config
+            summary: SMSNET gateway status + ISP-profile summary
             tags:
                 - providerhub
-        patch:
-            operationId: patchProviderhubConfig
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/UpdateProviderHubConfigRequest'
-                required: true
+    /v1/providerhub/profiles:
+        get:
+            operationId: getProviderhubProfiles
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ProviderHubConfig'
-                    description: Updated
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/ISPProfile'
+                                        type: array
+                                type: object
+                    description: ISP profiles
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
@@ -7161,23 +7163,23 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Update the providerhub config
+            summary: List ISP profiles
             tags:
                 - providerhub
         post:
-            operationId: postProviderhubConfig
+            operationId: postProviderhubProfiles
             requestBody:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/CreateProviderHubConfigRequest'
+                            $ref: '#/components/schemas/CreateISPProfileRequest'
                 required: true
             responses:
                 "201":
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ProviderHubConfig'
+                                $ref: '#/components/schemas/ISPProfile'
                     description: Created
                 "400":
                     $ref: '#/components/responses/Error400'
@@ -7189,18 +7191,169 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Create the providerhub config
+            summary: Create an ISP profile
             tags:
                 - providerhub
-    /v1/providerhub/config/test:
-        post:
-            operationId: postProviderhubConfigTest
+    /v1/providerhub/profiles/{id}:
+        delete:
+            operationId: deleteProviderhubProfilesById
+            parameters:
+                - description: ISP profile id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: Deleted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Delete an ISP profile
+            tags:
+                - providerhub
+        get:
+            operationId: getProviderhubProfilesById
+            parameters:
+                - description: ISP profile id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/TestResult'
+                                $ref: '#/components/schemas/ISPProfile'
+                    description: ISP profile
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get an ISP profile
+            tags:
+                - providerhub
+        patch:
+            operationId: patchProviderhubProfilesById
+            parameters:
+                - description: ISP profile id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateISPProfileRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ISPProfile'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Update an ISP profile
+            tags:
+                - providerhub
+    /v1/providerhub/profiles/{id}/default:
+        post:
+            operationId: postProviderhubProfilesByIdDefault
+            parameters:
+                - description: ISP profile id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ISPProfile'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Make this the default ISP profile
+            tags:
+                - providerhub
+    /v1/providerhub/profiles/{id}/test:
+        post:
+            operationId: postProviderhubProfilesByIdTest
+            parameters:
+                - description: ISP profile id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ISPProfileTestResult'
                     description: Result
                 "400":
                     $ref: '#/components/responses/Error400'
@@ -7208,11 +7361,17 @@ paths:
                     $ref: '#/components/responses/Error401'
                 "403":
                     $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
                 "429":
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Test the providerhub config
+            summary: Test an ISP profile against the gateway
             tags:
                 - providerhub
     /v1/queues:

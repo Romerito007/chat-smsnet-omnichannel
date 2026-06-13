@@ -16,44 +16,43 @@ Configuração por **env default** com **override por tenant** no banco. Nada di
 
 ## Resolução de configuração
 
-- **ProviderHub (HTTP):** config do **tenant no DB** (se existir e habilitada) →
-  senão **env default** (`ISP_GATEWAY_API_HOST/KEY`). A chave do tenant fica
-  **cifrada em repouso (AES-GCM)**; a chave de env é lida só no backend.
-  `GET /v1/providerhub/config` nunca devolve a chave em claro nem o host de env:
-  retorna `has_api_key`, `source` (`tenant|env|none`) e `configured` (bool). Para
-  `source:"env"` só informa que está configurado (sem host/chave).
+- **ProviderHub (HTTP):** o **gateway SMSNET é infra** — host/chave vêm **sempre**
+  de env (`ISP_GATEWAY_API_HOST/KEY`), lidos só no backend e nunca retornados. O
+  **ISP ativo** vem de um **perfil de ISP do tenant** (ver abaixo), não mais de uma
+  config única. `GET /v1/providerhub/config` reporta o **status do gateway** +
+  resumo dos perfis: `source` (`env|none`), `configured` (bool), `has_profiles`,
+  `default_profile_id`, `profiles_count`. Não devolve host/chave.
 
-### Comportamento por `source` (mapa de campos para o front)
+### Perfis de ISP (múltiplos por tenant)
 
-Origem de cada campo de `GET /v1/providerhub/config` e o que o front deve fazer.
-**Origem:** `tenant` (persistido por tenant, editável via POST/PATCH) · `env`
-(infra default `ISP_GATEWAY_API_HOST/KEY`, só-leitura) · `derivado` (calculado
-pelo servidor). Quando `source:"env"`, **só** `has_api_key`, `enabled`, `source`
-e `configured` vêm preenchidos; os campos do tenant ficam ausentes/zerados e o
-host/chave de infra **nunca** são retornados.
+Um tenant tem **vários perfis de ISP** endereçáveis por id (coleção `isp_profiles`),
+cada um com `label`, `isp_type` (validado contra o catálogo dos 19 slugs),
+credenciais (**cifradas em repouso AES-GCM**; só as **keys** são expostas via
+`credential_keys`), `is_default`, os dois toggles `usa_*`, `timeout_ms`, `enabled`.
+O perfil **não** guarda host/chave do gateway (são infra). No máximo **um** perfil
+por tenant é `is_default=true` (garantido por índice **único parcial**); o primeiro
+perfil criado vira default automaticamente.
 
-| Campo | Origem | Editável pelo tenant | Presente em `source:"env"`? |
-|---|---|---|---|
-| `smsnet_base_url` | tenant **ou** env (`ISP_GATEWAY_API_HOST`) | sim (quando tenant) | **Não** — host de infra nunca vaza |
-| `smsnet_api_key` (valor) | tenant **ou** env (`ISP_GATEWAY_API_KEY`) | sim (write-only) | **Nunca** retornado em modo nenhum |
-| `has_api_key` | derivado | não | **Sim** |
-| `isp_type` | tenant | sim | Não (ausente) |
-| `isp_credential_keys` (+ valores) | tenant (cifrado; só keys) | sim | Não |
-| `bot_id` | tenant | sim | Não |
-| `usa_pegar_fatura_atrasada` | tenant | sim | Não (false) |
-| `usa_extrair_linha_digitavel_pdf` | tenant | sim | Não (false) |
-| `enabled` | tenant (fixo `true` em env) | sim (quando tenant) | **Sim** (`true`) |
-| `timeout_ms` | tenant (default 8000) | sim | Não |
-| `name` | tenant | sim | Não |
-| `source` / `configured` | derivado | não | **Sim** |
-| `id` / `tenant_id` / `created_at` / `updated_at` | derivado (DB) | não | Não |
+CRUD em `/v1/providerhub/profiles` (`integration.read` para ler, `integration.configure`
+para escrever): `GET` (lista), `POST` (cria), `GET/PATCH/DELETE /{id}`,
+`POST /{id}/default` (define default), `POST /{id}/test` (testa contra o gateway).
+Credenciais **nunca** retornam em claro; as `credentials[].key` devem casar **1:1**
+com o catálogo (`GET /v1/providerhub/catalog`) — ex.: `rbxsoft` exige
+`rbxsoft_host/rbxsoft_token/rbxsoft_appkey`. Cada perfil expõe `actions[]` (derivado
+do catálogo) para o front fazer o gating de ações por ISP. Não há toggles
+`use_smsnet/use_email/use_whatsapp` — os únicos toggles são `enabled` e os dois `usa_*`.
 
-> **UI:** trate `source` como chave de exibição. `env` → esconda/disable host e
-> chave (são infra); ofereça "configurar para este tenant" (POST) para sobrescrever
-> → passa a `tenant`. `tenant` → exiba os campos editáveis. `none` → nada
-> configurado, ofereça criar. `smsnet_api_key` é sempre write-only (só
-> `has_api_key` na leitura). Os toggles `use_smsnet/use_email/use_whatsapp` **não
-> existem** neste contrato — os únicos toggles são `enabled` e os dois `usa_*`.
+> **Migração:** a config única legada (`providerhub_configs`) é migrada para **um**
+> perfil `is_default=true` (migration idempotente), preservando o comportamento. O
+> host/chave que a config legada porventura tivesse **deixam de ser usados** — o
+> gateway passa a ser sempre env. Sem perfil → sem ISP ativo (ações externas
+> indisponíveis, resposta clara, não 500).
+
+> **Roadmap (F2/F3):** o **resolvedor tri-modal** (busca manual com `isp_config_id`
+> explícito > default; copiloto via MCP; automação via HTTP) e o **CopilotAssistant**
+> (que fixa um perfil e injeta `config{type+creds}` server-side nos args das tools
+> MCP) chegam nas próximas fases. Hoje as consultas por conversa ainda usam a
+> resolução legada.
 - **MCP:** os servidores `SMSNET_CONSULTAS` (read) e `SMSNET_OPERACOES` (write)
   entram no substrato MCP genérico via env default; um servidor **registrado pelo
   tenant com o mesmo nome** sobrescreve a URL (tenant DB override → env default).

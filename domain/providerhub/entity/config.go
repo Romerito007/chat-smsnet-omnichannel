@@ -53,8 +53,9 @@ type ISPDescriptor struct {
 	SearchBy    []string // "cpfcnpj" | "phone" | "email"
 }
 
-// ISPCatalogVersion versions the catalog so the front can cache it.
-const ISPCatalogVersion = "2026-06-13"
+// ISPCatalogVersion versions the catalog so the front can cache it. Bumped when
+// the credential fields / actions change (e.g. rbxsoft gained rbxsoft_appkey).
+const ISPCatalogVersion = "2026-06-13.1"
 
 // secretCredKeyParts marks a credential field as secret when its key contains any
 // of these tokens (host/email/username/identifier/client_id are not secrets).
@@ -117,7 +118,7 @@ var ISPCatalog = []ISPDescriptor{
 	{Slug: "netcontrol", Label: "NetControl", Credentials: creds("netcontrol_host", "netcontrol_client_id", "netcontrol_client_secret"), Actions: actStd, SearchBy: byDoc},
 	{Slug: "radiusnet", Label: "RadiusNet", Credentials: creds("radiusnet_host", "radiusnet_rtoken"), Actions: actStd, SearchBy: byDoc},
 	{Slug: "rbfull", Label: "RBFull", Credentials: creds("rbfull_host", "rbfull_token"), Actions: actStd, SearchBy: byDoc},
-	{Slug: "rbxsoft", Label: "RBXSoft", Credentials: creds("rbxsoft_host", "rbxsoft_token"), Actions: actStd, SearchBy: byDoc},
+	{Slug: "rbxsoft", Label: "RBXSoft", Credentials: creds("rbxsoft_host", "rbxsoft_token", "rbxsoft_appkey"), Actions: actStd, SearchBy: byDoc},
 	{Slug: "receitanet", Label: "ReceitaNet", Credentials: creds("receitanet_host", "receitanet_token"), Actions: actFull, SearchBy: byDocPhone},
 	{Slug: "sgmcloud", Label: "SGM Cloud", Credentials: creds("sgmcloud_host", "sgmcloud_token"), Actions: actStd, SearchBy: byDoc},
 	{Slug: "sgpnet", Label: "SGPNet", Credentials: creds("sgpnet_host", "sgpnet_token"), Actions: actFull, SearchBy: byDocPhone},
@@ -133,9 +134,11 @@ var knownISPSet map[string]struct{}
 
 func init() {
 	knownISPSet = make(map[string]struct{}, len(ISPCatalog)+2)
+	catalogBySlug = make(map[string]ISPDescriptor, len(ISPCatalog))
 	for _, d := range ISPCatalog {
 		KnownISPTypes = append(KnownISPTypes, d.Slug)
 		knownISPSet[d.Slug] = struct{}{}
+		catalogBySlug[d.Slug] = d
 	}
 	for _, legacy := range []string{ISPVoalle, ISPSGP} {
 		KnownISPTypes = append(KnownISPTypes, legacy)
@@ -147,6 +150,40 @@ func init() {
 func IsKnownISPType(t string) bool {
 	_, ok := knownISPSet[t]
 	return ok
+}
+
+// catalogBySlug indexes ISPCatalog by slug (catalog slugs only; legacy aliases
+// have no descriptor). Built in init.
+var catalogBySlug map[string]ISPDescriptor
+
+// DescriptorFor returns the catalog descriptor for an isp_type slug. The bool is
+// false for unknown or legacy-only slugs (which have no credential/action map).
+func DescriptorFor(slug string) (ISPDescriptor, bool) {
+	d, ok := catalogBySlug[slug]
+	return d, ok
+}
+
+// ActionsFor returns the actions an isp_type supports per the catalog, or nil for
+// a slug with no descriptor.
+func ActionsFor(slug string) []ISPAction {
+	if d, ok := catalogBySlug[slug]; ok {
+		return d.Actions
+	}
+	return nil
+}
+
+// CredentialKeysFor returns the exact credential keys an isp_type expects (the
+// gateway config.<key> names), or nil for a slug with no descriptor.
+func CredentialKeysFor(slug string) []string {
+	d, ok := catalogBySlug[slug]
+	if !ok {
+		return nil
+	}
+	keys := make([]string, len(d.Credentials))
+	for i, c := range d.Credentials {
+		keys[i] = c.Key
+	}
+	return keys
 }
 
 // Options are per-tenant feature toggles and fixed data forwarded to the API.

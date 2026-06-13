@@ -80,33 +80,45 @@ type Chamado struct {
 	Msg       string `json:"msg,omitempty"`
 }
 
-// CreateConfig registers a smsnet-integrations config.
-type CreateConfig struct {
-	Name                        string
-	SMSNetBaseURL               string
-	SMSNetAPIKey                string
+// CreateProfile registers a new ISP profile (multiple per tenant). The SMSNET
+// gateway host/key are NOT part of a profile (they are infra/env).
+type CreateProfile struct {
+	Label                       string
 	ISPType                     string
-	ISPCredentials              map[string]string
-	BotID                       string
-	TimeoutMs                   int
+	Credentials                 map[string]string
+	IsDefault                   bool
 	UsaPegarFaturaAtrasada      bool
 	UsaExtrairLinhaDigitavelPDF bool
-	DadosPlanos                 map[string]any
-	DadosEmpresa                map[string]any
+	TimeoutMs                   int
+	Enabled                     *bool // nil → true
 }
 
-// UpdateConfig carries optional fields; nil pointers mean "leave unchanged".
-type UpdateConfig struct {
-	Name                        *string
-	SMSNetBaseURL               *string
-	SMSNetAPIKey                *string
+// UpdateProfile carries optional fields; nil pointers mean "leave unchanged".
+// is_default is changed via SetDefault, not here.
+type UpdateProfile struct {
+	Label                       *string
 	ISPType                     *string
-	ISPCredentials              *map[string]string
-	BotID                       *string
-	Enabled                     *bool
-	TimeoutMs                   *int
+	Credentials                 *map[string]string
 	UsaPegarFaturaAtrasada      *bool
 	UsaExtrairLinhaDigitavelPDF *bool
-	DadosPlanos                 *map[string]any
-	DadosEmpresa                *map[string]any
+	TimeoutMs                   *int
+	Enabled                     *bool
+}
+
+// GatewayStatus is the GET /v1/providerhub/config result: the shared SMSNET
+// gateway is infra (env) now, so this reports whether it is configured plus a
+// summary of the tenant's ISP profiles.
+type GatewayStatus struct {
+	Source           string
+	Configured       bool
+	HasProfiles      bool
+	DefaultProfileID string
+	ProfilesCount    int
+}
+
+// TestResult is the outcome of a per-profile gateway test.
+type TestResult struct {
+	OK        bool   `json:"ok"`
+	LatencyMs int64  `json:"latency_ms"`
+	Error     string `json:"error,omitempty"`
 }

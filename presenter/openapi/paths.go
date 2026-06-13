@@ -180,17 +180,26 @@ func registerIntegrations(p *paths) {
 	p.add("POST", "/v1/automation/callbacks/{tenant_id}", op(opConfig{tag: "automation", summary: "External automation callback (signed)",
 		public: true, params: []M{pathParam("tenant_id", "tenant id")}, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
 
-	// providerhub (singleton config)
+	// providerhub: catalog, gateway status and ISP profiles (many per tenant)
 	p.add("GET", "/v1/providerhub/catalog", op(opConfig{tag: "providerhub", summary: "Supported ISP catalog (credential fields + actions per ISP)",
 		responses: M{"200": jsonResp("Catalog", ref("ProviderHubCatalog"))}}))
-	p.add("GET", "/v1/providerhub/config", op(opConfig{tag: "providerhub", summary: "Get the providerhub config",
-		responses: M{"200": jsonResp("Config", ref("ProviderHubConfig"))}}))
-	p.add("POST", "/v1/providerhub/config", op(opConfig{tag: "providerhub", summary: "Create the providerhub config",
-		reqBody: body(ref("CreateProviderHubConfigRequest")), responses: M{"201": jsonResp("Created", ref("ProviderHubConfig"))}}))
-	p.add("PATCH", "/v1/providerhub/config", op(opConfig{tag: "providerhub", summary: "Update the providerhub config",
-		reqBody: body(ref("UpdateProviderHubConfigRequest")), responses: M{"200": jsonResp("Updated", ref("ProviderHubConfig"))}}))
-	p.add("POST", "/v1/providerhub/config/test", op(opConfig{tag: "providerhub", summary: "Test the providerhub config",
-		responses: M{"200": jsonResp("Result", ref("TestResult"))}}))
+	p.add("GET", "/v1/providerhub/config", op(opConfig{tag: "providerhub", summary: "SMSNET gateway status + ISP-profile summary",
+		responses: M{"200": jsonResp("Gateway status", ref("ProviderHubGatewayStatus"))}}))
+	p.add("GET", "/v1/providerhub/profiles", op(opConfig{tag: "providerhub", summary: "List ISP profiles",
+		responses: M{"200": jsonResp("ISP profiles", dataArr(ref("ISPProfile")))}}))
+	p.add("POST", "/v1/providerhub/profiles", op(opConfig{tag: "providerhub", summary: "Create an ISP profile",
+		reqBody: body(ref("CreateISPProfileRequest")), responses: M{"201": jsonResp("Created", ref("ISPProfile"))}}))
+	profileIDP := []M{pathParam("id", "ISP profile id")}
+	p.add("GET", "/v1/providerhub/profiles/{id}", op(opConfig{tag: "providerhub", summary: "Get an ISP profile",
+		params: profileIDP, responses: M{"200": jsonResp("ISP profile", ref("ISPProfile")), "404": errorResponse("Not found.")}}))
+	p.add("PATCH", "/v1/providerhub/profiles/{id}", op(opConfig{tag: "providerhub", summary: "Update an ISP profile",
+		params: profileIDP, reqBody: body(ref("UpdateISPProfileRequest")), responses: M{"200": jsonResp("Updated", ref("ISPProfile")), "404": errorResponse("Not found.")}}))
+	p.add("DELETE", "/v1/providerhub/profiles/{id}", op(opConfig{tag: "providerhub", summary: "Delete an ISP profile",
+		params: profileIDP, responses: M{"204": emptyResp("Deleted"), "404": errorResponse("Not found.")}}))
+	p.add("POST", "/v1/providerhub/profiles/{id}/default", op(opConfig{tag: "providerhub", summary: "Make this the default ISP profile",
+		params: profileIDP, responses: M{"200": jsonResp("Updated", ref("ISPProfile")), "404": errorResponse("Not found.")}}))
+	p.add("POST", "/v1/providerhub/profiles/{id}/test", op(opConfig{tag: "providerhub", summary: "Test an ISP profile against the gateway",
+		params: profileIDP, responses: M{"200": jsonResp("Result", ref("ISPProfileTestResult")), "404": errorResponse("Not found.")}}))
 
 	// external on-demand queries (smsnet-integrations) under a conversation
 	cidp := []M{pathParam("id", "conversation id")}

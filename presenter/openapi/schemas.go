@@ -223,33 +223,17 @@ func schemas() M {
 		}),
 
 		// ── providerhub ────────────────────────────────────────────────────────
-		// ProviderHubConfig is the GET /v1/providerhub/config response. Every field
-		// is annotated with its origin/source so the front knows what to render:
-		//   • origin tenant  → persisted per tenant; editable via POST/PATCH.
-		//   • origin env     → backend infra default (ISP_GATEWAY_API_HOST/KEY);
-		//                      read-only for the tenant. To override, the tenant
-		//                      creates its own config (which then resolves as tenant).
-		//   • origin derived → computed by the server; read-only.
-		// When source="env" only has_api_key, enabled, source and configured are
-		// populated; all tenant-owned fields are absent/zero and the infra host/key
-		// are never returned.
-		"ProviderHubConfig": object(M{
-			"id":                              describedStr("Origin: derived (DB id). Editable: no. source=env: absent."),
-			"tenant_id":                       describedStr("Origin: derived. Editable: no. source=env: absent."),
-			"name":                            describedStr("Origin: tenant. Editable: yes. source=env: absent."),
-			"smsnet_base_url":                 describedStr("SMSNET gateway host. Origin: tenant OR env (ISP_GATEWAY_API_HOST). Editable: yes when tenant-owned. source=env: ALWAYS ABSENT — the infra host never leaks to the front."),
-			"isp_type":                        withDesc(ispTypeStr(), "Origin: tenant. Editable: yes. source=env: absent."),
-			"bot_id":                          describedStr("Origin: tenant. Editable: yes. source=env: absent."),
-			"has_api_key":                     describedBool("True when the SMSNET API key (x-api-key) is set, from tenant OR env. Origin: derived. Editable: no. The key VALUE is never returned in any mode — only this flag. source=env: present."),
-			"isp_credential_keys":             describedArr(str(), "ISP credential KEYS only (e.g. hubsoft_host); values are never returned. Origin: tenant. Editable: yes (send isp_credentials on write). source=env: absent."),
-			"usa_pegar_fatura_atrasada":       describedBool("Origin: tenant. Editable: yes. source=env: absent (false)."),
-			"usa_extrair_linha_digitavel_pdf": describedBool("Origin: tenant. Editable: yes. source=env: absent (false)."),
-			"enabled":                         describedBool("Origin: tenant (forced true in env mode). Editable: yes when tenant-owned. source=env: present (true)."),
-			"timeout_ms":                      describedInt("Origin: tenant (default 8000). Editable: yes. source=env: absent."),
-			"created_at":                      withDesc(dateTime(), "Origin: derived. Editable: no. source=env: absent."),
-			"updated_at":                      withDesc(dateTime(), "Origin: derived. Editable: no. source=env: absent."),
-			"source":                          withDesc(enum("tenant", "env", "none"), "Where the effective config resolves from: tenant (DB, full payload) | env (infra default ISP_GATEWAY_API_HOST/KEY; only has_api_key/enabled exposed) | none (unconfigured). Origin: derived. Editable: no."),
-			"configured":                      describedBool("True for source tenant or env. Origin: derived. Editable: no. source=env: present (true)."),
+		// ProviderHubGatewayStatus is the GET /v1/providerhub/config response. The
+		// SMSNET gateway is infra now (env ISP_GATEWAY_API_HOST/KEY), so this reports
+		// whether the gateway is configured plus a summary of the tenant's ISP
+		// profiles. The infra host/key are never returned. The "active" ISP always
+		// comes from a profile (default or explicit), managed under /providerhub/profiles.
+		"ProviderHubGatewayStatus": object(M{
+			"source":             withDesc(enum("env", "none"), "Gateway resolution: env (infra default ISP_GATEWAY_API_HOST/KEY is set) | none (gateway not configured). The host/key are never returned."),
+			"configured":         describedBool("True when the shared SMSNET gateway (env host) is configured."),
+			"has_profiles":       describedBool("True when the tenant has at least one ISP profile."),
+			"default_profile_id": describedStr("Id of the tenant's default ISP profile, if any."),
+			"profiles_count":     describedInt("Number of ISP profiles the tenant has."),
 		}),
 		// ProviderHubCatalog is the static, versioned catalog of supported ISPs
 		// (GET /v1/providerhub/catalog): per ISP the credential fields to render and
@@ -266,20 +250,47 @@ func schemas() M {
 		}),
 		"ISPCredentialField": object(M{
 			"key": str(), "label": str(),
-			"secret": describedStr("True → render a masked input; the value is never echoed back by the config endpoints."),
+			"secret": describedStr("True → render a masked input; the value is never echoed back by the profile endpoints."),
 		}),
-		"CreateProviderHubConfigRequest": object(M{
-			"name": str(), "smsnet_base_url": str(), "smsnet_api_key": str(),
-			"isp_type":        ispTypeStr(),
-			"isp_credentials": stringMap(), "bot_id": str(), "timeout_ms": integer(),
-			"usa_pegar_fatura_atrasada": boolean(), "usa_extrair_linha_digitavel_pdf": boolean(),
-			"dados_planos": freeObject(), "dados_empresa": freeObject(),
-		}, "smsnet_base_url", "isp_type"),
-		"UpdateProviderHubConfigRequest": object(M{
-			"name": str(), "smsnet_base_url": str(), "smsnet_api_key": str(), "isp_type": ispTypeStr(),
-			"isp_credentials": stringMap(), "bot_id": str(), "enabled": boolean(), "timeout_ms": integer(),
-			"usa_pegar_fatura_atrasada": boolean(), "usa_extrair_linha_digitavel_pdf": boolean(),
-			"dados_planos": freeObject(), "dados_empresa": freeObject(),
+		// ISPProfile is one addressable ISP configuration a tenant holds (many per
+		// tenant). Credentials are masked: only the keys are returned, never values.
+		// actions[] is derived from the catalog for the profile's isp_type.
+		"ISPProfile": object(M{
+			"id":                              str(),
+			"tenant_id":                       str(),
+			"label":                           describedStr("Human label distinguishing profiles (e.g. \"IXC matriz\")."),
+			"isp_type":                        ispTypeStr(),
+			"credential_keys":                 describedArr(str(), "ISP credential KEYS only (e.g. hubsoft_host); values are never returned."),
+			"is_default":                      describedBool("True for the tenant's default profile (at most one)."),
+			"actions":                         describedArr(enum("cliente", "planos", "empresa", "liberacao", "chamado"), "Actions this profile's ISP supports, from the catalog — gate per-ISP actions with this."),
+			"usa_pegar_fatura_atrasada":       boolean(),
+			"usa_extrair_linha_digitavel_pdf": boolean(),
+			"timeout_ms":                      integer(),
+			"enabled":                         boolean(),
+			"created_at":                      dateTime(),
+			"updated_at":                      dateTime(),
+		}),
+		"CreateISPProfileRequest": object(M{
+			"label":                           describedStr("Required. Human label distinguishing profiles."),
+			"isp_type":                        ispTypeStr(),
+			"credentials":                     withDesc(stringMap(), "ISP credentials; keys must match the catalog for isp_type 1:1 (GET /v1/providerhub/catalog). Values are write-only and never returned."),
+			"is_default":                      describedBool("Make this the default profile. The first profile of a tenant is always the default."),
+			"usa_pegar_fatura_atrasada":       boolean(),
+			"usa_extrair_linha_digitavel_pdf": boolean(),
+			"timeout_ms":                      integer(),
+			"enabled":                         describedBool("Defaults to true when omitted."),
+		}, "label", "isp_type"),
+		"UpdateISPProfileRequest": object(M{
+			"label":                           str(),
+			"isp_type":                        ispTypeStr(),
+			"credentials":                     withDesc(stringMap(), "Replaces the credentials; keys must match the catalog for the (possibly new) isp_type 1:1. Write-only."),
+			"usa_pegar_fatura_atrasada":       boolean(),
+			"usa_extrair_linha_digitavel_pdf": boolean(),
+			"timeout_ms":                      integer(),
+			"enabled":                         boolean(),
+		}),
+		"ISPProfileTestResult": object(M{
+			"ok": boolean(), "latency_ms": integer(), "error": str(),
 		}),
 		"LiberacaoRequest": object(M{"id_cliente": str()}, "id_cliente"),
 		"ChamadoRequest":   object(M{"id_cliente": str(), "subject": str(), "message": str()}, "id_cliente"),

@@ -22,10 +22,17 @@ func registerProviderHubRoutes(r chi.Router, c *container.Container) {
 		// so it carries an ETag for a cheap 304 on re-fetch.
 		p.With(middleware.RequirePermission(authz.IntegrationRead), catalogCache).Get("/providerhub/catalog", ctl.Catalog)
 
-		// Config management.
+		// Gateway status (infra/env) + ISP-profile summary.
 		p.With(middleware.RequirePermission(authz.IntegrationRead)).Get("/providerhub/config", ctl.GetConfig)
-		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Post("/providerhub/config", ctl.CreateConfig)
-		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Patch("/providerhub/config", ctl.UpdateConfig)
-		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Post("/providerhub/config/test", ctl.TestConfig)
+
+		// ISP profiles (many per tenant). Read with IntegrationRead, write with
+		// IntegrationConfigure.
+		p.With(middleware.RequirePermission(authz.IntegrationRead)).Get("/providerhub/profiles", ctl.ListProfiles)
+		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Post("/providerhub/profiles", ctl.CreateProfile)
+		p.With(middleware.RequirePermission(authz.IntegrationRead)).Get("/providerhub/profiles/{id}", ctl.GetProfile)
+		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Patch("/providerhub/profiles/{id}", ctl.UpdateProfile)
+		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Delete("/providerhub/profiles/{id}", ctl.DeleteProfile)
+		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Post("/providerhub/profiles/{id}/default", ctl.SetDefaultProfile)
+		p.With(middleware.RequirePermission(authz.IntegrationConfigure)).Post("/providerhub/profiles/{id}/test", ctl.TestProfile)
 	})
 }

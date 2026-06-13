@@ -2,6 +2,7 @@ package providerhub
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
@@ -98,5 +99,34 @@ func TestNewCatalogResponse_SerializesWithExpectedKeys(t *testing.T) {
 		if _, ok := first[k]; !ok {
 			t.Errorf("ISP entry missing key %q", k)
 		}
+	}
+}
+
+func TestNewProfileResponse_MasksCredentialsAndAddsActions(t *testing.T) {
+	p := &phentity.ISPProfile{
+		ID: "p1", TenantID: "t1", Label: "IXC matriz", ISPType: "ixcsoft",
+		Credentials: map[string]string{"ixcsoft_host": "h", "ixcsoft_token": "secret-token"},
+		IsDefault:   true, Enabled: true,
+	}
+	resp := NewProfileResponse(p)
+	// Credential values must never appear; only sorted keys.
+	if len(resp.CredentialKeys) != 2 || resp.CredentialKeys[0] != "ixcsoft_host" || resp.CredentialKeys[1] != "ixcsoft_token" {
+		t.Errorf("credential keys wrong/unsorted: %v", resp.CredentialKeys)
+	}
+	b, _ := json.Marshal(resp)
+	if strings.Contains(string(b), "secret-token") {
+		t.Fatalf("credential VALUE leaked into the response: %s", b)
+	}
+	// actions[] derived from the catalog (ixcsoft supports chamado + liberacao).
+	has := func(a string) bool {
+		for _, x := range resp.Actions {
+			if x == a {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("chamado") || !has("liberacao") || !has("cliente") {
+		t.Errorf("ixcsoft actions incomplete: %v", resp.Actions)
 	}
 }

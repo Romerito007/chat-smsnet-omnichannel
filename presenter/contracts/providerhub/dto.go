@@ -12,135 +12,135 @@ import (
 	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
 )
 
-// CreateConfigRequest is the body of POST /v1/providerhub/config.
-type CreateConfigRequest struct {
-	Name                        string            `json:"name"`
-	SMSNetBaseURL               string            `json:"smsnet_base_url"`
-	SMSNetAPIKey                string            `json:"smsnet_api_key"`
+// GatewayStatusResponse is the GET /v1/providerhub/config response. The SMSNET
+// gateway is infra now (env ISP_GATEWAY_API_HOST/KEY), so this reports whether the
+// gateway is configured plus a summary of the tenant's ISP profiles. The host/key
+// are never returned.
+type GatewayStatusResponse struct {
+	Source           string `json:"source"`     // "env" | "none"
+	Configured       bool   `json:"configured"` // gateway env host present
+	HasProfiles      bool   `json:"has_profiles"`
+	DefaultProfileID string `json:"default_profile_id,omitempty"`
+	ProfilesCount    int    `json:"profiles_count"`
+}
+
+// NewGatewayStatusResponse maps the service status to the DTO.
+func NewGatewayStatusResponse(st phcontracts.GatewayStatus) GatewayStatusResponse {
+	return GatewayStatusResponse{
+		Source:           st.Source,
+		Configured:       st.Configured,
+		HasProfiles:      st.HasProfiles,
+		DefaultProfileID: st.DefaultProfileID,
+		ProfilesCount:    st.ProfilesCount,
+	}
+}
+
+// CreateProfileRequest is the body of POST /v1/providerhub/profiles.
+type CreateProfileRequest struct {
+	Label                       string            `json:"label"`
 	ISPType                     string            `json:"isp_type"`
-	ISPCredentials              map[string]string `json:"isp_credentials"`
-	BotID                       string            `json:"bot_id"`
-	TimeoutMs                   int               `json:"timeout_ms"`
+	Credentials                 map[string]string `json:"credentials"`
+	IsDefault                   bool              `json:"is_default"`
 	UsaPegarFaturaAtrasada      bool              `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF bool              `json:"usa_extrair_linha_digitavel_pdf"`
-	DadosPlanos                 map[string]any    `json:"dados_planos"`
-	DadosEmpresa                map[string]any    `json:"dados_empresa"`
+	TimeoutMs                   int               `json:"timeout_ms"`
+	Enabled                     *bool             `json:"enabled"`
 }
 
 // ToCommand maps to the service command.
-func (r CreateConfigRequest) ToCommand() phcontracts.CreateConfig {
-	return phcontracts.CreateConfig{
-		Name:                        r.Name,
-		SMSNetBaseURL:               r.SMSNetBaseURL,
-		SMSNetAPIKey:                r.SMSNetAPIKey,
+func (r CreateProfileRequest) ToCommand() phcontracts.CreateProfile {
+	return phcontracts.CreateProfile{
+		Label:                       r.Label,
 		ISPType:                     r.ISPType,
-		ISPCredentials:              r.ISPCredentials,
-		BotID:                       r.BotID,
-		TimeoutMs:                   r.TimeoutMs,
+		Credentials:                 r.Credentials,
+		IsDefault:                   r.IsDefault,
 		UsaPegarFaturaAtrasada:      r.UsaPegarFaturaAtrasada,
 		UsaExtrairLinhaDigitavelPDF: r.UsaExtrairLinhaDigitavelPDF,
-		DadosPlanos:                 r.DadosPlanos,
-		DadosEmpresa:                r.DadosEmpresa,
+		TimeoutMs:                   r.TimeoutMs,
+		Enabled:                     r.Enabled,
 	}
 }
 
-// UpdateConfigRequest is the body of PATCH /v1/providerhub/config.
-type UpdateConfigRequest struct {
-	Name                        *string            `json:"name"`
-	SMSNetBaseURL               *string            `json:"smsnet_base_url"`
-	SMSNetAPIKey                *string            `json:"smsnet_api_key"`
+// UpdateProfileRequest is the body of PATCH /v1/providerhub/profiles/{id}. All
+// fields optional; is_default is changed via the dedicated default endpoint.
+type UpdateProfileRequest struct {
+	Label                       *string            `json:"label"`
 	ISPType                     *string            `json:"isp_type"`
-	ISPCredentials              *map[string]string `json:"isp_credentials"`
-	BotID                       *string            `json:"bot_id"`
-	Enabled                     *bool              `json:"enabled"`
-	TimeoutMs                   *int               `json:"timeout_ms"`
+	Credentials                 *map[string]string `json:"credentials"`
 	UsaPegarFaturaAtrasada      *bool              `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF *bool              `json:"usa_extrair_linha_digitavel_pdf"`
-	DadosPlanos                 *map[string]any    `json:"dados_planos"`
-	DadosEmpresa                *map[string]any    `json:"dados_empresa"`
+	TimeoutMs                   *int               `json:"timeout_ms"`
+	Enabled                     *bool              `json:"enabled"`
 }
 
 // ToCommand maps to the service command.
-func (r UpdateConfigRequest) ToCommand() phcontracts.UpdateConfig {
-	return phcontracts.UpdateConfig{
-		Name:                        r.Name,
-		SMSNetBaseURL:               r.SMSNetBaseURL,
-		SMSNetAPIKey:                r.SMSNetAPIKey,
+func (r UpdateProfileRequest) ToCommand() phcontracts.UpdateProfile {
+	return phcontracts.UpdateProfile{
+		Label:                       r.Label,
 		ISPType:                     r.ISPType,
-		ISPCredentials:              r.ISPCredentials,
-		BotID:                       r.BotID,
-		Enabled:                     r.Enabled,
-		TimeoutMs:                   r.TimeoutMs,
+		Credentials:                 r.Credentials,
 		UsaPegarFaturaAtrasada:      r.UsaPegarFaturaAtrasada,
 		UsaExtrairLinhaDigitavelPDF: r.UsaExtrairLinhaDigitavelPDF,
-		DadosPlanos:                 r.DadosPlanos,
-		DadosEmpresa:                r.DadosEmpresa,
+		TimeoutMs:                   r.TimeoutMs,
+		Enabled:                     r.Enabled,
 	}
 }
 
-// ConfigResponse is the public representation. Secrets are masked: only whether
-// the API key is set and the credential KEYS (never the values) are exposed.
-type ConfigResponse struct {
+// ProfileResponse is the public representation of an ISP profile. Credentials are
+// masked: only their keys are exposed (never values). actions[] is derived from
+// the catalog so the front can gate per-ISP actions.
+type ProfileResponse struct {
 	ID                          string    `json:"id"`
 	TenantID                    string    `json:"tenant_id"`
-	Name                        string    `json:"name,omitempty"`
-	SMSNetBaseURL               string    `json:"smsnet_base_url"`
+	Label                       string    `json:"label"`
 	ISPType                     string    `json:"isp_type"`
-	BotID                       string    `json:"bot_id,omitempty"`
-	HasAPIKey                   bool      `json:"has_api_key"`
-	ISPCredentialKeys           []string  `json:"isp_credential_keys,omitempty"`
+	CredentialKeys              []string  `json:"credential_keys"`
+	IsDefault                   bool      `json:"is_default"`
+	Actions                     []string  `json:"actions"`
 	UsaPegarFaturaAtrasada      bool      `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF bool      `json:"usa_extrair_linha_digitavel_pdf"`
-	Enabled                     bool      `json:"enabled"`
 	TimeoutMs                   int       `json:"timeout_ms"`
+	Enabled                     bool      `json:"enabled"`
 	CreatedAt                   time.Time `json:"created_at"`
 	UpdatedAt                   time.Time `json:"updated_at"`
-	// Source is where the effective config comes from: "tenant" (DB), "env"
-	// (backend default) or "none". Configured is true for tenant/env. For "env"
-	// the host/key are never returned — only that it is configured.
-	Source     string `json:"source"`
-	Configured bool   `json:"configured"`
 }
 
-// NewConfigStatusResponse builds the GET /v1/providerhub/config response from the
-// resolved config and its source, never leaking the env-default host or key.
-func NewConfigStatusResponse(c *phentity.ProviderIntegrationConfig, source string) ConfigResponse {
-	switch source {
-	case "tenant":
-		resp := NewConfigResponse(c)
-		resp.Source = "tenant"
-		resp.Configured = true
-		return resp
-	case "env":
-		return ConfigResponse{Source: "env", Configured: true, HasAPIKey: c.SMSNetAPIKey != "", Enabled: true}
-	default:
-		return ConfigResponse{Source: "none", Configured: false}
-	}
-}
-
-// NewConfigResponse maps a config entity, masking secrets.
-func NewConfigResponse(c *phentity.ProviderIntegrationConfig) ConfigResponse {
-	keys := make([]string, 0, len(c.ISPCredentials))
-	for k := range c.ISPCredentials {
+// NewProfileResponse maps a profile entity, masking credentials and attaching the
+// catalog actions[] for its isp_type.
+func NewProfileResponse(p *phentity.ISPProfile) ProfileResponse {
+	keys := make([]string, 0, len(p.Credentials))
+	for k := range p.Credentials {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	return ConfigResponse{
-		ID:                          c.ID,
-		TenantID:                    c.TenantID,
-		Name:                        c.Name,
-		SMSNetBaseURL:               c.SMSNetBaseURL,
-		ISPType:                     c.ISPType,
-		BotID:                       c.BotID,
-		HasAPIKey:                   c.SMSNetAPIKey != "",
-		ISPCredentialKeys:           keys,
-		UsaPegarFaturaAtrasada:      c.Options.UsaPegarFaturaAtrasada,
-		UsaExtrairLinhaDigitavelPDF: c.Options.UsaExtrairLinhaDigitavelPDF,
-		Enabled:                     c.Enabled,
-		TimeoutMs:                   c.TimeoutMs,
-		CreatedAt:                   c.CreatedAt,
-		UpdatedAt:                   c.UpdatedAt,
+	actions := make([]string, 0)
+	for _, a := range p.Actions() {
+		actions = append(actions, string(a))
 	}
+	return ProfileResponse{
+		ID:                          p.ID,
+		TenantID:                    p.TenantID,
+		Label:                       p.Label,
+		ISPType:                     p.ISPType,
+		CredentialKeys:              keys,
+		IsDefault:                   p.IsDefault,
+		Actions:                     actions,
+		UsaPegarFaturaAtrasada:      p.Options.UsaPegarFaturaAtrasada,
+		UsaExtrairLinhaDigitavelPDF: p.Options.UsaExtrairLinhaDigitavelPDF,
+		TimeoutMs:                   p.TimeoutMs,
+		Enabled:                     p.Enabled,
+		CreatedAt:                   p.CreatedAt,
+		UpdatedAt:                   p.UpdatedAt,
+	}
+}
+
+// NewProfileListResponse maps a slice of profiles to a { data: [...] } envelope.
+func NewProfileListResponse(ps []*phentity.ISPProfile) map[string]any {
+	out := make([]ProfileResponse, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, NewProfileResponse(p))
+	}
+	return map[string]any{"data": out}
 }
 
 // LiberacaoRequest is the body of POST /v1/conversations/{id}/external/liberacao.
