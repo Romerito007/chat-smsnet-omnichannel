@@ -3,6 +3,7 @@ package conversations_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,10 +99,35 @@ var (
 	_ convrepo.EventRepository        = fakeEventRepo{}
 )
 
+// fakeContactAvatars resolves contact ids to signed avatar URLs, counting calls
+// so a test can assert per-page batching.
+type fakeContactAvatars struct {
+	byContact map[string]string
+	calls     int
+}
+
+func (f *fakeContactAvatars) ContactAvatarURLs(_ context.Context, contactIDs []string) (map[string]string, error) {
+	f.calls++
+	out := map[string]string{}
+	for _, id := range contactIDs {
+		if u, ok := f.byContact[id]; ok {
+			out[id] = u
+		}
+	}
+	return out, nil
+}
+
 // ── harness ──────────────────────────────────────────────────────────────────
 
 func buildRouter(cr *fakeConvRepo) http.Handler {
+	return buildRouterWithAvatars(cr, nil)
+}
+
+func buildRouterWithAvatars(cr *fakeConvRepo, av convcontracts.ContactAvatarResolver) http.Handler {
 	svc := convservice.New(cr, fakeMsgRepo{}, fakeEventRepo{}, fakeSectorRepo{}, shared.NoopPublisher{}, shared.SystemClock{})
+	if av != nil {
+		svc.SetContactAvatarResolver(av)
+	}
 	ctl := conversations.NewController(svc)
 	r := chi.NewRouter()
 	r.Group(func(p chi.Router) {
@@ -109,6 +135,7 @@ func buildRouter(cr *fakeConvRepo) http.Handler {
 		p.Route("/conversations", func(cv chi.Router) {
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/", ctl.List)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/", ctl.Create)
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}", ctl.Get)
 		})
 	})
 	return r
@@ -140,6 +167,67 @@ func TestConversations_List_HappyTenantFilteredCursorShape(t *testing.T) {
 	httpharness.DecodeJSON(t, rec, &page)
 	if len(page.Data) != 1 || page.Data[0].ID != "c1" {
 		t.Errorf("tenant t1 must only see c1 (tenant filter), got %+v", page.Data)
+	}
+}
+
+// GET /v1/conversations resolves contact_avatar_url per row in one batch: a
+// conversation whose contact has a ready avatar carries the signed URL; a contact
+// without an avatar omits the field (front falls back to initials).
+func TestConversations_List_ResolvesContactAvatarURLInBatch(t *testing.T) {
+	now := time.Now()
+	cr := &fakeConvRepo{items: []*entity.Conversation{
+		{ID: "c1", TenantID: "t1", ContactID: "ct-av", Status: entity.StatusNew, Priority: entity.PriorityNormal, UpdatedAt: now},
+		{ID: "c2", TenantID: "t1", ContactID: "ct-none", Status: entity.StatusNew, Priority: entity.PriorityNormal, UpdatedAt: now},
+	}}
+	av := &fakeContactAvatars{byContact: map[string]string{"ct-av": "http://api/v1/channel-media/tok-ct-av"}}
+
+	rec := httpharness.Do(t, buildRouterWithAvatars(cr, av), http.MethodGet, "/conversations", token(t, "t1", authz.ConversationRead), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Data []struct {
+			ID               string `json:"id"`
+			ContactAvatarURL string `json:"contact_avatar_url"`
+		} `json:"data"`
+	}
+	httpharness.DecodeJSON(t, rec, &page)
+	byID := map[string]string{}
+	for _, d := range page.Data {
+		byID[d.ID] = d.ContactAvatarURL
+	}
+	if byID["c1"] != "http://api/v1/channel-media/tok-ct-av" {
+		t.Errorf("c1 (contact with avatar) must carry contact_avatar_url, got %q", byID["c1"])
+	}
+	if !strings.Contains(byID["c1"], "/v1/channel-media/") {
+		t.Errorf("contact_avatar_url must be the JWT-less channel-media URL, got %q", byID["c1"])
+	}
+	if byID["c2"] != "" {
+		t.Errorf("c2 (contact without avatar) must omit contact_avatar_url, got %q", byID["c2"])
+	}
+	if av.calls != 1 {
+		t.Errorf("expected one batch resolution for the page, got %d calls", av.calls)
+	}
+}
+
+// GET /v1/conversations/{id} (detail) resolves contact_avatar_url consistently
+// with the list.
+func TestConversations_Detail_ResolvesContactAvatarURL(t *testing.T) {
+	cr := &fakeConvRepo{items: []*entity.Conversation{
+		{ID: "c1", TenantID: "t1", ContactID: "ct-av", Status: entity.StatusNew, Priority: entity.PriorityNormal, UpdatedAt: time.Now()},
+	}}
+	av := &fakeContactAvatars{byContact: map[string]string{"ct-av": "http://api/v1/channel-media/tok-ct-av"}}
+
+	rec := httpharness.Do(t, buildRouterWithAvatars(cr, av), http.MethodGet, "/conversations/c1", token(t, "t1", authz.ConversationRead), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		ContactAvatarURL string `json:"contact_avatar_url"`
+	}
+	httpharness.DecodeJSON(t, rec, &resp)
+	if resp.ContactAvatarURL != "http://api/v1/channel-media/tok-ct-av" {
+		t.Errorf("detail must resolve contact_avatar_url, got %q", resp.ContactAvatarURL)
 	}
 }
 

@@ -212,6 +212,17 @@ func NewConversationResponse(c *entity.Conversation) ConversationResponse {
 	}
 }
 
+// NewConversationResponseWithContactAvatar maps one conversation, attaching the
+// contact's signed avatar URL from contactAvatars (keyed by contact id), so the
+// detail endpoint stays consistent with the list. Empty when no ready avatar.
+func NewConversationResponseWithContactAvatar(c *entity.Conversation, contactAvatars map[string]string) ConversationResponse {
+	r := NewConversationResponse(c)
+	if c.ContactID != "" {
+		r.ContactAvatarURL = contactAvatars[c.ContactID]
+	}
+	return r
+}
+
 // NewConversationResponses maps a slice.
 func NewConversationResponses(items []*entity.Conversation) []ConversationResponse {
 	out := make([]ConversationResponse, len(items))

@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	domaincontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	convservice "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/service"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/conversations"
@@ -71,17 +72,20 @@ func (c *Controller) Create(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusCreated, dto.NewConversationResponse(conv))
+	avatars, _ := c.svc.ContactAvatarURLs(r.Context(), []*entity.Conversation{conv})
+	middleware.WriteJSON(w, http.StatusCreated, dto.NewConversationResponseWithContactAvatar(conv, avatars))
 }
 
-// Get handles GET /v1/conversations/{id}.
+// Get handles GET /v1/conversations/{id}. The contact avatar is resolved into
+// contact_avatar_url, consistent with the list.
 func (c *Controller) Get(w http.ResponseWriter, r *http.Request) {
 	conv, err := c.svc.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, dto.NewConversationResponse(conv))
+	avatars, _ := c.svc.ContactAvatarURLs(r.Context(), []*entity.Conversation{conv})
+	middleware.WriteJSON(w, http.StatusOK, dto.NewConversationResponseWithContactAvatar(conv, avatars))
 }
 
 // Update handles PATCH /v1/conversations/{id}.
