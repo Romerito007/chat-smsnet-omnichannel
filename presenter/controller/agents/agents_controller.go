@@ -34,6 +34,9 @@ type assignableAgent struct {
 	Status             string `json:"status"` // presence status, or "offline"
 	CurrentLoad        int    `json:"current_load"`
 	MaxConcurrentChats int    `json:"max_concurrent_chats"`
+	// AvatarURL is a short-lived signed avatar URL (no JWT), so the inbox renders
+	// agent avatars without a per-agent request.
+	AvatarURL string `json:"avatar_url,omitempty"`
 }
 
 // List handles GET /v1/agents: the active tenant users merged with presence.
@@ -65,12 +68,24 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		byUser[p.UserID] = p
 	}
 
+	// Batch-resolve agent avatar URLs (signed, JWT-less) for the page.
+	avatarIDs := make([]string, 0, len(users))
+	for _, u := range users {
+		if u.AvatarAttachmentID != "" {
+			avatarIDs = append(avatarIDs, u.AvatarAttachmentID)
+		}
+	}
+	avatars, _ := c.users.AvatarURLs(r.Context(), avatarIDs)
+
 	out := make([]assignableAgent, 0, len(users))
 	for _, u := range users {
 		if u.Status != iamentity.StatusActive {
 			continue
 		}
 		a := assignableAgent{ID: u.ID, Name: u.Name, Status: "offline", MaxConcurrentChats: u.MaxConcurrentChats}
+		if u.AvatarAttachmentID != "" {
+			a.AvatarURL = avatars[u.AvatarAttachmentID]
+		}
 		if p, ok := byUser[u.ID]; ok {
 			a.Status = string(p.Status)
 			a.CurrentLoad = p.CurrentLoad

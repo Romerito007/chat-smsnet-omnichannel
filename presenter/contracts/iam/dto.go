@@ -59,17 +59,20 @@ func (r UpdateUserRequest) ToCommand() contracts.UpdateUser {
 
 // UserResponse is the public representation of a user (no password).
 type UserResponse struct {
-	ID                 string    `json:"id"`
-	TenantID           string    `json:"tenant_id"`
-	Name               string    `json:"name"`
-	Email              string    `json:"email"`
-	Status             string    `json:"status"`
-	RoleIDs            []string  `json:"role_ids"`
-	SectorIDs          []string  `json:"sector_ids"`
-	MaxConcurrentChats int       `json:"max_concurrent_chats"`
-	AvatarAttachmentID string    `json:"avatar_attachment_id,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID                 string   `json:"id"`
+	TenantID           string   `json:"tenant_id"`
+	Name               string   `json:"name"`
+	Email              string   `json:"email"`
+	Status             string   `json:"status"`
+	RoleIDs            []string `json:"role_ids"`
+	SectorIDs          []string `json:"sector_ids"`
+	MaxConcurrentChats int      `json:"max_concurrent_chats"`
+	AvatarAttachmentID string   `json:"avatar_attachment_id,omitempty"`
+	// AvatarURL is a short-lived signed URL the browser loads directly (no JWT).
+	// Read-only/derived; present only when the avatar exists and is ready.
+	AvatarURL string    `json:"avatar_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // NewUserResponse maps a user entity to its DTO.
@@ -91,11 +94,30 @@ func NewUserResponse(u *entity.User) UserResponse {
 
 // NewUserResponses maps a slice of users.
 func NewUserResponses(users []*entity.User) []UserResponse {
+	return NewUserResponsesWithAvatars(users, nil)
+}
+
+// NewUserResponsesWithAvatars maps a slice, attaching each user's signed avatar
+// URL from avatarURLs (keyed by avatar attachment id; resolved in batch).
+func NewUserResponsesWithAvatars(users []*entity.User, avatarURLs map[string]string) []UserResponse {
 	out := make([]UserResponse, len(users))
 	for i, u := range users {
-		out[i] = NewUserResponse(u)
+		r := NewUserResponse(u)
+		if u.AvatarAttachmentID != "" {
+			r.AvatarURL = avatarURLs[u.AvatarAttachmentID]
+		}
+		out[i] = r
 	}
 	return out
+}
+
+// NewUserResponseWithAvatar maps one user, attaching its signed avatar URL.
+func NewUserResponseWithAvatar(u *entity.User, avatarURLs map[string]string) UserResponse {
+	r := NewUserResponse(u)
+	if u.AvatarAttachmentID != "" {
+		r.AvatarURL = avatarURLs[u.AvatarAttachmentID]
+	}
+	return r
 }
 
 // ── Roles ────────────────────────────────────────────────────────────────────

@@ -78,6 +78,30 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*entity.Contact, 
 	return toEntity(&m), nil
 }
 
+func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]*entity.Contact, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	cur, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}, "tenant_id": tenantID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []*entity.Contact
+	for cur.Next(ctx) {
+		var m models.Contact
+		if err := cur.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, toEntity(&m))
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
 func (r *Repository) FindByChannelIdentity(ctx context.Context, channel, externalID string) (*entity.Contact, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

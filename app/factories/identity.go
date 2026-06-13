@@ -21,6 +21,8 @@ var clock = shared.SystemClock{}
 func UserService(c *container.Container) *iamservice.UserService {
 	svc := iamservice.NewUserService(iamrepo.NewUserRepository(c.Mongo.DB), c.Hasher, clock)
 	svc.SetAuditor(AuditService(c))
+	// Resolve user avatars to short-lived signed URLs in the response payloads.
+	svc.SetAvatarURLResolver(AttachmentService(c))
 	return svc
 }
 

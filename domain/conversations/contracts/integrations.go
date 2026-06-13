@@ -35,6 +35,14 @@ type AttachmentResolver interface {
 	ValidateMessageAttachments(ctx context.Context, ids []string) error
 }
 
+// ContactAvatarResolver resolves a set of contact ids to their short-lived signed
+// avatar URLs (keyed by contact id), so the inbox list can render the contact
+// avatar per row without a second call. Implemented by the contacts service.
+// Optional: when unset, conversation items carry no contact_avatar_url.
+type ContactAvatarResolver interface {
+	ContactAvatarURLs(ctx context.Context, contactIDs []string) (map[string]string, error)
+}
+
 // CloseReasonPolicy reports whether a close reason requires a note. It is
 // implemented by the conversationtools domain and wired into the conversations
 // service so Close can enforce "requires_note". Optional: when unset, no note is

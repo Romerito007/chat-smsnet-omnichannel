@@ -50,7 +50,10 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	resp := shared.NewPage(dto.NewConversationResponsesWithLastMessage(items, last), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
+	// Resolve the contact avatar per row in one batch, so the inbox renders avatars
+	// without a per-row contact fetch. Best-effort: never fail the list.
+	contactAvatars, _ := c.svc.ContactAvatarURLs(r.Context(), items)
+	resp := shared.NewPage(dto.NewConversationResponsesWithLastMessage(items, last, contactAvatars), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
 		return shared.Cursor{CreatedAt: cv.UpdatedAt.UnixMilli(), ID: cv.ID}
 	})
 	middleware.WriteJSON(w, http.StatusOK, resp)

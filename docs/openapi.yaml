@@ -85,6 +85,9 @@ components:
             type: object
         AssignableAgent:
             properties:
+                avatar_url:
+                    description: 'Read-only, derived: the agent''s short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar.'
+                    type: string
                 current_load:
                     type: integer
                 id:
@@ -547,7 +550,10 @@ components:
         Contact:
             properties:
                 avatar_attachment_id:
-                    description: Attachment id of the contact's avatar; render it via GET /v1/attachments/{id}/download (same as user avatars).
+                    description: Attachment id of the contact's avatar (write it via PATCH).
+                    type: string
+                avatar_url:
+                    description: 'Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term.'
                     type: string
                 created_at:
                     format: date-time
@@ -631,6 +637,9 @@ components:
                     type: string
                 closed_at:
                     format: date-time
+                    type: string
+                contact_avatar_url:
+                    description: 'Read-only, derived: the conversation contact''s short-lived signed avatar URL (loadable in <img src>, no Authorization), resolved in batch for the inbox. Empty when the contact has no ready avatar.'
                     type: string
                 contact_id:
                     type: string
@@ -2733,6 +2742,9 @@ components:
         User:
             properties:
                 avatar_attachment_id:
+                    type: string
+                avatar_url:
+                    description: 'Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term.'
                     type: string
                 created_at:
                     format: date-time

@@ -96,8 +96,11 @@ type ContactResponse struct {
 	Tags               []string     `json:"tags"`
 	Notes              string       `json:"notes,omitempty"`
 	AvatarAttachmentID string       `json:"avatar_attachment_id,omitempty"`
-	CreatedAt          time.Time    `json:"created_at"`
-	UpdatedAt          time.Time    `json:"updated_at"`
+	// AvatarURL is a short-lived signed URL the browser loads directly (no JWT).
+	// Read-only/derived; present only when the avatar exists and is ready.
+	AvatarURL string    `json:"avatar_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // NewContactResponse maps a contact entity to its DTO. Phones falls back to the
@@ -136,9 +139,28 @@ func NewContactResponse(c *entity.Contact) ContactResponse {
 
 // NewContactResponses maps a slice.
 func NewContactResponses(items []*entity.Contact) []ContactResponse {
+	return NewContactResponsesWithAvatars(items, nil)
+}
+
+// NewContactResponsesWithAvatars maps a slice, attaching each contact's signed
+// avatar URL from avatarURLs (keyed by avatar attachment id; resolved in batch).
+func NewContactResponsesWithAvatars(items []*entity.Contact, avatarURLs map[string]string) []ContactResponse {
 	out := make([]ContactResponse, len(items))
 	for i, c := range items {
-		out[i] = NewContactResponse(c)
+		r := NewContactResponse(c)
+		if c.AvatarAttachmentID != "" {
+			r.AvatarURL = avatarURLs[c.AvatarAttachmentID]
+		}
+		out[i] = r
 	}
 	return out
+}
+
+// NewContactResponseWithAvatar maps one contact, attaching its signed avatar URL.
+func NewContactResponseWithAvatar(c *entity.Contact, avatarURLs map[string]string) ContactResponse {
+	r := NewContactResponse(c)
+	if c.AvatarAttachmentID != "" {
+		r.AvatarURL = avatarURLs[c.AvatarAttachmentID]
+	}
+	return r
 }

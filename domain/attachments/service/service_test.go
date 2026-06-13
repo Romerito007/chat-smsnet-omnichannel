@@ -246,6 +246,35 @@ func TestConfirm_PreservesMetadataAndContentType(t *testing.T) {
 	}
 }
 
+// SignedAvatarURLs resolves only ready image avatars, in one batch, to a signed
+// /v1/channel-media URL openable WITHOUT a JWT (verified via DownloadSigned).
+func TestSignedAvatarURLs_BatchAndJWTLess(t *testing.T) {
+	repo := newRepo()
+	svc := newSvc(repo, &fakeConvRepo{}, &fakeMsgRepo{}, &fakeStorage{provider: "local"},
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t", AvatarURLTTL: time.Minute})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["av1"] = &entity.Attachment{ID: "av1", TenantID: "t1", StorageKey: "avatars/t1/contacts/c1/p.png", ContentType: "image/png", Filename: "p.png", Status: entity.StatusReady}
+	repo.items["nonimg"] = &entity.Attachment{ID: "nonimg", TenantID: "t1", StorageKey: "k", ContentType: "application/pdf", Status: entity.StatusReady}
+	repo.items["pending"] = &entity.Attachment{ID: "pending", TenantID: "t1", StorageKey: "k", ContentType: "image/png", Status: entity.StatusPending}
+
+	urls, err := svc.SignedAvatarURLs(ctx, []string{"av1", "nonimg", "pending", "missing"})
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	if len(urls) != 1 || urls["av1"] == "" {
+		t.Fatalf("only the ready image must resolve: %v", urls)
+	}
+	if !strings.Contains(urls["av1"], "/v1/channel-media/") {
+		t.Errorf("avatar URL must use the signed channel-media route: %q", urls["av1"])
+	}
+	// Openable with no JWT: the token verifies and serves bytes.
+	token := urls["av1"][strings.LastIndex(urls["av1"], "/")+1:]
+	if _, err := svc.DownloadSigned(token); err != nil {
+		t.Errorf("avatar URL must be openable without a JWT: %v", err)
+	}
+}
+
 // ValidateReadyImage is the gate contacts use before storing an avatar id.
 func TestValidateReadyImage(t *testing.T) {
 	repo := newRepo()

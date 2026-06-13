@@ -45,7 +45,9 @@ func schemas() M {
 			"id": str(), "tenant_id": str(), "name": str(), "email": str(),
 			"status":   enum("active", "disabled", "pending_verification"),
 			"role_ids": arr(str()), "sector_ids": arr(str()), "max_concurrent_chats": integer(),
-			"avatar_attachment_id": str(), "created_at": dateTime(), "updated_at": dateTime(),
+			"avatar_attachment_id": str(),
+			"avatar_url":           describedStr("Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term."),
+			"created_at":           dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateUserRequest": object(M{
 			"name": str(), "email": str(), "password": str(),
@@ -91,7 +93,8 @@ func schemas() M {
 			"priority": str(), "tags": tagIDArray(), "last_message_at": dateTime(),
 			"unread_count": integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
-			"last_message": ref("LastMessage"),
+			"last_message":       ref("LastMessage"),
+			"contact_avatar_url": describedStr("Read-only, derived: the conversation contact's short-lived signed avatar URL (loadable in <img src>, no Authorization), resolved in batch for the inbox. Empty when the contact has no ready avatar."),
 		}),
 		"LastMessage": object(M{
 			"preview": str(), "sender_type": str(), "message_type": str(), "created_at": dateTime(),
@@ -99,6 +102,7 @@ func schemas() M {
 		"AssignableAgent": object(M{
 			"id": str(), "name": str(), "status": str(),
 			"current_load": integer(), "max_concurrent_chats": integer(),
+			"avatar_url": describedStr("Read-only, derived: the agent's short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar."),
 		}),
 		"McpCallLog": object(M{
 			"id": str(), "conversation_id": str(), "server_name": str(), "tool": str(),
@@ -288,7 +292,8 @@ func schemas() M {
 			"id": str(), "tenant_id": str(), "name": str(), "phones": arr(str()),
 			"document": str(), "email": str(), "external_ids": arr(ref("ContactExternalID")),
 			"tags": tagIDArray(), "notes": str(),
-			"avatar_attachment_id": describedStr("Attachment id of the contact's avatar; render it via GET /v1/attachments/{id}/download (same as user avatars)."),
+			"avatar_attachment_id": describedStr("Attachment id of the contact's avatar (write it via PATCH)."),
+			"avatar_url":           describedStr("Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term."),
 			"created_at":           dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateContactRequest": object(M{

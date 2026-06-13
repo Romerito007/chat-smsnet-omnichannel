@@ -24,6 +24,8 @@ func ContactService(c *container.Container) *contactservice.Service {
 	svc.SetTagResolver(ConversationToolsTagService(c))
 	// Validate a contact avatar attachment (exists, same tenant, image, ready).
 	svc.SetAvatarValidator(AttachmentService(c))
+	// Resolve contact avatars to short-lived signed URLs in the response payloads.
+	svc.SetAvatarURLResolver(AttachmentService(c))
 	return svc
 }
 

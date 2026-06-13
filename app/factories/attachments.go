@@ -56,6 +56,7 @@ func AttachmentService(c *container.Container) *aservice.Service {
 		aservice.Config{
 			MaxSizeBytes:        cfg.MaxSizeBytes,
 			AvatarMaxSizeBytes:  cfg.AvatarMaxSizeBytes,
+			AvatarURLTTL:        cfg.AvatarURLTTL,
 			AllowedContentTypes: cfg.AllowedContentTypes,
 			UploadTTL:           cfg.UploadTTL,
 			DownloadTTL:         cfg.DownloadTTL,
@@ -79,10 +80,13 @@ func AttachmentController(c *container.Container) *attachctl.Controller {
 		aservice.Config{
 			MaxSizeBytes:        cfg.MaxSizeBytes,
 			AvatarMaxSizeBytes:  cfg.AvatarMaxSizeBytes,
+			AvatarURLTTL:        cfg.AvatarURLTTL,
 			AllowedContentTypes: cfg.AllowedContentTypes,
 			UploadTTL:           cfg.UploadTTL,
 			DownloadTTL:         cfg.DownloadTTL,
 			DownloadBaseURL:     cfg.BaseURL,
+			// Needed to verify signed channel-media / avatar tokens this controller serves.
+			SigningSecret: cfg.SigningSecret,
 		},
 	)
 	return attachctl.NewController(svc, blob)

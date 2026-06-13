@@ -19,10 +19,11 @@ const minPasswordLen = 8
 
 // UserService manages tenant users.
 type UserService struct {
-	users   repository.UserRepository
-	hasher  iam.PasswordHasher
-	clock   shared.Clock
-	auditor shared.Auditor
+	users      repository.UserRepository
+	hasher     iam.PasswordHasher
+	clock      shared.Clock
+	auditor    shared.Auditor
+	avatarURLs shared.AvatarURLResolver
 }
 
 // NewUserService builds the service.
@@ -39,6 +40,23 @@ func (s *UserService) SetAuditor(a shared.Auditor) {
 	if a != nil {
 		s.auditor = a
 	}
+}
+
+// SetAvatarURLResolver wires the resolver that turns avatar_attachment_ids into
+// short-lived signed avatar URLs for user payloads. Optional.
+func (s *UserService) SetAvatarURLResolver(r shared.AvatarURLResolver) {
+	if r != nil {
+		s.avatarURLs = r
+	}
+}
+
+// AvatarURLs batch-resolves a set of avatar attachment ids to signed URLs, keyed
+// by attachment id. Best-effort and nil-safe (returns nil when unwired).
+func (s *UserService) AvatarURLs(ctx context.Context, attachmentIDs []string) (map[string]string, error) {
+	if s.avatarURLs == nil || len(attachmentIDs) == 0 {
+		return nil, nil
+	}
+	return s.avatarURLs.SignedAvatarURLs(ctx, attachmentIDs)
 }
 
 // Create validates and persists a new user within the current tenant, hashing

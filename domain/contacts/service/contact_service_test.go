@@ -49,6 +49,15 @@ func (r *fakeRepo) FindByID(_ context.Context, id string) (*entity.Contact, erro
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.Contact, error) {
+	var out []*entity.Contact
+	for _, id := range ids {
+		if c, ok := r.byID[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
 func (r *fakeRepo) FindByChannelIdentity(_ context.Context, ch, ext string) (*entity.Contact, error) {
 	if c, ok := r.byIdentity[key(ch, ext)]; ok {
 		return c, nil
@@ -81,6 +90,36 @@ func (r *fakeRepo) List(context.Context, contracts.ListFilter, shared.PageReques
 }
 
 func tenantCtx() context.Context { return shared.WithTenant(context.Background(), "t1") }
+
+// countingAvatarResolver records how many times it is called, to prove batching.
+type countingAvatarResolver struct{ calls int }
+
+func (c *countingAvatarResolver) SignedAvatarURLs(_ context.Context, ids []string) (map[string]string, error) {
+	c.calls++
+	out := make(map[string]string, len(ids))
+	for _, id := range ids {
+		out[id] = "url-" + id
+	}
+	return out, nil
+}
+
+// A page of N avatar ids resolves in ONE signing call (no per-item round-trip).
+func TestAvatarURLs_BatchSingleCall(t *testing.T) {
+	svc := newSvc()
+	res := &countingAvatarResolver{}
+	svc.SetAvatarURLResolver(res)
+
+	urls, err := svc.AvatarURLs(tenantCtx(), []string{"a1", "a2", "a3"})
+	if err != nil {
+		t.Fatalf("avatar urls: %v", err)
+	}
+	if res.calls != 1 {
+		t.Errorf("expected a single batch call, got %d", res.calls)
+	}
+	if len(urls) != 3 {
+		t.Errorf("expected 3 resolved urls, got %d", len(urls))
+	}
+}
 
 func TestUpsert_CreatesThenReuses(t *testing.T) {
 	repo := newFakeRepo()

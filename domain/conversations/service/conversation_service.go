@@ -19,22 +19,23 @@ import (
 
 // Service implements the conversations use cases.
 type Service struct {
-	conversations repository.ConversationRepository
-	messages      repository.MessageRepository
-	events        repository.EventRepository
-	sectors       sectorrepo.SectorRepository
-	publisher     shared.EventPublisher
-	clock         shared.Clock
-	outbound      contracts.OutboundDispatcher
-	webhooks      shared.WebhookEmitter
-	tags          contracts.TagCatalog
-	closeReasons  contracts.CloseReasonPolicy
-	sla           contracts.SLAHook
-	notifier      shared.Notifier
-	csat          contracts.CSATTrigger
-	auditor       shared.Auditor
-	queueStats    shared.QueueStatsNotifier
-	attachments   contracts.AttachmentResolver
+	conversations  repository.ConversationRepository
+	messages       repository.MessageRepository
+	events         repository.EventRepository
+	sectors        sectorrepo.SectorRepository
+	publisher      shared.EventPublisher
+	clock          shared.Clock
+	outbound       contracts.OutboundDispatcher
+	webhooks       shared.WebhookEmitter
+	tags           contracts.TagCatalog
+	closeReasons   contracts.CloseReasonPolicy
+	sla            contracts.SLAHook
+	notifier       shared.Notifier
+	csat           contracts.CSATTrigger
+	auditor        shared.Auditor
+	queueStats     shared.QueueStatsNotifier
+	attachments    contracts.AttachmentResolver
+	contactAvatars contracts.ContactAvatarResolver
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, conversation closes are
@@ -52,6 +53,35 @@ func (s *Service) SetAttachmentResolver(a contracts.AttachmentResolver) {
 	if a != nil {
 		s.attachments = a
 	}
+}
+
+// SetContactAvatarResolver wires the resolver that turns a conversation's
+// contact id into a signed contact avatar URL for the inbox list. Optional.
+func (s *Service) SetContactAvatarResolver(r contracts.ContactAvatarResolver) {
+	if r != nil {
+		s.contactAvatars = r
+	}
+}
+
+// ContactAvatarURLs batch-resolves the signed contact avatar URLs for a page of
+// conversations, keyed by contact id. Best-effort and nil-safe.
+func (s *Service) ContactAvatarURLs(ctx context.Context, conversations []*entity.Conversation) (map[string]string, error) {
+	if s.contactAvatars == nil || len(conversations) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(conversations))
+	seen := make(map[string]struct{}, len(conversations))
+	for _, c := range conversations {
+		if c.ContactID == "" {
+			continue
+		}
+		if _, dup := seen[c.ContactID]; dup {
+			continue
+		}
+		seen[c.ContactID] = struct{}{}
+		ids = append(ids, c.ContactID)
+	}
+	return s.contactAvatars.ContactAvatarURLs(ctx, ids)
 }
 
 // SetQueueStatsNotifier wires the queue.stats notifier. Optional: when unset,

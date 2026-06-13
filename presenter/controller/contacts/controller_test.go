@@ -42,6 +42,15 @@ func (r *memRepo) FindByID(_ context.Context, id string) (*contactentity.Contact
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *memRepo) FindByIDs(_ context.Context, ids []string) ([]*contactentity.Contact, error) {
+	var out []*contactentity.Contact
+	for _, id := range ids {
+		if c, ok := r.byID[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
 func (r *memRepo) FindByChannelIdentity(context.Context, string, string) (*contactentity.Contact, error) {
 	return nil, apperror.NotFound("nf")
 }
@@ -98,11 +107,23 @@ func (f fakeAvatarValidator) ValidateReadyImage(_ context.Context, id string) er
 		WithDetails(map[string]any{"avatar_attachment_id": "not found"})
 }
 
+// stubAvatarURLs returns a signed-looking URL for every requested id.
+type stubAvatarURLs struct{}
+
+func (stubAvatarURLs) SignedAvatarURLs(_ context.Context, ids []string) (map[string]string, error) {
+	out := make(map[string]string, len(ids))
+	for _, id := range ids {
+		out[id] = "http://api/v1/channel-media/tok-" + id
+	}
+	return out, nil
+}
+
 func build(t *testing.T) (http.Handler, domainauth.TokenManager) {
 	t.Helper()
 	tm := httpharness.Tokens()
 	svc := contactservice.New(newMemRepo(), nil)
 	svc.SetAvatarValidator(fakeAvatarValidator{ready: map[string]bool{"att-ok": true}})
+	svc.SetAvatarURLResolver(stubAvatarURLs{})
 	ctl := contacts.NewController(svc)
 
 	r := chi.NewRouter()
@@ -185,12 +206,26 @@ func TestContacts_AvatarValidOnCreateAndUpdate(t *testing.T) {
 		t.Fatalf("create status = %d (%s)", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ID     string `json:"id"`
-		Avatar string `json:"avatar_attachment_id"`
+		ID        string `json:"id"`
+		Avatar    string `json:"avatar_attachment_id"`
+		AvatarURL string `json:"avatar_url"`
 	}
 	httpharness.DecodeJSON(t, rec, &created)
 	if created.Avatar != "att-ok" {
 		t.Fatalf("avatar not stored: %+v", created)
+	}
+	if created.AvatarURL == "" {
+		t.Errorf("avatar_url must be resolved for a contact with an avatar")
+	}
+
+	// A contact with no avatar resolves to an empty avatar_url.
+	plain := httpharness.Do(t, r, http.MethodPost, "/contacts", write, map[string]any{"name": "NoAvatar"})
+	var p struct {
+		AvatarURL string `json:"avatar_url"`
+	}
+	httpharness.DecodeJSON(t, plain, &p)
+	if p.AvatarURL != "" {
+		t.Errorf("avatar_url must be empty without an avatar, got %q", p.AvatarURL)
 	}
 
 	// Update to clear the avatar (empty string is allowed).

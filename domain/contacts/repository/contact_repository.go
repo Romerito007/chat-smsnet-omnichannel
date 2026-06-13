@@ -14,6 +14,9 @@ type ContactRepository interface {
 	Create(ctx context.Context, c *entity.Contact) error
 	Update(ctx context.Context, c *entity.Contact) error
 	FindByID(ctx context.Context, id string) (*entity.Contact, error)
+	// FindByIDs batch-loads contacts by id within the tenant (missing ids absent),
+	// used to resolve contact avatars for a conversation list page without N+1.
+	FindByIDs(ctx context.Context, ids []string) ([]*entity.Contact, error)
 	// FindByChannelIdentity locates a contact by one of its channel identities.
 	FindByChannelIdentity(ctx context.Context, channel, externalID string) (*entity.Contact, error)
 	// FindByDocument / FindByPhone locate a contact for deduplication; the phone

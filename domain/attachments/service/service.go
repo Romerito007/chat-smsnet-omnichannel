@@ -40,6 +40,9 @@ type Config struct {
 	SigningSecret string
 	// MediaURLTTL bounds the signed channel-media URL lifetime.
 	MediaURLTTL time.Duration
+	// AvatarURLTTL bounds the short-lived signed avatar URL resolved into
+	// Contact/User payloads. Defaults to 15m.
+	AvatarURLTTL time.Duration
 }
 
 // Service implements the attachments use cases.
@@ -72,6 +75,9 @@ func NewService(repo repository.Repository, storage contracts.Storage, conversat
 	if cfg.MediaURLTTL <= 0 {
 		cfg.MediaURLTTL = 24 * time.Hour
 	}
+	if cfg.AvatarURLTTL <= 0 {
+		cfg.AvatarURLTTL = 15 * time.Minute
+	}
 	return &Service{repo: repo, storage: storage, conversations: conversations, messages: messages, clock: clock, cfg: cfg}
 }
 
@@ -96,6 +102,36 @@ func (s *Service) IntegrationMediaURL(ctx context.Context, attachmentID string) 
 	exp := s.clock.Now().Add(s.cfg.MediaURLTTL).UnixMilli()
 	token := s.signMediaToken(att.StorageKey, att.ContentType, att.Filename, exp)
 	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token, nil
+}
+
+// SignedAvatarURLs batch-resolves avatar attachment ids to short-lived, JWT-less
+// media URLs (the same signed /v1/channel-media/{token} mechanism), so a list
+// page renders avatars directly in <img src> without a per-item Authorization
+// request. Only ready, same-tenant image attachments get a URL; others are absent
+// from the map. One FindByIDs query; token signing is pure local HMAC (no per-item
+// IO), so this stays cheap for large pages.
+func (s *Service) SignedAvatarURLs(ctx context.Context, ids []string) (map[string]string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	cleaned := dedupeNonEmpty(ids)
+	if len(cleaned) == 0 {
+		return nil, nil
+	}
+	found, err := s.repo.FindByIDs(ctx, cleaned)
+	if err != nil {
+		return nil, err
+	}
+	exp := s.clock.Now().Add(s.cfg.AvatarURLTTL).UnixMilli()
+	out := make(map[string]string, len(found))
+	for _, att := range found {
+		if att.Status != entity.StatusReady || !isImageContentType(att.ContentType) {
+			continue
+		}
+		token := s.signMediaToken(att.StorageKey, att.ContentType, att.Filename, exp)
+		out[att.ID] = strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token
+	}
+	return out, nil
 }
 
 // DownloadSigned resolves a signed channel-media token (no JWT, no tenant): it

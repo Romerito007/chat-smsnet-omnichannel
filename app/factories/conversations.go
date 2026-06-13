@@ -31,6 +31,8 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 	// Hydrate message attachments (url/content_type/filename/size) at read and
 	// validate attachment ids on send.
 	svc.SetAttachmentResolver(AttachmentService(c))
+	// Resolve the contact avatar per inbox row (batch, signed URL).
+	svc.SetContactAvatarResolver(ContactService(c))
 	return svc
 }
 

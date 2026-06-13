@@ -90,8 +90,9 @@ func (c *Controller) Me(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
+	avatars, _ := c.users.AvatarURLs(r.Context(), []string{user.AvatarAttachmentID})
 	resp := dto.MeResponse{
-		User:        iamdto.NewUserResponse(user),
+		User:        iamdto.NewUserResponseWithAvatar(user, avatars),
 		Permissions: permList(ac),
 		SectorScope: string(ac.SectorScope),
 		SectorIDs:   ac.SectorIDs,

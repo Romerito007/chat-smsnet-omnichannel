@@ -138,6 +138,10 @@ type ConversationResponse struct {
 	UpdatedAt     time.Time    `json:"updated_at"`
 	ClosedAt      *time.Time   `json:"closed_at,omitempty"`
 	LastMessage   *LastMessage `json:"last_message,omitempty"`
+	// ContactAvatarURL is the conversation contact's short-lived signed avatar URL
+	// (no JWT), resolved in batch so the inbox renders avatars without a per-row
+	// contact fetch. Read-only/derived; empty when the contact has no ready avatar.
+	ContactAvatarURL string `json:"contact_avatar_url,omitempty"`
 }
 
 // LastMessage is a light preview of a conversation's most recent message, used on
@@ -171,12 +175,15 @@ func previewText(s string, n int) string {
 
 // NewConversationResponsesWithLastMessage maps a page of conversations, attaching
 // each one's last-message preview from last (keyed by conversation id).
-func NewConversationResponsesWithLastMessage(items []*entity.Conversation, last map[string]*entity.Message) []ConversationResponse {
+func NewConversationResponsesWithLastMessage(items []*entity.Conversation, last map[string]*entity.Message, contactAvatars map[string]string) []ConversationResponse {
 	out := make([]ConversationResponse, len(items))
 	for i, c := range items {
 		r := NewConversationResponse(c)
 		if m, ok := last[c.ID]; ok {
 			r.LastMessage = newLastMessage(m)
+		}
+		if c.ContactID != "" {
+			r.ContactAvatarURL = contactAvatars[c.ContactID]
 		}
 		out[i] = r
 	}

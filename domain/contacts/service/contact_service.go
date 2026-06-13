@@ -14,11 +14,12 @@ import (
 
 // Service manages tenant contacts.
 type Service struct {
-	repo    repository.ContactRepository
-	clock   shared.Clock
-	auditor shared.Auditor
-	tags    contracts.TagResolver
-	avatars contracts.AvatarValidator
+	repo       repository.ContactRepository
+	clock      shared.Clock
+	auditor    shared.Auditor
+	tags       contracts.TagResolver
+	avatars    contracts.AvatarValidator
+	avatarURLs shared.AvatarURLResolver
 }
 
 // New builds the service.
@@ -52,6 +53,57 @@ func (s *Service) SetAvatarValidator(a contracts.AvatarValidator) {
 	if a != nil {
 		s.avatars = a
 	}
+}
+
+// SetAvatarURLResolver wires the resolver that turns avatar_attachment_ids into
+// short-lived signed avatar URLs for the response payloads. Optional.
+func (s *Service) SetAvatarURLResolver(r shared.AvatarURLResolver) {
+	if r != nil {
+		s.avatarURLs = r
+	}
+}
+
+// AvatarURLs batch-resolves a set of avatar attachment ids to signed URLs, keyed
+// by attachment id. Best-effort and nil-safe (returns nil when unwired).
+func (s *Service) AvatarURLs(ctx context.Context, attachmentIDs []string) (map[string]string, error) {
+	if s.avatarURLs == nil || len(attachmentIDs) == 0 {
+		return nil, nil
+	}
+	return s.avatarURLs.SignedAvatarURLs(ctx, attachmentIDs)
+}
+
+// ContactAvatarURLs resolves a set of CONTACT ids to their signed avatar URLs
+// (keyed by contact id) in two batch queries: load the contacts, then sign their
+// avatars. Used by the conversation inbox to render the contact avatar per row
+// without a second round-trip. Best-effort and nil-safe.
+func (s *Service) ContactAvatarURLs(ctx context.Context, contactIDs []string) (map[string]string, error) {
+	if s.avatarURLs == nil || len(contactIDs) == 0 {
+		return nil, nil
+	}
+	contacts, err := s.repo.FindByIDs(ctx, contactIDs)
+	if err != nil {
+		return nil, err
+	}
+	avatarToContacts := make(map[string][]string)
+	ids := make([]string, 0, len(contacts))
+	for _, c := range contacts {
+		if c.AvatarAttachmentID == "" {
+			continue
+		}
+		avatarToContacts[c.AvatarAttachmentID] = append(avatarToContacts[c.AvatarAttachmentID], c.ID)
+		ids = append(ids, c.AvatarAttachmentID)
+	}
+	urls, err := s.avatarURLs.SignedAvatarURLs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(contacts))
+	for avatarID, url := range urls {
+		for _, contactID := range avatarToContacts[avatarID] {
+			out[contactID] = url
+		}
+	}
+	return out, nil
 }
 
 // validateAvatar runs the avatar attachment validation when a validator is wired

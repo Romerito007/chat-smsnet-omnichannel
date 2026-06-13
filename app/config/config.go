@@ -87,6 +87,9 @@ type AttachmentsConfig struct {
 	// UploadTTL / DownloadTTL bound the signed upload and download URLs.
 	UploadTTL   time.Duration
 	DownloadTTL time.Duration
+	// AvatarURLTTL bounds the short-lived signed avatar URL resolved into
+	// Contact/User payloads (loaded directly by the browser, no JWT).
+	AvatarURLTTL time.Duration
 	// SigningSecret signs local upload tokens.
 	SigningSecret string
 	// LocalDir is the base directory for the local backend.
@@ -403,6 +406,7 @@ func Load() (Config, error) {
 			AllowedContentTypes: getList("ATTACHMENTS_ALLOWED_CONTENT_TYPES", nil),
 			UploadTTL:           getDuration("ATTACHMENTS_UPLOAD_TTL", 15*time.Minute),
 			DownloadTTL:         getDuration("ATTACHMENTS_DOWNLOAD_TTL", 5*time.Minute),
+			AvatarURLTTL:        getDuration("ATTACHMENTS_AVATAR_URL_TTL", 15*time.Minute),
 			SigningSecret:       getString("ATTACHMENTS_SIGNING_SECRET", getString("AUTH_JWT_SECRET", "dev-secret-change-me")),
 			LocalDir:            getString("ATTACHMENTS_LOCAL_DIR", "/tmp/chat-attachments"),
 			BaseURL:             getString("ATTACHMENTS_BASE_URL", "http://localhost:8080"),
