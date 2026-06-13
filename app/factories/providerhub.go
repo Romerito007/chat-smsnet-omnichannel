@@ -18,6 +18,8 @@ func ProviderHubProfileService(c *container.Container) *phservice.ProfileService
 		clock,
 	)
 	svc.SetEnvDefault(c.Config.ProviderHub.GatewayAPIHost, c.Config.ProviderHub.GatewayAPIKey)
+	// Block deleting a profile that a CopilotAssistant pins (clear "in use" error).
+	svc.SetUsageChecker(CopilotAssistantService(c))
 	return svc
 }
 

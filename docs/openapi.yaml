@@ -767,6 +767,31 @@ components:
                     format: date-time
                     type: string
             type: object
+        CopilotAssistant:
+            properties:
+                channel_types:
+                    description: Conversation channel types this assistant serves (e.g. whatsapp).
+                    items:
+                        type: string
+                    type: array
+                created_at:
+                    format: date-time
+                    type: string
+                enabled:
+                    type: boolean
+                id:
+                    type: string
+                isp_profile_id:
+                    description: Pinned providerhub ISP profile id, or empty for no ISP tools.
+                    type: string
+                name:
+                    type: string
+                tenant_id:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+            type: object
         CopilotConfig:
             properties:
                 allow_customer_data:
@@ -955,6 +980,23 @@ components:
             required:
                 - contact_id
                 - channel
+            type: object
+        CreateCopilotAssistantRequest:
+            properties:
+                channel_types:
+                    items:
+                        type: string
+                    type: array
+                enabled:
+                    description: Defaults to true when omitted.
+                    type: boolean
+                isp_profile_id:
+                    description: Optional providerhub ISP profile id to pin; must exist.
+                    type: string
+                name:
+                    type: string
+            required:
+                - name
             type: object
         CreateHolidayRequest:
             properties:
@@ -2669,6 +2711,19 @@ components:
                     items:
                         type: string
                     type: array
+            type: object
+        UpdateCopilotAssistantRequest:
+            properties:
+                channel_types:
+                    items:
+                        type: string
+                    type: array
+                enabled:
+                    type: boolean
+                isp_profile_id:
+                    type: string
+                name:
+                    type: string
             type: object
         UpdateHolidayRequest:
             properties:
@@ -5874,6 +5929,170 @@ paths:
             summary: Signal typing stop
             tags:
                 - conversations
+    /v1/copilot/assistants:
+        get:
+            operationId: getCopilotAssistants
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/CopilotAssistant'
+                                        type: array
+                                type: object
+                    description: Assistants
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List copilot assistants
+            tags:
+                - copilot
+        post:
+            operationId: postCopilotAssistants
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateCopilotAssistantRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CopilotAssistant'
+                    description: Created
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Create a copilot assistant
+            tags:
+                - copilot
+    /v1/copilot/assistants/{id}:
+        delete:
+            operationId: deleteCopilotAssistantsById
+            parameters:
+                - description: assistant id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: Deleted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Delete a copilot assistant
+            tags:
+                - copilot
+        get:
+            operationId: getCopilotAssistantsById
+            parameters:
+                - description: assistant id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CopilotAssistant'
+                    description: Assistant
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get a copilot assistant
+            tags:
+                - copilot
+        patch:
+            operationId: patchCopilotAssistantsById
+            parameters:
+                - description: assistant id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateCopilotAssistantRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CopilotAssistant'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Update a copilot assistant
+            tags:
+                - copilot
     /v1/copilot/classify:
         post:
             operationId: postCopilotClassify

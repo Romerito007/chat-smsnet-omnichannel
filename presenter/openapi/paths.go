@@ -243,6 +243,17 @@ func registerCopilotMCP(p *paths) {
 		responses: M{"200": jsonResp("Config", ref("CopilotConfig"))}}))
 	p.add("PATCH", "/v1/copilot/config", op(opConfig{tag: "copilot", summary: "Save the copilot config",
 		reqBody: body(ref("SaveCopilotConfigRequest")), responses: M{"200": jsonResp("Saved", ref("CopilotConfig"))}}))
+	p.add("GET", "/v1/copilot/assistants", op(opConfig{tag: "copilot", summary: "List copilot assistants",
+		responses: M{"200": jsonResp("Assistants", dataArr(ref("CopilotAssistant")))}}))
+	p.add("POST", "/v1/copilot/assistants", op(opConfig{tag: "copilot", summary: "Create a copilot assistant",
+		reqBody: body(ref("CreateCopilotAssistantRequest")), responses: M{"201": jsonResp("Created", ref("CopilotAssistant"))}}))
+	asstIDP := []M{pathParam("id", "assistant id")}
+	p.add("GET", "/v1/copilot/assistants/{id}", op(opConfig{tag: "copilot", summary: "Get a copilot assistant",
+		params: asstIDP, responses: M{"200": jsonResp("Assistant", ref("CopilotAssistant")), "404": errorResponse("Not found.")}}))
+	p.add("PATCH", "/v1/copilot/assistants/{id}", op(opConfig{tag: "copilot", summary: "Update a copilot assistant",
+		params: asstIDP, reqBody: body(ref("UpdateCopilotAssistantRequest")), responses: M{"200": jsonResp("Updated", ref("CopilotAssistant")), "404": errorResponse("Not found.")}}))
+	p.add("DELETE", "/v1/copilot/assistants/{id}", op(opConfig{tag: "copilot", summary: "Delete a copilot assistant",
+		params: asstIDP, responses: M{"204": emptyResp("Deleted"), "404": errorResponse("Not found.")}}))
 	p.add("POST", "/v1/copilot/suggest-reply", op(opConfig{tag: "copilot", summary: "Draft a reply (agentic; may propose write actions)",
 		reqBody: body(ref("SuggestReplyRequest")), responses: M{"200": jsonResp("Result", ref("CopilotResult"))}}))
 	p.add("POST", "/v1/copilot/summarize", op(opConfig{tag: "copilot", summary: "Summarize the conversation",

@@ -431,6 +431,26 @@ func schemas() M {
 			"allow_customer_data": boolean(), "allow_financial_data": boolean(), "allow_monitoring_data": boolean(),
 			"human_approval_required": boolean(), "enabled": boolean(),
 		}),
+		// CopilotAssistant is a named assistant (many per tenant). It reuses the
+		// tenant CopilotConfig for provider/key/policies and adds routing: the
+		// channel types it serves and an optional pinned ISP profile. With an ISP
+		// profile the backend exposes the SMSNET tools to the model and injects the
+		// ISP config server-side; without one, no ISP tools are offered.
+		"CopilotAssistant": object(M{
+			"id": str(), "tenant_id": str(), "name": str(),
+			"channel_types":  describedArr(str(), "Conversation channel types this assistant serves (e.g. whatsapp)."),
+			"isp_profile_id": describedStr("Pinned providerhub ISP profile id, or empty for no ISP tools."),
+			"enabled":        boolean(),
+			"created_at":     dateTime(), "updated_at": dateTime(),
+		}),
+		"CreateCopilotAssistantRequest": object(M{
+			"name": str(), "channel_types": arr(str()),
+			"isp_profile_id": describedStr("Optional providerhub ISP profile id to pin; must exist."),
+			"enabled":        describedBool("Defaults to true when omitted."),
+		}, "name"),
+		"UpdateCopilotAssistantRequest": object(M{
+			"name": str(), "channel_types": arr(str()), "isp_profile_id": str(), "enabled": boolean(),
+		}),
 		"SuggestReplyRequest": object(M{"conversation_id": str(), "instruction": str()}, "conversation_id"),
 		"SummarizeRequest":    object(M{"conversation_id": str()}, "conversation_id"),
 		"ClassifyRequest":     object(M{"conversation_id": str(), "categories": arr(str())}, "conversation_id", "categories"),

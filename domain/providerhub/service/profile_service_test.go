@@ -270,6 +270,41 @@ func TestProfileDelete_NonDefaultKeepsDefault(t *testing.T) {
 	}
 }
 
+type fakeUsageChecker struct {
+	inUse  bool
+	usedBy string
+}
+
+func (f fakeUsageChecker) IsISPProfileInUse(context.Context, string) (bool, string, error) {
+	return f.inUse, f.usedBy, nil
+}
+
+func TestProfileDelete_BlockedWhenInUseByAssistant(t *testing.T) {
+	repo := newFakeProfileRepo()
+	svc := newProfileSvc(repo)
+	svc.SetUsageChecker(fakeUsageChecker{inUse: true, usedBy: "Atendimento WhatsApp"})
+	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+
+	err := svc.Delete(profileCtx(), p.ID)
+	if apperror.From(err).Code != apperror.CodeConflict {
+		t.Fatalf("expected conflict when profile is in use, got %v", err)
+	}
+	if got, _ := repo.FindByID(profileCtx(), p.ID); got == nil {
+		t.Errorf("profile must NOT be deleted while in use")
+	}
+}
+
+func TestProfileDelete_AllowedWhenNotInUse(t *testing.T) {
+	repo := newFakeProfileRepo()
+	svc := newProfileSvc(repo)
+	svc.SetUsageChecker(fakeUsageChecker{inUse: false})
+	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+
+	if err := svc.Delete(profileCtx(), p.ID); err != nil {
+		t.Fatalf("delete should succeed when not in use: %v", err)
+	}
+}
+
 func TestProfileGatewayStatus_ReportsEnvAndProfiles(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)

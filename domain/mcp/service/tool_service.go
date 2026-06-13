@@ -30,7 +30,13 @@ type ToolService struct {
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	auditor       shared.Auditor
+	ispBridge     contracts.ISPToolBridge // optional: gates + injects ISP config for SMSNET servers
 }
+
+// SetISPBridge wires the SMSNET ISP tool bridge: it gates which SMSNET servers a
+// conversation may use and injects the ISP config{type+creds} into tool calls
+// server-side. Optional; when unset, SMSNET tools behave like any other server.
+func (s *ToolService) SetISPBridge(b contracts.ISPToolBridge) { s.ispBridge = b }
 
 // NewToolService builds the service.
 func NewToolService(
@@ -142,7 +148,7 @@ func (s *ToolService) Run(ctx context.Context, cmd contracts.RunTool) (contracts
 		return contracts.RunResult{Executed: false, Approval: approval, Tool: cmd.Tool, Write: true}, nil
 	}
 
-	text, err := s.invoke(ctx, conv, conn, cmd.Tool, cmd.Args, ac.UserID)
+	text, err := s.invoke(ctx, conv, conn, cmd.Tool, cmd.Args, ac.UserID, "")
 	if err != nil {
 		return contracts.RunResult{}, err
 	}
@@ -193,7 +199,9 @@ func (s *ToolService) Decide(ctx context.Context, conversationID, approvalID str
 	if err != nil {
 		return contracts.RunResult{}, err
 	}
-	text, ierr := s.invoke(ctx, conv, conn, approval.Tool, approval.Args, ac.UserID)
+	// Side-effect via approval: forward the approval id as the idempotency key so
+	// the SMSNET write can dedup an accidental re-approval/retry.
+	text, ierr := s.invoke(ctx, conv, conn, approval.Tool, approval.Args, ac.UserID, approval.ID)
 	if ierr != nil {
 		approval.Status = entity.ApprovalFailed
 		approval.Error = summarizeErr(ierr)
@@ -232,6 +240,15 @@ func (s *ToolService) OpenToolSession(ctx context.Context, conversationID string
 		if err != nil {
 			continue
 		}
+		// SMSNET tools are gated by the conversation's assistant ISP profile: hide
+		// them when no profile is pinned, and hide the write (OPERACOES) tools when
+		// the profile supports neither liberacao nor chamado.
+		if s.ispBridge != nil && entity.IsSMSNETServer(ref.Name) {
+			allowed, aerr := s.ispBridge.AllowServer(ctx, conv.Channel, ref.Name, t.Write)
+			if aerr != nil || !allowed {
+				continue
+			}
+		}
 		byName[t.Name] = toolRef{conn: ref, write: t.Write}
 		defs = append(defs, copilotcontracts.ToolDefinition{
 			Name: t.Name, Description: t.Description, Schema: t.Schema, ReadOnly: !t.Write,
@@ -266,7 +283,7 @@ func (t *toolSession) ExecuteRead(ctx context.Context, name, argsJSON string) (s
 	if !ok || ref.write {
 		return "", apperror.Validation("unknown read tool")
 	}
-	return t.svc.invoke(ctx, t.conv, ref.conn, name, parseArgs(argsJSON), "ai")
+	return t.svc.invoke(ctx, t.conv, ref.conn, name, parseArgs(argsJSON), "ai", "")
 }
 
 // ProposeWrite records a write tool the AI requested as a pending approval; it is
@@ -289,8 +306,25 @@ func (t *toolSession) ProposeWrite(ctx context.Context, name, argsJSON string) (
 
 // ── shared helpers ───────────────────────────────────────────────────────────
 
-// invoke calls a tool over MCP and records a payload-free call log.
-func (s *ToolService) invoke(ctx context.Context, conv *convEntityRef, conn *entity.ServerConnection, tool string, args map[string]any, userID string) (string, error) {
+// invoke calls a tool over MCP and records a payload-free call log. This is the
+// SINGLE seam where a tool call is dispatched, so it is also where the SMSNET ISP
+// config{type+creds} is injected server-side (via the ISP bridge) — the model's
+// args are decorated here, after the model has decided to call the tool, and any
+// client-supplied "config" is overwritten. Credentials never reach the model.
+func (s *ToolService) invoke(ctx context.Context, conv *convEntityRef, conn *entity.ServerConnection, tool string, args map[string]any, userID, idempotencyKey string) (string, error) {
+	if s.ispBridge != nil && entity.IsSMSNETServer(conn.Name) {
+		decorated, derr := s.ispBridge.Decorate(ctx, contracts.DecorateInput{
+			ChannelType:    conv.Channel,
+			ServerName:     conn.Name,
+			Write:          conn.Kind == entity.KindWrite,
+			IdempotencyKey: idempotencyKey,
+			Args:           args,
+		})
+		if derr != nil {
+			return "", apperror.Integration("could not resolve the ISP config for this tool").Wrap(derr)
+		}
+		args = decorated
+	}
 	start := s.clock.Now()
 	res, err := s.client.CallTool(ctx, conn, tool, args)
 	latency := s.clock.Now().Sub(start).Milliseconds()
@@ -348,6 +382,7 @@ func (s *ToolService) publishApproval(ctx context.Context, tenantID string, a *e
 type convEntityRef struct {
 	ID         string
 	TenantID   string
+	Channel    string // channel type, for resolving the conversation's assistant/ISP profile
 	SectorID   string
 	AssignedTo string
 }
@@ -366,7 +401,7 @@ func (s *ToolService) loadVisible(ctx context.Context, id string) (*convEntityRe
 	if err != nil {
 		return nil, err
 	}
-	ref := &convEntityRef{ID: conv.ID, TenantID: conv.TenantID, SectorID: conv.SectorID, AssignedTo: conv.AssignedTo}
+	ref := &convEntityRef{ID: conv.ID, TenantID: conv.TenantID, Channel: conv.Channel, SectorID: conv.SectorID, AssignedTo: conv.AssignedTo}
 	if ac.SectorScope == authz.ScopeAll {
 		return ref, nil
 	}

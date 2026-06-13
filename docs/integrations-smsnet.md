@@ -69,12 +69,30 @@ multi-contrato do gateway continua funcionando por cima disso.
 backend quando omitido) e exigem `integration.execute_action`. As credenciais do
 ISP nunca passam por camada de decisão de IA — o config é montado na borda.
 
-> **Roadmap (F3/F4):** o **CopilotAssistant** (que fixa um perfil e injeta
-> `config{type+creds}` server-side nos args das tools MCP, transporte MCP) e a
-> **automação** (transporte HTTP, roadmap) chegam nas próximas fases. **F3 —
-> integridade referencial:** deletar um perfil **vinculado a um CopilotAssistant**
-> será **bloqueado** com erro claro ("ISP em uso pelo assistente X"), em vez de
-> anular `ISPProfileID` silenciosamente.
+### CopilotAssistant (transporte MCP)
+
+`CopilotAssistant` (coleção `copilot_assistants`, vários por tenant) reusa o
+`AIConfig` do tenant (provider/key/políticas) e adiciona roteamento: `ChannelTypes[]`
+(casados com `conv.Channel`), `ISPProfileID` **opcional** e `Enabled`. CRUD em
+`/v1/copilot/assistants` (`copilot.configure`). **Sem** ISP → não expõe tools de
+ISP. **Com** ISP → o backend expõe as tools SMSNET ao modelo e **injeta o
+`config{type+creds}` server-side**.
+
+**Ponto único de injeção:** `mcp/service.ToolService.invoke` — o único lugar que
+despacha `client.CallTool`. Toda a credencial entra ali, **depois** que a IA decidiu
+chamar a tool, via `ISPToolBridge` (resolve `conv.Channel → assistente → perfil`):
+`args["config"]` é **sobrescrito** (o modelo nunca fornece nem vê credencial). Em
+write, `args["idempotency_key"]` recebe o `approval.ID`. Filtragem (coarse, por
+servidor) no `OpenToolSession`: sem perfil → nenhuma tool SMSNET; servidor de escrita
+(OPERACOES) só se o perfil suporta liberacao/chamado.
+
+> **Integridade referencial:** deletar um perfil de ISP **vinculado a um
+> CopilotAssistant** é **bloqueado** (409 "ISP em uso pelo assistente X") — nunca
+> anula `ISPProfileID` silenciosamente.
+
+> **Roadmap (F4):** a **automação** (transporte HTTP :8085, seleção de
+> `isp_config_id` na regra, efeito colateral com idempotency key, estilo Chatwoot)
+> permanece roadmap, ainda não implementada.
 - **MCP:** os servidores `SMSNET_CONSULTAS` (read) e `SMSNET_OPERACOES` (write)
   entram no substrato MCP genérico via env default; um servidor **registrado pelo
   tenant com o mesmo nome** sobrescreve a URL (tenant DB override → env default).

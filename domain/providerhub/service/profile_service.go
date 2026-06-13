@@ -15,6 +15,13 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
+// ProfileUsageChecker reports whether an ISP profile is referenced by a consumer
+// (e.g. a CopilotAssistant), so a delete can be blocked with a clear message.
+// Implemented by the copilot side; wired optionally.
+type ProfileUsageChecker interface {
+	IsISPProfileInUse(ctx context.Context, ispProfileID string) (inUse bool, usedBy string, err error)
+}
+
 // ProfileService manages the per-tenant ISP profiles and reports gateway status.
 type ProfileService struct {
 	repo    repository.ProfileRepository
@@ -22,7 +29,12 @@ type ProfileService struct {
 	clock   shared.Clock
 	envHost string
 	envKey  string
+	usage   ProfileUsageChecker
 }
+
+// SetUsageChecker wires the referential-integrity checker used to block deleting a
+// profile that is in use. Optional.
+func (s *ProfileService) SetUsageChecker(c ProfileUsageChecker) { s.usage = c }
 
 // NewProfileService builds the service.
 func NewProfileService(repo repository.ProfileRepository, gateway contracts.Gateway, clock shared.Clock) *ProfileService {
@@ -157,6 +169,17 @@ func (s *ProfileService) Update(ctx context.Context, id string, cmd contracts.Up
 func (s *ProfileService) Delete(ctx context.Context, id string) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
+	}
+	// Referential integrity: refuse to delete a profile a CopilotAssistant pins,
+	// with a clear message — never silently break the assistant.
+	if s.usage != nil {
+		inUse, usedBy, err := s.usage.IsISPProfileInUse(ctx, id)
+		if err != nil {
+			return err
+		}
+		if inUse {
+			return apperror.Conflict("ISP em uso pelo assistente " + usedBy)
+		}
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err

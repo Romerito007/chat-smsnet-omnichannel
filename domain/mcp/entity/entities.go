@@ -26,6 +26,20 @@ const (
 // Valid reports whether k is a known kind.
 func (k Kind) Valid() bool { return k == KindRead || k == KindWrite }
 
+// Well-known SMSNET MCP server names (CONSULTAS = read, OPERACOES = write). The
+// host injects the ISP config{type+creds} into tool calls for these servers and
+// gates them by the conversation's assistant ISP profile.
+const (
+	SMSNETConsultasName = "SMSNET_CONSULTAS"
+	SMSNETOperacoesName = "SMSNET_OPERACOES"
+)
+
+// IsSMSNETServer reports whether a server name is one of the SMSNET MCP servers
+// that require server-side ISP config injection.
+func IsSMSNETServer(name string) bool {
+	return name == SMSNETConsultasName || name == SMSNETOperacoesName
+}
+
 // ServerConnection is a per-tenant MCP server registration. AuthToken is held in
 // plaintext in memory but stored encrypted at rest and never returned to clients.
 type ServerConnection struct {

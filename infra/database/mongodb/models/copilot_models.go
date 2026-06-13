@@ -18,6 +18,15 @@ type AIConfig struct {
 	Enabled               bool    `bson:"enabled"`
 }
 
+// Assistant is the BSON document for a copilot assistant (many per tenant).
+type Assistant struct {
+	Base         `bson:",inline"`
+	Name         string   `bson:"name"`
+	ChannelTypes []string `bson:"channel_types,omitempty"`
+	ISPProfileID string   `bson:"isp_profile_id,omitempty"`
+	Enabled      bool     `bson:"enabled"`
+}
+
 // AILog is the BSON document for one copilot call. It stores only summaries of
 // the input and output, never the full prompt or raw customer data.
 type AILog struct {
