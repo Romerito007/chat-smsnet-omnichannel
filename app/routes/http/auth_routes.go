@@ -36,7 +36,7 @@ func registerAuthRoutes(r chi.Router, c *container.Container) {
 	r.Group(func(p chi.Router) {
 		p.Use(middleware.AuthContext(c.Tokens))
 		p.Post("/auth/logout", ctl.Logout)
-		p.Get("/me", ctl.Me)
+		p.With(catalogCache).Get("/me", ctl.Me)
 		p.Patch("/me", account.UpdateMe)
 		p.Post("/me/change-password", account.ChangePassword)
 	})

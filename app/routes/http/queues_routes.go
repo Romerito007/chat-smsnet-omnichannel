@@ -23,7 +23,7 @@ func registerQueueRoutes(r chi.Router, c *container.Container) {
 		p.Use(middleware.AuthContext(c.Tokens))
 
 		p.Route("/queues", func(q chi.Router) {
-			q.With(read).Get("/", ctl.List)
+			q.With(read, catalogCache).Get("/", ctl.List)
 			q.With(read).Get("/{id}", ctl.Get)
 			q.With(manage).Post("/", ctl.Create)
 			q.With(manage).Patch("/{id}", ctl.Update)

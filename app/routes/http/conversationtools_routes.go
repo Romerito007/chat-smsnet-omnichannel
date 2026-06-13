@@ -23,7 +23,7 @@ func registerConversationToolsRoutes(r chi.Router, c *container.Container) {
 		p.Use(middleware.AuthContext(c.Tokens))
 
 		p.Route("/tags", func(t chi.Router) {
-			t.With(read).Get("/", ctl.ListTags)
+			t.With(read, catalogCache).Get("/", ctl.ListTags)
 			t.With(read).Get("/{id}", ctl.GetTag)
 			t.With(manage).Post("/", ctl.CreateTag)
 			t.With(manage).Patch("/{id}", ctl.UpdateTag)
@@ -31,7 +31,7 @@ func registerConversationToolsRoutes(r chi.Router, c *container.Container) {
 		})
 
 		p.Route("/canned-responses", func(cr chi.Router) {
-			cr.With(read).Get("/", ctl.ListCanned) // ?shortcut= resolves one
+			cr.With(read, catalogCache).Get("/", ctl.ListCanned) // ?shortcut= resolves one
 			cr.With(read).Get("/{id}", ctl.GetCanned)
 			cr.With(manage).Post("/", ctl.CreateCanned)
 			cr.With(manage).Patch("/{id}", ctl.UpdateCanned)
@@ -39,7 +39,7 @@ func registerConversationToolsRoutes(r chi.Router, c *container.Container) {
 		})
 
 		p.Route("/close-reasons", func(cl chi.Router) {
-			cl.With(read).Get("/", ctl.ListCloseReasons)
+			cl.With(read, catalogCache).Get("/", ctl.ListCloseReasons)
 			cl.With(read).Get("/{id}", ctl.GetCloseReason)
 			cl.With(manage).Post("/", ctl.CreateCloseReason)
 			cl.With(manage).Patch("/{id}", ctl.UpdateCloseReason)

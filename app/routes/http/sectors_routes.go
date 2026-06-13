@@ -23,7 +23,7 @@ func registerSectorRoutes(r chi.Router, c *container.Container) {
 		p.Use(middleware.AuthContext(c.Tokens))
 
 		p.Route("/sectors", func(s chi.Router) {
-			s.With(read).Get("/", ctl.List)
+			s.With(read, catalogCache).Get("/", ctl.List)
 			s.With(read).Get("/{id}", ctl.Get)
 			s.With(manage).Post("/", ctl.Create)
 			s.With(manage).Patch("/{id}", ctl.Update)

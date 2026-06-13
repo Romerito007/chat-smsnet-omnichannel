@@ -3,6 +3,8 @@
 package http
 
 import (
+	"time"
+
 	"github.com/go-chi/chi/v5"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
@@ -11,6 +13,12 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/openapi"
 )
+
+// catalogCache adds ETag + a short private Cache-Control to quasi-static catalog
+// reads (tags/sectors/queues/close-reasons/canned-responses, /me), so a client
+// re-navigating gets a 304 instead of refetching. Applied per-handler (never to
+// volatile lists like /conversations).
+var catalogCache = middleware.ConditionalCache(45 * time.Second)
 
 // NewRouter assembles the full HTTP router with the global middleware chain and
 // all domain routes mounted under /v1.
