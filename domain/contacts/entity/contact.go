@@ -51,9 +51,13 @@ type Contact struct {
 	// that match no catalog tag are kept as-is.
 	Tags []string
 	// Notes is a free-text agent note about the contact.
-	Notes     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Notes string
+	// AvatarAttachmentID is the attachment (uploaded via the avatar upload-url
+	// flow) used as the contact's avatar, mirroring User.AvatarAttachmentID.
+	// Optional.
+	AvatarAttachmentID string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // SetPhones replaces the phone list (already normalized by the caller) and keeps

@@ -4,12 +4,25 @@ package contracts
 
 import "time"
 
-// CreateUploadURL is the POST /v1/attachments/upload-url input.
+// CreateUploadURL is the POST /v1/attachments/upload-url input. Exactly one
+// target applies: a conversation attachment (ConversationID set) or an avatar
+// (Avatar set, no conversation).
 type CreateUploadURL struct {
 	ConversationID string
 	Filename       string
 	ContentType    string
 	Size           int64
+	// Avatar, when set, issues a conversation-less avatar upload: the key is
+	// namespaced avatars/{tenant}/{OwnerType}/{OwnerID}/{filename}, the content
+	// type is restricted to image/*, and the avatar size limit applies.
+	Avatar *AvatarTarget
+}
+
+// AvatarTarget identifies the owner of an avatar upload. OwnerType is the owner
+// collection ("contacts" or "users"); OwnerID is that owner's id (tenant-scoped).
+type AvatarTarget struct {
+	OwnerType string
+	OwnerID   string
 }
 
 // ConfirmUpload is the POST /v1/attachments/confirm input. MessageID is optional:

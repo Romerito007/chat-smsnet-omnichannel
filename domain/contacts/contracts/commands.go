@@ -38,25 +38,35 @@ type ExternalIdentity struct {
 // CreateContact is the input to create a CRM contact. Only locally-provided
 // fields are stored — never provider-enriched data.
 type CreateContact struct {
-	Name        string
-	Phones      []string
-	Document    string
-	Email       string
-	ExternalIDs []ExternalIdentity
-	Tags        []string
-	Notes       string
+	Name               string
+	Phones             []string
+	Document           string
+	Email              string
+	ExternalIDs        []ExternalIdentity
+	Tags               []string
+	Notes              string
+	AvatarAttachmentID string
 }
 
 // UpdateContact is the partial input to edit a contact. Nil pointers leave the
 // field unchanged.
 type UpdateContact struct {
-	Name        *string
-	Phones      *[]string
-	Document    *string
-	Email       *string
-	Tags        *[]string
-	Notes       *string
-	ExternalIDs *[]ExternalIdentity
+	Name               *string
+	Phones             *[]string
+	Document           *string
+	Email              *string
+	Tags               *[]string
+	Notes              *string
+	ExternalIDs        *[]ExternalIdentity
+	AvatarAttachmentID *string
+}
+
+// AvatarValidator validates that an attachment id may be used as a contact
+// avatar: it must exist in the same tenant, be an image, and be ready. Returns a
+// validation error otherwise. Implemented by the attachments service. Optional:
+// when unset, the avatar id is stored without validation (mirrors User avatar).
+type AvatarValidator interface {
+	ValidateReadyImage(ctx context.Context, attachmentID string) error
 }
 
 // TagResolver maps tag refs (id or name) to canonical ids, so contact tags are

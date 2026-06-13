@@ -9,22 +9,35 @@ import (
 	aentity "github.com/romerito007/chat-smsnet-omnichannel/domain/attachments/entity"
 )
 
-// CreateUploadURLRequest is the body of POST /v1/attachments/upload-url.
+// CreateUploadURLRequest is the body of POST /v1/attachments/upload-url. Provide
+// either conversation_id (a conversation attachment) or avatar (a conversation-
+// less avatar upload), not both.
 type CreateUploadURLRequest struct {
-	ConversationID string `json:"conversation_id"`
-	Filename       string `json:"filename"`
-	ContentType    string `json:"content_type"`
-	Size           int64  `json:"size"`
+	ConversationID string               `json:"conversation_id,omitempty"`
+	Filename       string               `json:"filename"`
+	ContentType    string               `json:"content_type"`
+	Size           int64                `json:"size"`
+	Avatar         *AvatarTargetRequest `json:"avatar,omitempty"`
+}
+
+// AvatarTargetRequest selects a conversation-less avatar upload for an owner.
+type AvatarTargetRequest struct {
+	OwnerType string `json:"owner_type"` // "contacts" | "users"
+	OwnerID   string `json:"owner_id"`
 }
 
 // ToCommand maps to the service command.
 func (r CreateUploadURLRequest) ToCommand() acontracts.CreateUploadURL {
-	return acontracts.CreateUploadURL{
+	cmd := acontracts.CreateUploadURL{
 		ConversationID: r.ConversationID,
 		Filename:       r.Filename,
 		ContentType:    r.ContentType,
 		Size:           r.Size,
 	}
+	if r.Avatar != nil {
+		cmd.Avatar = &acontracts.AvatarTarget{OwnerType: r.Avatar.OwnerType, OwnerID: r.Avatar.OwnerID}
+	}
+	return cmd
 }
 
 // UploadURLResponse is returned by the upload-url endpoint.

@@ -86,10 +86,23 @@ func hasTag(tags []string, id string) bool {
 	return false
 }
 
+// fakeAvatarValidator accepts only the ids in `ready`, rejecting everything else
+// with a validation error — standing in for the attachments service.
+type fakeAvatarValidator struct{ ready map[string]bool }
+
+func (f fakeAvatarValidator) ValidateReadyImage(_ context.Context, id string) error {
+	if id == "" || f.ready[id] {
+		return nil
+	}
+	return apperror.Validation("avatar attachment not found").
+		WithDetails(map[string]any{"avatar_attachment_id": "not found"})
+}
+
 func build(t *testing.T) (http.Handler, domainauth.TokenManager) {
 	t.Helper()
 	tm := httpharness.Tokens()
 	svc := contactservice.New(newMemRepo(), nil)
+	svc.SetAvatarValidator(fakeAvatarValidator{ready: map[string]bool{"att-ok": true}})
 	ctl := contacts.NewController(svc)
 
 	r := chi.NewRouter()
@@ -158,6 +171,48 @@ func TestContacts_ListFilterByTag(t *testing.T) {
 	httpharness.DecodeJSON(t, rec, &page)
 	if len(page.Data) != 1 || page.Data[0].Name != "Ana" {
 		t.Fatalf("expected only the vip-tagged contact, got %+v", page.Data)
+	}
+}
+
+func TestContacts_AvatarValidOnCreateAndUpdate(t *testing.T) {
+	r, tm := build(t)
+	write := httpharness.Token(t, tm, "t1", "u1", authz.ContactWrite, authz.ContactRead)
+
+	// Create with a valid (ready image) avatar.
+	rec := httpharness.Do(t, r, http.MethodPost, "/contacts", write,
+		map[string]any{"name": "Ana", "avatar_attachment_id": "att-ok"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d (%s)", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID     string `json:"id"`
+		Avatar string `json:"avatar_attachment_id"`
+	}
+	httpharness.DecodeJSON(t, rec, &created)
+	if created.Avatar != "att-ok" {
+		t.Fatalf("avatar not stored: %+v", created)
+	}
+
+	// Update to clear the avatar (empty string is allowed).
+	up := httpharness.Do(t, r, http.MethodPatch, "/contacts/"+created.ID, write,
+		map[string]any{"avatar_attachment_id": ""})
+	if up.Code != http.StatusOK {
+		t.Fatalf("update status = %d (%s)", up.Code, up.Body.String())
+	}
+}
+
+func TestContacts_AvatarInvalidRejected(t *testing.T) {
+	r, tm := build(t)
+	write := httpharness.Token(t, tm, "t1", "u1", authz.ContactWrite)
+
+	// Create with an unknown/not-ready attachment id → 400 validation_error.
+	rec := httpharness.Do(t, r, http.MethodPost, "/contacts", write,
+		map[string]any{"name": "Bob", "avatar_attachment_id": "att-missing"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid avatar status = %d, want 400 (%s)", rec.Code, rec.Body.String())
+	}
+	if code := httpharness.ErrorCode(t, rec); code != apperror.CodeValidation {
+		t.Errorf("code = %q, want validation_error", code)
 	}
 }
 

@@ -78,6 +78,9 @@ type AttachmentsConfig struct {
 	Provider string
 	// MaxSizeBytes caps an uploaded attachment.
 	MaxSizeBytes int64
+	// AvatarMaxSizeBytes caps an avatar upload (user/contact). Avatars are
+	// always restricted to image/* regardless of AllowedContentTypes.
+	AvatarMaxSizeBytes int64
 	// AllowedContentTypes is the MIME allow-list (supports "image/*"); empty
 	// allows any.
 	AllowedContentTypes []string
@@ -396,6 +399,7 @@ func Load() (Config, error) {
 			// is accepted as a fallback for older deployments.
 			Provider:            getString("STORAGE_PROVIDER", getString("ATTACHMENTS_PROVIDER", "local")),
 			MaxSizeBytes:        int64(getInt("ATTACHMENTS_MAX_SIZE_BYTES", 25<<20)),
+			AvatarMaxSizeBytes:  int64(getInt("ATTACHMENTS_AVATAR_MAX_SIZE_BYTES", 5<<20)),
 			AllowedContentTypes: getList("ATTACHMENTS_ALLOWED_CONTENT_TYPES", nil),
 			UploadTTL:           getDuration("ATTACHMENTS_UPLOAD_TTL", 15*time.Minute),
 			DownloadTTL:         getDuration("ATTACHMENTS_DOWNLOAD_TTL", 5*time.Minute),

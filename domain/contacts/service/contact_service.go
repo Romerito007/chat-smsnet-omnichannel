@@ -18,6 +18,7 @@ type Service struct {
 	clock   shared.Clock
 	auditor shared.Auditor
 	tags    contracts.TagResolver
+	avatars contracts.AvatarValidator
 }
 
 // New builds the service.
@@ -41,6 +42,26 @@ func (s *Service) SetAuditor(a shared.Auditor) {
 func (s *Service) SetTagResolver(r contracts.TagResolver) {
 	if r != nil {
 		s.tags = r
+	}
+}
+
+// SetAvatarValidator wires the attachment validator used to verify an
+// avatar_attachment_id (exists, same tenant, image, ready) before persisting it.
+// Optional: when unset, the avatar id is stored as-is.
+func (s *Service) SetAvatarValidator(a contracts.AvatarValidator) {
+	if a != nil {
+		s.avatars = a
+	}
+}
+
+// validateAvatar runs the avatar attachment validation when a validator is wired
+// and a non-empty id is provided, merging any field error into v.
+func (s *Service) validateAvatar(ctx context.Context, attachmentID string, v map[string]any) {
+	if s.avatars == nil || strings.TrimSpace(attachmentID) == "" {
+		return
+	}
+	if err := s.avatars.ValidateReadyImage(ctx, attachmentID); err != nil {
+		mergeDetails(v, apperror.From(err).Details)
 	}
 }
 
@@ -99,6 +120,8 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateContact) (*ent
 	}
 	identities, ierr := normalizeIdentitiesValidated(cmd.ExternalIDs)
 	mergeDetails(v, ierr)
+	avatarID := strings.TrimSpace(cmd.AvatarAttachmentID)
+	s.validateAvatar(ctx, avatarID, v)
 	if len(v) > 0 {
 		return nil, apperror.Validation("invalid contact").WithDetails(v)
 	}
@@ -112,16 +135,17 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateContact) (*ent
 
 	now := s.clock.Now()
 	contact := &entity.Contact{
-		ID:         shared.NewID(),
-		TenantID:   tenantID,
-		Name:       name,
-		Document:   document,
-		Email:      email,
-		Identities: identities,
-		Tags:       s.normalizeTags(ctx, cmd.Tags),
-		Notes:      strings.TrimSpace(cmd.Notes),
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:                 shared.NewID(),
+		TenantID:           tenantID,
+		Name:               name,
+		Document:           document,
+		Email:              email,
+		Identities:         identities,
+		Tags:               s.normalizeTags(ctx, cmd.Tags),
+		Notes:              strings.TrimSpace(cmd.Notes),
+		AvatarAttachmentID: avatarID,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	contact.SetPhones(phones)
 	if err := s.repo.Create(ctx, contact); err != nil {
@@ -185,6 +209,11 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 		identities, ierr := normalizeIdentitiesValidated(*cmd.ExternalIDs)
 		mergeDetails(v, ierr)
 		contact.Identities = identities
+	}
+	if cmd.AvatarAttachmentID != nil {
+		avatarID := strings.TrimSpace(*cmd.AvatarAttachmentID)
+		s.validateAvatar(ctx, avatarID, v)
+		contact.AvatarAttachmentID = avatarID
 	}
 	if len(v) > 0 {
 		return nil, apperror.Validation("invalid contact").WithDetails(v)

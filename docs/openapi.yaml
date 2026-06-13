@@ -212,6 +212,19 @@ components:
                     format: date-time
                     type: string
             type: object
+        AvatarUploadTarget:
+            properties:
+                owner_id:
+                    type: string
+                owner_type:
+                    enum:
+                        - contacts
+                        - users
+                    type: string
+            required:
+                - owner_type
+                - owner_id
+            type: object
         Bucket:
             properties:
                 count:
@@ -533,6 +546,9 @@ components:
             type: object
         Contact:
             properties:
+                avatar_attachment_id:
+                    description: Attachment id of the contact's avatar; render it via GET /v1/attachments/{id}/download (same as user avatars).
+                    type: string
                 created_at:
                     format: date-time
                     type: string
@@ -852,6 +868,9 @@ components:
             type: object
         CreateContactRequest:
             properties:
+                avatar_attachment_id:
+                    description: Attachment id (image, status=ready, same tenant) to use as avatar; uploaded via the avatar upload-url flow. Invalid -> 400 validation_error.
+                    type: string
                 document:
                     description: CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask).
                     type: string
@@ -1078,16 +1097,18 @@ components:
             type: object
         CreateUploadURLRequest:
             properties:
+                avatar:
+                    $ref: '#/components/schemas/AvatarUploadTarget'
                 content_type:
                     type: string
                 conversation_id:
+                    description: Conversation this attachment belongs to. Provide this OR avatar (a conversation-less avatar upload), not both.
                     type: string
                 filename:
                     type: string
                 size:
                     type: integer
             required:
-                - conversation_id
                 - filename
                 - content_type
                 - size
@@ -2397,6 +2418,9 @@ components:
             type: object
         UpdateContactRequest:
             properties:
+                avatar_attachment_id:
+                    description: Attachment id (image, status=ready, same tenant) to use as avatar; empty string clears it. Invalid -> 400 validation_error.
+                    type: string
                 document:
                     description: CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask).
                     type: string

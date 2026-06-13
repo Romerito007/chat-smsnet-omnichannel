@@ -111,6 +111,92 @@ func newSvc(repo *fakeAttachRepo, conv *fakeConvRepo, msg *fakeMsgRepo, st *fake
 	return NewService(repo, st, conv, msg, fixedClock{time.Now()}, cfg)
 }
 
+// An avatar upload needs no conversation: it is tenant-scoped, namespaced under
+// avatars/, restricted to image/* and confirm/download skip the conversation check.
+func TestRequestUploadURL_AvatarNoConversation(t *testing.T) {
+	repo := newRepo()
+	st := &fakeStorage{provider: "s3"}
+	svc := newSvc(repo, &fakeConvRepo{}, &fakeMsgRepo{}, st,
+		Config{AvatarMaxSizeBytes: 5 << 20, DownloadBaseURL: "http://api"})
+	// A restricted agent (own scope, no sectors) — would fail a conversation check.
+	ctx := ctxAuth(authz.ScopeOwn, nil, "u1")
+
+	att, target, err := svc.RequestUploadURL(ctx, contracts.CreateUploadURL{
+		Filename: "face.png", ContentType: "image/png", Size: 1000,
+		Avatar: &contracts.AvatarTarget{OwnerType: "contacts", OwnerID: "c1"},
+	})
+	if err != nil {
+		t.Fatalf("avatar upload-url: %v", err)
+	}
+	if att.ConversationID != "" {
+		t.Errorf("avatar attachment must have no conversation, got %q", att.ConversationID)
+	}
+	wantKey := "avatars/t1/contacts/c1/face.png"
+	if st.uploadKey != wantKey || target.URL == "" {
+		t.Errorf("avatar key = %q, want %q", st.uploadKey, wantKey)
+	}
+
+	// Confirm + download work without any conversation visibility.
+	if _, err := svc.Confirm(ctx, contracts.ConfirmUpload{AttachmentID: att.ID}); err != nil {
+		t.Fatalf("confirm avatar: %v", err)
+	}
+	if repo.items[att.ID].Status != entity.StatusReady {
+		t.Errorf("avatar not marked ready")
+	}
+	if _, err := svc.Download(ctx, att.ID); err != nil {
+		t.Errorf("download avatar: %v", err)
+	}
+}
+
+// Avatars must be images within the avatar size limit.
+func TestRequestUploadURL_AvatarRejectsNonImageAndOversize(t *testing.T) {
+	svc := newSvc(newRepo(), &fakeConvRepo{}, &fakeMsgRepo{}, &fakeStorage{provider: "s3"},
+		Config{AvatarMaxSizeBytes: 1000})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	if _, _, err := svc.RequestUploadURL(ctx, contracts.CreateUploadURL{
+		Filename: "x.pdf", ContentType: "application/pdf", Size: 100,
+		Avatar: &contracts.AvatarTarget{OwnerType: "contacts", OwnerID: "c1"},
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("non-image avatar must be rejected, got %v", err)
+	}
+	if _, _, err := svc.RequestUploadURL(ctx, contracts.CreateUploadURL{
+		Filename: "big.png", ContentType: "image/png", Size: 5000,
+		Avatar: &contracts.AvatarTarget{OwnerType: "contacts", OwnerID: "c1"},
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("oversize avatar must be rejected, got %v", err)
+	}
+	if _, _, err := svc.RequestUploadURL(ctx, contracts.CreateUploadURL{
+		Filename: "x.png", ContentType: "image/png", Size: 100,
+		Avatar: &contracts.AvatarTarget{OwnerType: "robots", OwnerID: "c1"},
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("invalid owner type must be rejected, got %v", err)
+	}
+}
+
+// ValidateReadyImage is the gate contacts use before storing an avatar id.
+func TestValidateReadyImage(t *testing.T) {
+	repo := newRepo()
+	svc := newSvc(repo, &fakeConvRepo{}, &fakeMsgRepo{}, &fakeStorage{provider: "s3"}, Config{})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["ready-img"] = &entity.Attachment{ID: "ready-img", TenantID: "t1", ContentType: "image/png", Status: entity.StatusReady}
+	repo.items["pending-img"] = &entity.Attachment{ID: "pending-img", TenantID: "t1", ContentType: "image/png", Status: entity.StatusPending}
+	repo.items["ready-pdf"] = &entity.Attachment{ID: "ready-pdf", TenantID: "t1", ContentType: "application/pdf", Status: entity.StatusReady}
+
+	if err := svc.ValidateReadyImage(ctx, ""); err != nil {
+		t.Errorf("empty id (clear avatar) must be allowed: %v", err)
+	}
+	if err := svc.ValidateReadyImage(ctx, "ready-img"); err != nil {
+		t.Errorf("ready image must pass: %v", err)
+	}
+	for _, id := range []string{"missing", "pending-img", "ready-pdf"} {
+		if apperror.From(svc.ValidateReadyImage(ctx, id)).Code != apperror.CodeValidation {
+			t.Errorf("%s must be a validation error", id)
+		}
+	}
+}
+
 func TestRequestUploadURL_ValidatesAndReserves(t *testing.T) {
 	repo := newRepo()
 	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}

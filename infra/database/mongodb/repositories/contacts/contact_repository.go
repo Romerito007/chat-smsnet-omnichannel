@@ -45,15 +45,16 @@ func (r *Repository) Update(ctx context.Context, c *entity.Contact) error {
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": c.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
-			"name":       c.Name,
-			"phone":      c.Phone,
-			"phones":     c.Phones,
-			"document":   c.Document,
-			"email":      c.Email,
-			"identities": toIdentityModels(c.Identities),
-			"tags":       c.Tags,
-			"notes":      c.Notes,
-			"updated_at": c.UpdatedAt,
+			"name":                 c.Name,
+			"phone":                c.Phone,
+			"phones":               c.Phones,
+			"document":             c.Document,
+			"email":                c.Email,
+			"identities":           toIdentityModels(c.Identities),
+			"tags":                 c.Tags,
+			"notes":                c.Notes,
+			"avatar_attachment_id": c.AvatarAttachmentID,
+			"updated_at":           c.UpdatedAt,
 		}},
 	)
 	if err != nil {
@@ -178,14 +179,15 @@ func (r *Repository) List(ctx context.Context, f contracts.ListFilter, page shar
 
 func toModel(c *entity.Contact) models.Contact {
 	m := models.Contact{
-		Name:       c.Name,
-		Phone:      c.Phone,
-		Phones:     c.Phones,
-		Document:   c.Document,
-		Email:      c.Email,
-		Identities: toIdentityModels(c.Identities),
-		Tags:       c.Tags,
-		Notes:      c.Notes,
+		Name:               c.Name,
+		Phone:              c.Phone,
+		Phones:             c.Phones,
+		Document:           c.Document,
+		Email:              c.Email,
+		Identities:         toIdentityModels(c.Identities),
+		Tags:               c.Tags,
+		Notes:              c.Notes,
+		AvatarAttachmentID: c.AvatarAttachmentID,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -200,18 +202,19 @@ func toEntity(m *models.Contact) *entity.Contact {
 		ids[i] = entity.ChannelIdentity{Channel: id.Channel, ExternalID: id.ExternalID}
 	}
 	return &entity.Contact{
-		ID:         m.ID,
-		TenantID:   m.TenantID,
-		Name:       m.Name,
-		Phone:      m.Phone,
-		Phones:     m.Phones,
-		Document:   m.Document,
-		Email:      m.Email,
-		Identities: ids,
-		Tags:       m.Tags,
-		Notes:      m.Notes,
-		CreatedAt:  m.CreatedAt,
-		UpdatedAt:  m.UpdatedAt,
+		ID:                 m.ID,
+		TenantID:           m.TenantID,
+		Name:               m.Name,
+		Phone:              m.Phone,
+		Phones:             m.Phones,
+		Document:           m.Document,
+		Email:              m.Email,
+		Identities:         ids,
+		Tags:               m.Tags,
+		Notes:              m.Notes,
+		AvatarAttachmentID: m.AvatarAttachmentID,
+		CreatedAt:          m.CreatedAt,
+		UpdatedAt:          m.UpdatedAt,
 	}
 }
 

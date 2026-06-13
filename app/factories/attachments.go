@@ -55,6 +55,7 @@ func AttachmentService(c *container.Container) *aservice.Service {
 		clock,
 		aservice.Config{
 			MaxSizeBytes:        cfg.MaxSizeBytes,
+			AvatarMaxSizeBytes:  cfg.AvatarMaxSizeBytes,
 			AllowedContentTypes: cfg.AllowedContentTypes,
 			UploadTTL:           cfg.UploadTTL,
 			DownloadTTL:         cfg.DownloadTTL,
@@ -77,6 +78,7 @@ func AttachmentController(c *container.Container) *attachctl.Controller {
 		clock,
 		aservice.Config{
 			MaxSizeBytes:        cfg.MaxSizeBytes,
+			AvatarMaxSizeBytes:  cfg.AvatarMaxSizeBytes,
 			AllowedContentTypes: cfg.AllowedContentTypes,
 			UploadTTL:           cfg.UploadTTL,
 			DownloadTTL:         cfg.DownloadTTL,

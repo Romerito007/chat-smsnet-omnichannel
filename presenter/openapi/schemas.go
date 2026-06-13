@@ -287,7 +287,9 @@ func schemas() M {
 		"Contact": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "phones": arr(str()),
 			"document": str(), "email": str(), "external_ids": arr(ref("ContactExternalID")),
-			"tags": tagIDArray(), "notes": str(), "created_at": dateTime(), "updated_at": dateTime(),
+			"tags": tagIDArray(), "notes": str(),
+			"avatar_attachment_id": describedStr("Attachment id of the contact's avatar; render it via GET /v1/attachments/{id}/download (same as user avatars)."),
+			"created_at":           dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateContactRequest": object(M{
 			"name": str(),
@@ -296,6 +298,7 @@ func schemas() M {
 			"document":     describedStr("CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask)."),
 			"email":        describedStr("Email address; format-validated and stored lowercased."),
 			"external_ids": arr(ref("ContactExternalID")), "tags": tagIDArray(), "notes": str(),
+			"avatar_attachment_id": describedStr("Attachment id (image, status=ready, same tenant) to use as avatar; uploaded via the avatar upload-url flow. Invalid -> 400 validation_error."),
 		}, "name"),
 		"UpdateContactRequest": object(M{
 			"name": str(),
@@ -304,6 +307,7 @@ func schemas() M {
 			"document":     describedStr("CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask)."),
 			"email":        describedStr("Email address; format-validated and stored lowercased."),
 			"external_ids": arr(ref("ContactExternalID")), "tags": tagIDArray(), "notes": str(),
+			"avatar_attachment_id": describedStr("Attachment id (image, status=ready, same tenant) to use as avatar; empty string clears it. Invalid -> 400 validation_error."),
 		}),
 
 		// ── webhooks ───────────────────────────────────────────────────────────
@@ -507,7 +511,17 @@ func schemas() M {
 		}),
 
 		// ── attachments ────────────────────────────────────────────────────────
-		"CreateUploadURLRequest":   object(M{"conversation_id": str(), "filename": str(), "content_type": str(), "size": integer()}, "conversation_id", "filename", "content_type", "size"),
+		"AvatarUploadTarget": object(M{
+			"owner_type": enum("contacts", "users"),
+			"owner_id":   str(),
+		}, "owner_type", "owner_id"),
+		"CreateUploadURLRequest": object(M{
+			"conversation_id": describedStr("Conversation this attachment belongs to. Provide this OR avatar (a conversation-less avatar upload), not both."),
+			"filename":        str(),
+			"content_type":    str(),
+			"size":            integer(),
+			"avatar":          ref("AvatarUploadTarget"),
+		}, "filename", "content_type", "size"),
 		"UploadURLResponse":        object(M{"attachment_id": str(), "storage_key": str(), "upload_url": str(), "method": str(), "headers": stringMap(), "expires_at": dateTime()}),
 		"ConfirmAttachmentRequest": object(M{"attachment_id": str(), "message_id": str()}, "attachment_id"),
 		"AttachmentRecord": object(M{

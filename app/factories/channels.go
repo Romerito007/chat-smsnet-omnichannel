@@ -22,6 +22,8 @@ func ContactService(c *container.Container) *contactservice.Service {
 	svc.SetAuditor(AuditService(c))
 	// Normalize contact tags to canonical ids (catalog names -> ids, free labels kept).
 	svc.SetTagResolver(ConversationToolsTagService(c))
+	// Validate a contact avatar attachment (exists, same tenant, image, ready).
+	svc.SetAvatarValidator(AttachmentService(c))
 	return svc
 }
 

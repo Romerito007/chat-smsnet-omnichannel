@@ -18,49 +18,53 @@ type ExternalID struct {
 
 // CreateContactRequest is the body of POST /v1/contacts.
 type CreateContactRequest struct {
-	Name        string       `json:"name"`
-	Phones      []string     `json:"phones"`
-	Document    string       `json:"document"`
-	Email       string       `json:"email"`
-	ExternalIDs []ExternalID `json:"external_ids"`
-	Tags        []string     `json:"tags"`
-	Notes       string       `json:"notes"`
+	Name               string       `json:"name"`
+	Phones             []string     `json:"phones"`
+	Document           string       `json:"document"`
+	Email              string       `json:"email"`
+	ExternalIDs        []ExternalID `json:"external_ids"`
+	Tags               []string     `json:"tags"`
+	Notes              string       `json:"notes"`
+	AvatarAttachmentID string       `json:"avatar_attachment_id"`
 }
 
 // ToCommand maps the request to the service command.
 func (r CreateContactRequest) ToCommand() ccontracts.CreateContact {
 	return ccontracts.CreateContact{
-		Name:        r.Name,
-		Phones:      r.Phones,
-		Document:    r.Document,
-		Email:       r.Email,
-		ExternalIDs: toExternalIdentities(r.ExternalIDs),
-		Tags:        r.Tags,
-		Notes:       r.Notes,
+		Name:               r.Name,
+		Phones:             r.Phones,
+		Document:           r.Document,
+		Email:              r.Email,
+		ExternalIDs:        toExternalIdentities(r.ExternalIDs),
+		Tags:               r.Tags,
+		Notes:              r.Notes,
+		AvatarAttachmentID: r.AvatarAttachmentID,
 	}
 }
 
 // UpdateContactRequest is the body of PATCH /v1/contacts/{id}. Nil fields are
 // left unchanged.
 type UpdateContactRequest struct {
-	Name        *string       `json:"name"`
-	Phones      *[]string     `json:"phones"`
-	Document    *string       `json:"document"`
-	Email       *string       `json:"email"`
-	Tags        *[]string     `json:"tags"`
-	Notes       *string       `json:"notes"`
-	ExternalIDs *[]ExternalID `json:"external_ids"`
+	Name               *string       `json:"name"`
+	Phones             *[]string     `json:"phones"`
+	Document           *string       `json:"document"`
+	Email              *string       `json:"email"`
+	Tags               *[]string     `json:"tags"`
+	Notes              *string       `json:"notes"`
+	ExternalIDs        *[]ExternalID `json:"external_ids"`
+	AvatarAttachmentID *string       `json:"avatar_attachment_id"`
 }
 
 // ToCommand maps the request to the service command.
 func (r UpdateContactRequest) ToCommand() ccontracts.UpdateContact {
 	cmd := ccontracts.UpdateContact{
-		Name:     r.Name,
-		Phones:   r.Phones,
-		Document: r.Document,
-		Email:    r.Email,
-		Tags:     r.Tags,
-		Notes:    r.Notes,
+		Name:               r.Name,
+		Phones:             r.Phones,
+		Document:           r.Document,
+		Email:              r.Email,
+		Tags:               r.Tags,
+		Notes:              r.Notes,
+		AvatarAttachmentID: r.AvatarAttachmentID,
 	}
 	if r.ExternalIDs != nil {
 		ids := toExternalIdentities(*r.ExternalIDs)
@@ -82,17 +86,18 @@ func toExternalIdentities(ids []ExternalID) []ccontracts.ExternalIdentity {
 // ContactResponse is the public representation of a contact. Only locally-stored
 // fields are returned — never data enriched on demand from a provider.
 type ContactResponse struct {
-	ID          string       `json:"id"`
-	TenantID    string       `json:"tenant_id"`
-	Name        string       `json:"name"`
-	Phones      []string     `json:"phones"`
-	Document    string       `json:"document,omitempty"`
-	Email       string       `json:"email,omitempty"`
-	ExternalIDs []ExternalID `json:"external_ids"`
-	Tags        []string     `json:"tags"`
-	Notes       string       `json:"notes,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ID                 string       `json:"id"`
+	TenantID           string       `json:"tenant_id"`
+	Name               string       `json:"name"`
+	Phones             []string     `json:"phones"`
+	Document           string       `json:"document,omitempty"`
+	Email              string       `json:"email,omitempty"`
+	ExternalIDs        []ExternalID `json:"external_ids"`
+	Tags               []string     `json:"tags"`
+	Notes              string       `json:"notes,omitempty"`
+	AvatarAttachmentID string       `json:"avatar_attachment_id,omitempty"`
+	CreatedAt          time.Time    `json:"created_at"`
+	UpdatedAt          time.Time    `json:"updated_at"`
 }
 
 // NewContactResponse maps a contact entity to its DTO. Phones falls back to the
@@ -114,17 +119,18 @@ func NewContactResponse(c *entity.Contact) ContactResponse {
 		tags = []string{}
 	}
 	return ContactResponse{
-		ID:          c.ID,
-		TenantID:    c.TenantID,
-		Name:        c.Name,
-		Phones:      phones,
-		Document:    c.Document,
-		Email:       c.Email,
-		ExternalIDs: externalIDs,
-		Tags:        tags,
-		Notes:       c.Notes,
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
+		ID:                 c.ID,
+		TenantID:           c.TenantID,
+		Name:               c.Name,
+		Phones:             phones,
+		Document:           c.Document,
+		Email:              c.Email,
+		ExternalIDs:        externalIDs,
+		Tags:               tags,
+		Notes:              c.Notes,
+		AvatarAttachmentID: c.AvatarAttachmentID,
+		CreatedAt:          c.CreatedAt,
+		UpdatedAt:          c.UpdatedAt,
 	}
 }
 

@@ -28,6 +28,7 @@ import (
 // Config bounds uploads and the signed-URL lifetimes.
 type Config struct {
 	MaxSizeBytes        int64
+	AvatarMaxSizeBytes  int64    // caps avatar uploads (image/* only)
 	AllowedContentTypes []string // empty = allow any
 	UploadTTL           time.Duration
 	DownloadTTL         time.Duration
@@ -58,6 +59,9 @@ func NewService(repo repository.Repository, storage contracts.Storage, conversat
 	}
 	if cfg.MaxSizeBytes <= 0 {
 		cfg.MaxSizeBytes = 25 << 20 // 25 MiB
+	}
+	if cfg.AvatarMaxSizeBytes <= 0 {
+		cfg.AvatarMaxSizeBytes = 5 << 20 // 5 MiB
 	}
 	if cfg.UploadTTL <= 0 {
 		cfg.UploadTTL = 15 * time.Minute
@@ -159,6 +163,10 @@ func (s *Service) hmacHex(payload string) string {
 // RequestUploadURL validates the request, reserves a pending attachment and
 // returns a signed target for the client to upload the bytes directly to storage.
 func (s *Service) RequestUploadURL(ctx context.Context, cmd contracts.CreateUploadURL) (*entity.Attachment, contracts.UploadTarget, error) {
+	if cmd.Avatar != nil {
+		return s.requestAvatarUploadURL(ctx, cmd)
+	}
+
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, contracts.UploadTarget{}, err
@@ -176,18 +184,53 @@ func (s *Service) RequestUploadURL(ctx context.Context, cmd contracts.CreateUplo
 
 	id := shared.NewID()
 	key := fmt.Sprintf("attachments/%s/%s/%s/%s", tenantID, conv.ID, id, filename)
-	target, err := s.storage.SignUpload(key, contentType, cmd.Size, s.cfg.UploadTTL)
+	return s.reserveUpload(ctx, id, tenantID, conv.ID, key, filename, contentType, cmd.Size)
+}
+
+// requestAvatarUploadURL issues a conversation-less upload for an avatar: no
+// visibility check (tenant scope only), key namespaced under avatars/, content
+// type restricted to image/* and bounded by the avatar size limit.
+func (s *Service) requestAvatarUploadURL(ctx context.Context, cmd contracts.CreateUploadURL) (*entity.Attachment, contracts.UploadTarget, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, contracts.UploadTarget{}, err
+	}
+	ownerType := strings.ToLower(strings.TrimSpace(cmd.Avatar.OwnerType))
+	ownerID := strings.TrimSpace(cmd.Avatar.OwnerID)
+	if ownerType != "contacts" && ownerType != "users" {
+		return nil, contracts.UploadTarget{}, apperror.Validation("invalid avatar owner").
+			WithDetails(map[string]any{"avatar.owner_type": "must be contacts or users"})
+	}
+	if ownerID == "" {
+		return nil, contracts.UploadTarget{}, apperror.Validation("invalid avatar owner").
+			WithDetails(map[string]any{"avatar.owner_id": "is required"})
+	}
+
+	filename := sanitizeFilename(cmd.Filename)
+	contentType := strings.TrimSpace(cmd.ContentType)
+	if v := s.validateAvatar(filename, contentType, cmd.Size); v != nil {
+		return nil, contracts.UploadTarget{}, v
+	}
+
+	id := shared.NewID()
+	key := fmt.Sprintf("avatars/%s/%s/%s/%s", tenantID, ownerType, ownerID, filename)
+	return s.reserveUpload(ctx, id, tenantID, "", key, filename, contentType, cmd.Size)
+}
+
+// reserveUpload signs the storage target and persists the pending record shared
+// by the conversation and avatar upload paths. conversationID is "" for avatars.
+func (s *Service) reserveUpload(ctx context.Context, id, tenantID, conversationID, key, filename, contentType string, size int64) (*entity.Attachment, contracts.UploadTarget, error) {
+	target, err := s.storage.SignUpload(key, contentType, size, s.cfg.UploadTTL)
 	if err != nil {
 		return nil, contracts.UploadTarget{}, apperror.Internal("could not sign upload url").Wrap(err)
 	}
-
 	att := &entity.Attachment{
 		ID:              id,
 		TenantID:        tenantID,
-		ConversationID:  conv.ID,
+		ConversationID:  conversationID,
 		Filename:        filename,
 		ContentType:     contentType,
-		Size:            cmd.Size,
+		Size:            size,
 		StorageProvider: s.storage.Provider(),
 		StorageKey:      key,
 		Status:          entity.StatusPending,
@@ -210,8 +253,8 @@ func (s *Service) Confirm(ctx context.Context, cmd contracts.ConfirmUpload) (*en
 	if err != nil {
 		return nil, err
 	}
-	// Enforce conversation access on confirm too.
-	if _, err := s.loadVisible(ctx, att.ConversationID); err != nil {
+	// Enforce access on confirm too (avatars: tenant scope only).
+	if err := s.authorizeAttachment(ctx, att); err != nil {
 		return nil, err
 	}
 
@@ -301,7 +344,7 @@ func (s *Service) Download(ctx context.Context, id string) (contracts.DownloadRe
 	if err != nil {
 		return contracts.DownloadResult{}, err
 	}
-	if _, err := s.loadVisible(ctx, att.ConversationID); err != nil {
+	if err := s.authorizeAttachment(ctx, att); err != nil {
 		return contracts.DownloadResult{}, err
 	}
 	if att.Status != entity.StatusReady {
@@ -330,7 +373,7 @@ func (s *Service) Get(ctx context.Context, id string) (*entity.Attachment, error
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.loadVisible(ctx, att.ConversationID); err != nil {
+	if err := s.authorizeAttachment(ctx, att); err != nil {
 		return nil, err
 	}
 	return att, nil
@@ -357,6 +400,65 @@ func (s *Service) validate(filename, contentType string, size int64) error {
 	return nil
 }
 
+// validateAvatar enforces the avatar policy: a filename, an image/* content type
+// (regardless of the general allow-list) and a size within the avatar limit.
+func (s *Service) validateAvatar(filename, contentType string, size int64) error {
+	v := map[string]any{}
+	if filename == "" {
+		v["filename"] = "is required"
+	}
+	if contentType == "" {
+		v["content_type"] = "is required"
+	} else if !isImageContentType(contentType) {
+		v["content_type"] = "must be an image"
+	}
+	if size <= 0 {
+		v["size"] = "must be greater than zero"
+	} else if size > s.cfg.AvatarMaxSizeBytes {
+		v["size"] = fmt.Sprintf("exceeds the %d byte avatar limit", s.cfg.AvatarMaxSizeBytes)
+	}
+	if len(v) > 0 {
+		return apperror.Validation("invalid avatar").WithDetails(v)
+	}
+	return nil
+}
+
+// ValidateReadyImage verifies an attachment is a tenant-scoped, ready image — the
+// check another domain (e.g. contacts) runs before persisting it as an avatar.
+// An empty id is allowed (clears the avatar). Returns a 400 validation_error when
+// the attachment is missing, not ready, or not an image.
+func (s *Service) ValidateReadyImage(ctx context.Context, attachmentID string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	id := strings.TrimSpace(attachmentID)
+	if id == "" {
+		return nil
+	}
+	att, err := s.repo.FindByID(ctx, id) // tenant-scoped: cross-tenant ids are not found
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return apperror.Validation("avatar attachment not found").
+				WithDetails(map[string]any{"avatar_attachment_id": "not found"})
+		}
+		return err
+	}
+	if att.Status != entity.StatusReady {
+		return apperror.Validation("avatar attachment is not ready").
+			WithDetails(map[string]any{"avatar_attachment_id": "is not ready"})
+	}
+	if !isImageContentType(att.ContentType) {
+		return apperror.Validation("avatar attachment must be an image").
+			WithDetails(map[string]any{"avatar_attachment_id": "must be an image"})
+	}
+	return nil
+}
+
+// isImageContentType reports whether ct is an image/* MIME type.
+func isImageContentType(ct string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "image/")
+}
+
 func (s *Service) contentTypeAllowed(ct string) bool {
 	if len(s.cfg.AllowedContentTypes) == 0 {
 		return true
@@ -377,6 +479,18 @@ func (s *Service) contentTypeAllowed(ct string) bool {
 
 func (s *Service) downloadURL(id string) string {
 	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/attachments/" + id + "/download"
+}
+
+// authorizeAttachment enforces access to an already-loaded attachment. Avatar
+// attachments carry no conversation, so they are authorized by tenant scope alone
+// (the repo already filtered by tenant); conversation attachments run the full
+// visibility check.
+func (s *Service) authorizeAttachment(ctx context.Context, att *entity.Attachment) error {
+	if att.ConversationID == "" {
+		return nil // avatar: tenant-scoped repo lookup is the access boundary
+	}
+	_, err := s.loadVisible(ctx, att.ConversationID)
+	return err
 }
 
 // loadVisible loads a conversation and enforces the actor's visibility, mirroring
