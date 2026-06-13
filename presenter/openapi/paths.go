@@ -180,6 +180,19 @@ func registerIntegrations(p *paths) {
 	p.add("POST", "/v1/automation/callbacks/{tenant_id}", op(opConfig{tag: "automation", summary: "External automation callback (signed)",
 		public: true, params: []M{pathParam("tenant_id", "tenant id")}, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
 
+	// automation rules (Chatwoot-style trigger/conditions/actions engine)
+	p.add("GET", "/v1/automation-rules", op(opConfig{tag: "automationrules", summary: "List automation rules",
+		responses: M{"200": jsonResp("Rules", dataArr(ref("AutomationRule")))}}))
+	p.add("POST", "/v1/automation-rules", op(opConfig{tag: "automationrules", summary: "Create an automation rule",
+		reqBody: body(ref("CreateAutomationRuleRequest")), responses: M{"201": jsonResp("Created", ref("AutomationRule"))}}))
+	ruleIDP := []M{pathParam("id", "automation rule id")}
+	p.add("GET", "/v1/automation-rules/{id}", op(opConfig{tag: "automationrules", summary: "Get an automation rule",
+		params: ruleIDP, responses: M{"200": jsonResp("Rule", ref("AutomationRule")), "404": errorResponse("Not found.")}}))
+	p.add("PATCH", "/v1/automation-rules/{id}", op(opConfig{tag: "automationrules", summary: "Update an automation rule",
+		params: ruleIDP, reqBody: body(ref("UpdateAutomationRuleRequest")), responses: M{"200": jsonResp("Updated", ref("AutomationRule")), "404": errorResponse("Not found.")}}))
+	p.add("DELETE", "/v1/automation-rules/{id}", op(opConfig{tag: "automationrules", summary: "Delete an automation rule",
+		params: ruleIDP, responses: M{"204": emptyResp("Deleted"), "404": errorResponse("Not found.")}}))
+
 	// providerhub: catalog, gateway status and ISP profiles (many per tenant)
 	p.add("GET", "/v1/providerhub/catalog", op(opConfig{tag: "providerhub", summary: "Supported ISP catalog (credential fields + actions per ISP)",
 		responses: M{"200": jsonResp("Catalog", ref("ProviderHubCatalog"))}}))
