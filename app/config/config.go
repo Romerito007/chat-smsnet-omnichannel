@@ -105,6 +105,13 @@ type AttachmentsS3Config struct {
 	SecretKey      string
 	ForcePathStyle bool
 	PresignExpiry  time.Duration
+	// EnsureCORS, when true, applies a browser-upload CORS policy to the bucket on
+	// startup (best-effort) so direct PUT/GET from the SPA works. Needs the
+	// s3:PutBucketCORS permission; failures only warn.
+	EnsureCORS bool
+	// CORSAllowedOrigins are the browser origins allowed to upload/download
+	// directly. Defaults to HTTP_ALLOWED_ORIGINS.
+	CORSAllowedOrigins []string
 }
 
 // PrivacyConfig holds the privacy (LGPD) settings: where export files are stored
@@ -403,6 +410,10 @@ func Load() (Config, error) {
 				SecretKey:      getString("AWS_SECRET_ACCESS_KEY", getString("ATTACHMENTS_S3_SECRET_KEY", "")),
 				ForcePathStyle: getBool("S3_FORCE_PATH_STYLE", false),
 				PresignExpiry:  getDuration("S3_PRESIGN_EXPIRY", 5*time.Minute),
+				// Self-heal the bucket CORS on boot so browser-direct uploads work
+				// without a manual aws s3api step. Origins reuse HTTP_ALLOWED_ORIGINS.
+				EnsureCORS:         getBool("S3_ENSURE_CORS", true),
+				CORSAllowedOrigins: getList("S3_CORS_ALLOWED_ORIGINS", getList("HTTP_ALLOWED_ORIGINS", []string{"*"})),
 			},
 		},
 		Seed: SeedConfig{

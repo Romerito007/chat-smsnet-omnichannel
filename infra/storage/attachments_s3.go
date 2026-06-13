@@ -85,6 +85,34 @@ func NewS3AttachmentStorage(cfg S3Config) (*S3AttachmentStorage, error) {
 // Provider implements contracts.Storage.
 func (s *S3AttachmentStorage) Provider() string { return "s3" }
 
+// EnsureCORS applies a CORS policy to the bucket so the browser can PUT/GET
+// objects directly via the presigned URLs. Without it the cross-origin preflight
+// (OPTIONS) the browser sends before a PUT with a Content-Type header is rejected
+// by S3 ("No 'Access-Control-Allow-Origin' header"), so no direct upload works.
+// Requires the s3:PutBucketCORS permission; callers should treat a failure as
+// non-fatal (log + fall back to applying the policy manually).
+func (s *S3AttachmentStorage) EnsureCORS(ctx context.Context, origins []string) error {
+	if len(origins) == 0 {
+		return nil
+	}
+	_, err := s.client.PutBucketCors(ctx, &s3.PutBucketCorsInput{
+		Bucket: aws.String(s.bucket),
+		CORSConfiguration: &s3types.CORSConfiguration{
+			CORSRules: []s3types.CORSRule{{
+				AllowedMethods: []string{"PUT", "GET", "HEAD"},
+				AllowedOrigins: origins,
+				AllowedHeaders: []string{"*"},
+				ExposeHeaders:  []string{"ETag"},
+				MaxAgeSeconds:  aws.Int32(3000),
+			}},
+		},
+	})
+	if err != nil {
+		return apperror.Integration("could not apply bucket cors").Wrap(err)
+	}
+	return nil
+}
+
 // SignUpload returns a presigned PUT URL the client uploads the bytes to. The
 // returned headers (e.g. Content-Type) MUST be replayed by the client, since they
 // are part of the signature.

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -118,6 +119,47 @@ func TestS3Attachment_PresignShapes(t *testing.T) {
 
 // mockS3 is a tiny in-memory, path-style S3 emulator for the end-to-end test. It
 // ignores the signature (the SDK still signs every request).
+func TestS3Attachment_EnsureCORS(t *testing.T) {
+	var gotMethod, gotQuery, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotQuery = r.URL.RawQuery
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s, err := NewS3AttachmentStorage(S3Config{
+		Endpoint: srv.URL, Region: "us-east-1", Bucket: "bucket",
+		AccessKey: "test", SecretKey: "test", ForcePathStyle: true,
+	})
+	if err != nil {
+		t.Fatalf("new s3: %v", err)
+	}
+
+	// Empty origins is a no-op (no request issued).
+	if err := s.EnsureCORS(context.Background(), nil); err != nil {
+		t.Fatalf("empty origins should be a no-op, got %v", err)
+	}
+	if gotMethod != "" {
+		t.Fatalf("empty origins must not call the bucket, got %s", gotMethod)
+	}
+
+	// With origins it issues a PutBucketCors carrying the policy.
+	if err := s.EnsureCORS(context.Background(), []string{"http://localhost:3000"}); err != nil {
+		t.Fatalf("ensure cors: %v", err)
+	}
+	if gotMethod != http.MethodPut || !strings.Contains(gotQuery, "cors") {
+		t.Errorf("expected PUT ...?cors, got %s ?%s", gotMethod, gotQuery)
+	}
+	for _, want := range []string{"http://localhost:3000", "<AllowedMethod>PUT</AllowedMethod>", "ETag"} {
+		if !strings.Contains(gotBody, want) {
+			t.Errorf("cors body missing %q; body=%s", want, gotBody)
+		}
+	}
+}
+
 func mockS3(t *testing.T) (*httptest.Server, map[string][]byte) {
 	t.Helper()
 	objects := map[string][]byte{}

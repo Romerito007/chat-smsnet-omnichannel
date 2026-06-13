@@ -10,6 +10,12 @@ import (
 	attachctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/attachments"
 )
 
+// AttachmentStorageBackend exposes the configured storage backend so start
+// routines can apply backend-specific boot work (e.g. ensuring S3 bucket CORS).
+func AttachmentStorageBackend(c *container.Container) (acontracts.Storage, attachctl.LocalBlobStore) {
+	return attachmentStorage(c)
+}
+
 // attachmentStorage builds the configured storage backend. It falls back to the
 // local backend when the S3 settings are incomplete, so a misconfiguration never
 // breaks startup.
