@@ -3,6 +3,7 @@ package factories
 import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	convservice "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/service"
+	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/channels"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	sectorrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/sectors"
 	convctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/conversations"
@@ -17,6 +18,7 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 		convrepo.NewMessageRepository(c.Mongo.DB),
 		convrepo.NewEventRepository(c.Mongo.DB),
 		sectorrepo.New(c.Mongo.DB),
+		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
 		c.Events,
 		clock,
 	)

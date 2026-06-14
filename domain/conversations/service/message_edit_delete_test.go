@@ -15,7 +15,7 @@ import (
 func sendAs(t *testing.T, svc *Service, userID string) (convID, msgID string) {
 	t.Helper()
 	ctx := actorCtx("t1", userID, authz.ScopeAll, nil)
-	conv, err := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, err := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

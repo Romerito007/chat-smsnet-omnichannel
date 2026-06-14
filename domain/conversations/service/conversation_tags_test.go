@@ -31,7 +31,7 @@ func (f fakeCloseReasonPolicy) RequiresNote(context.Context, string) (bool, erro
 // openConv creates a conversation and returns its id.
 func openConv(t *testing.T, svc *Service) string {
 	t.Helper()
-	conv, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", Channel: "whatsapp", SectorID: "s1"})
+	conv, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

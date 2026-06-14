@@ -10,6 +10,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/repository"
@@ -23,6 +24,7 @@ type Service struct {
 	messages      repository.MessageRepository
 	events        repository.EventRepository
 	sectors       sectorrepo.SectorRepository
+	channels      channelrepo.ConnectionRepository
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	outbound      contracts.OutboundDispatcher
@@ -198,6 +200,7 @@ func New(
 	messages repository.MessageRepository,
 	events repository.EventRepository,
 	sectors sectorrepo.SectorRepository,
+	channels channelrepo.ConnectionRepository,
 	publisher shared.EventPublisher,
 	clock shared.Clock,
 ) *Service {
@@ -212,6 +215,7 @@ func New(
 		messages:      messages,
 		events:        events,
 		sectors:       sectors,
+		channels:      channels,
 		publisher:     publisher,
 		clock:         clock,
 		webhooks:      shared.NoopWebhookEmitter{},
@@ -235,9 +239,9 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 	if contactID == "" {
 		v["contact_id"] = "is required"
 	}
-	channel := strings.TrimSpace(cmd.Channel)
-	if channel == "" {
-		v["channel"] = "is required"
+	channelID := strings.TrimSpace(cmd.ChannelID)
+	if channelID == "" {
+		v["channel_id"] = "is required"
 	}
 	priority := cmd.Priority
 	if priority == "" {
@@ -249,6 +253,19 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 	if len(v) > 0 {
 		return nil, apperror.Validation("validation failed").WithDetails(v)
 	}
+
+	// Resolve the channel connection and DERIVE its type — the client's channel
+	// type is never trusted. FindByID is tenant-scoped, so a connection from
+	// another tenant (or a non-existent id) is rejected as a validation error.
+	conn, err := s.channels.FindByID(ctx, channelID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return nil, apperror.Validation("channel does not exist").
+				WithDetails(map[string]any{"channel_id": "not found"})
+		}
+		return nil, err
+	}
+	channel := string(conn.Type)
 
 	// Validate the sector exists within the tenant when provided.
 	if cmd.SectorID != "" {
@@ -274,7 +291,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 		TenantID:      tenantID,
 		ContactID:     contactID,
 		Channel:       channel,
-		ChannelID:     strings.TrimSpace(cmd.ChannelID),
+		ChannelID:     channelID,
 		SectorID:      cmd.SectorID,
 		QueueID:       cmd.QueueID,
 		Status:        status,

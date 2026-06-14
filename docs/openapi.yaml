@@ -1067,10 +1067,8 @@ components:
             properties:
                 assigned_to:
                     type: string
-                channel:
-                    type: string
                 channel_id:
-                    description: Optional id of the specific ChannelConnection (inbound sets it automatically; provide it for outbound to leave through the right connection).
+                    description: Required id of the specific ChannelConnection the conversation leaves through. The channel TYPE is derived from this connection — the client does NOT send a channel type.
                     type: string
                 contact_id:
                     type: string
@@ -1087,7 +1085,7 @@ components:
                     type: array
             required:
                 - contact_id
-                - channel
+                - channel_id
             type: object
         CreateCopilotAssistantRequest:
             properties:

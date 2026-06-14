@@ -29,7 +29,7 @@ func (f *fakeQueueStats) QueueChanged(_ context.Context, sectorID, queueID strin
 
 func TestCreate_PublishesConversationCreated(t *testing.T) {
 	svc, _, _, _, pub := newService(map[string]string{"s1": "t1"})
-	if _, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"}); err != nil {
+	if _, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if !published(pub, contracts.RealtimeConversationCreated) {
@@ -43,7 +43,7 @@ func TestCreate_PublishesConversationCreated(t *testing.T) {
 func TestClose_PublishesConversationClosed(t *testing.T) {
 	svc, _, _, _, pub := newService(map[string]string{"s1": "t1"})
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 	pub.events = nil
 	if _, err := svc.Close(ctx, conv.ID, contracts.CloseConversation{}); err != nil {
 		t.Fatalf("close: %v", err)
@@ -56,7 +56,7 @@ func TestClose_PublishesConversationClosed(t *testing.T) {
 func TestReopen_PublishesConversationReopened(t *testing.T) {
 	svc, _, _, _, pub := newService(map[string]string{"s1": "t1"})
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 	if _, err := svc.Close(ctx, conv.ID, contracts.CloseConversation{}); err != nil {
 		t.Fatalf("close: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestReopen_PublishesConversationReopened(t *testing.T) {
 func TestUpdate_StatusResolved_PublishesResolved(t *testing.T) {
 	svc, _, _, _, pub := newService(map[string]string{"s1": "t1"})
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 	pub.events = nil
 	resolved := entity.StatusResolved
 	if _, err := svc.Update(ctx, conv.ID, contracts.UpdateConversation{Status: &resolved}); err != nil {
@@ -88,7 +88,7 @@ func TestCreate_IntoQueue_NotifiesQueueStats(t *testing.T) {
 	qs := &fakeQueueStats{}
 	svc.SetQueueStatsNotifier(qs)
 	if _, err := svc.Create(adminCtx(), contracts.CreateConversation{
-		ContactID: "c1", Channel: "wa", SectorID: "s1", QueueID: "q1",
+		ContactID: "c1", ChannelID: "ch1", SectorID: "s1", QueueID: "q1",
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestClose_QueuedNotifiesQueueStats(t *testing.T) {
 	qs := &fakeQueueStats{}
 	svc.SetQueueStatsNotifier(qs)
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1", QueueID: "q1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1", QueueID: "q1"})
 	qs.calls = nil
 	if _, err := svc.Close(ctx, conv.ID, contracts.CloseConversation{}); err != nil {
 		t.Fatalf("close: %v", err)

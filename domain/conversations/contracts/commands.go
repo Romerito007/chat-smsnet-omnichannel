@@ -5,9 +5,11 @@ import "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/enti
 
 // CreateConversation is the input to open a conversation.
 type CreateConversation struct {
-	ContactID  string
-	Channel    string
-	ChannelID  string // id of the specific ChannelConnection (optional on manual create)
+	ContactID string
+	// ChannelID is the id of the specific ChannelConnection the conversation
+	// belongs to (required). The channel TYPE is derived from this connection — the
+	// client's channel type is not trusted.
+	ChannelID  string
 	SectorID   string
 	QueueID    string
 	AssignedTo string

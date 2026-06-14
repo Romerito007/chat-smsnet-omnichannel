@@ -153,7 +153,11 @@ Só campos **locais** (nunca dados enriquecidos do provider). Tenant do token;
 - **Criar/editar** aceitam `phones[]` (normalizadas para dígitos; a 1ª vira a
   primária), `document`, `email`, `external_ids[]`, `tags[]`, `notes`.
 - **Histórico do contato:** use `GET /conversations?contact_id={id}`.
-- **Iniciar conversa:** `POST /conversations` aceita o `contact_id` recém-criado.
+- **Iniciar conversa:** `POST /conversations` exige `contact_id` **e** `channel_id`
+  (a conexão específica). O **tipo** (`channel`) é **derivado** da conexão apontada
+  por `channel_id` — o front **não** envia mais o tipo, e um `channel_id`
+  inexistente/de outro tenant é rejeitado (validação). `channel` continua no
+  **response** (read-only, derivado).
 
 ### sectors / queues
 ```
@@ -166,7 +170,7 @@ GET    /queues/{id}/stats          # agregado (também via WS)
 ### conversations / messages
 ```
 GET    /conversations                      # inbox (filtros: status, assignee, queue, tag, protocol)
-POST   /conversations                      # iniciar (outbound)
+POST   /conversations                      # iniciar (outbound): exige contact_id + channel_id; o TIPO é derivado da conexão (front não envia channel)
 GET    /conversations/{id}
 PATCH  /conversations/{id}                  # status, priority, tags, subject
 POST   /conversations/{id}/assign           # atribuir a agente/fila

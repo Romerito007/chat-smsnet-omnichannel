@@ -138,11 +138,11 @@ func schemas() M {
 			"actor_id":   str(), "data": freeObject(), "created_at": dateTime(),
 		}),
 		"CreateConversationRequest": object(M{
-			"contact_id": str(), "channel": str(),
-			"channel_id": describedStr("Optional id of the specific ChannelConnection (inbound sets it automatically; provide it for outbound to leave through the right connection)."),
+			"contact_id": str(),
+			"channel_id": describedStr("Required id of the specific ChannelConnection the conversation leaves through. The channel TYPE is derived from this connection — the client does NOT send a channel type."),
 			"sector_id":  str(), "queue_id": str(),
 			"assigned_to": str(), "priority": str(), "tags": tagIDArray(),
-		}, "contact_id", "channel"),
+		}, "contact_id", "channel_id"),
 		"UpdateConversationRequest": object(M{
 			"sector_id": str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
 			"priority": str(), "tags": tagIDArray(),

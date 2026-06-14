@@ -12,10 +12,11 @@ import (
 
 // ── requests ─────────────────────────────────────────────────────────────────
 
-// CreateConversationRequest is the body of POST /v1/conversations.
+// CreateConversationRequest is the body of POST /v1/conversations. channel_id is
+// required; the channel TYPE is derived from that connection (the client no longer
+// sends a channel type).
 type CreateConversationRequest struct {
 	ContactID  string   `json:"contact_id"`
-	Channel    string   `json:"channel"`
 	ChannelID  string   `json:"channel_id"`
 	SectorID   string   `json:"sector_id"`
 	QueueID    string   `json:"queue_id"`
@@ -28,7 +29,6 @@ type CreateConversationRequest struct {
 func (r CreateConversationRequest) ToCommand() contracts.CreateConversation {
 	return contracts.CreateConversation{
 		ContactID:  r.ContactID,
-		Channel:    r.Channel,
 		ChannelID:  r.ChannelID,
 		SectorID:   r.SectorID,
 		QueueID:    r.QueueID,

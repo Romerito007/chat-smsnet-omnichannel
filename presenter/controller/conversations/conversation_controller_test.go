@@ -11,6 +11,8 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
+	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	convcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/repository"
@@ -72,6 +74,20 @@ func (r *fakeConvRepo) List(ctx context.Context, _ convcontracts.ListFilter, _ c
 }
 func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*entity.Conversation, error) {
 	return nil, nil
+}
+
+// fakeChannelConnRepo resolves "ch1" to a whatsapp connection so Create can derive
+// the channel type; any other id is NotFound.
+type fakeChannelConnRepo struct {
+	channelrepo.ConnectionRepository
+}
+
+func (fakeChannelConnRepo) FindByID(ctx context.Context, id string) (*chentity.ChannelConnection, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	if id == "ch1" {
+		return &chentity.ChannelConnection{ID: id, TenantID: tenant, Type: chentity.TypeWhatsApp, Enabled: true}, nil
+	}
+	return nil, apperror.NotFound("nf")
 }
 
 type fakeMsgRepo struct{ latestBatchCalls *int }
@@ -160,7 +176,7 @@ func buildRouter(cr *fakeConvRepo) http.Handler {
 }
 
 func buildRouterFull(cr *fakeConvRepo, cd convcontracts.ContactDirectory, ad convcontracts.AgentDirectory, latestCalls *int) http.Handler {
-	svc := convservice.New(cr, fakeMsgRepo{latestBatchCalls: latestCalls}, fakeEventRepo{}, fakeSectorRepo{}, shared.NoopPublisher{}, shared.SystemClock{})
+	svc := convservice.New(cr, fakeMsgRepo{latestBatchCalls: latestCalls}, fakeEventRepo{}, fakeSectorRepo{}, fakeChannelConnRepo{}, shared.NoopPublisher{}, shared.SystemClock{})
 	if cd != nil {
 		svc.SetContactDirectory(cd)
 	}
@@ -303,7 +319,7 @@ func TestConversations_Detail_ResolvesContactAndAgent(t *testing.T) {
 
 func TestConversations_Create_Happy(t *testing.T) {
 	rec := httpharness.Do(t, buildRouter(&fakeConvRepo{}), http.MethodPost, "/conversations",
-		token(t, "t1", authz.ConversationRead), map[string]any{"contact_id": "ct1", "channel": "whatsapp"})
+		token(t, "t1", authz.ConversationRead), map[string]any{"contact_id": "ct1", "channel_id": "ch1"})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (%s)", rec.Code, rec.Body.String())
 	}

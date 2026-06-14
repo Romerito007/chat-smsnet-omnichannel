@@ -7,12 +7,29 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
+	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	sectorentity "github.com/romerito007/chat-smsnet-omnichannel/domain/sectors/entity"
 	sectorrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/sectors/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
+
+// fakeChannelRepo returns a whatsapp connection for any known id so Create can
+// derive the channel type. An empty/unknown id yields NotFound.
+type fakeChannelRepo struct {
+	channelrepo.ConnectionRepository
+	ids map[string]bool
+}
+
+func (r *fakeChannelRepo) FindByID(ctx context.Context, id string) (*chentity.ChannelConnection, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	if r.ids[id] {
+		return &chentity.ChannelConnection{ID: id, TenantID: tenant, Type: chentity.TypeWhatsApp, Enabled: true}, nil
+	}
+	return nil, apperror.NotFound("nf")
+}
 
 // ── doubles ──────────────────────────────────────────────────────────────────
 
@@ -202,7 +219,8 @@ func newService(sectors map[string]string) (*Service, *fakeConvRepo, *fakeMsgRep
 	mr := &fakeMsgRepo{}
 	er := &fakeEventRepo{}
 	pub := &fakePublisher{}
-	svc := New(cr, mr, er, &fakeSectorRepo{exists: sectors}, pub, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	ch := &fakeChannelRepo{ids: map[string]bool{"ch1": true}}
+	svc := New(cr, mr, er, &fakeSectorRepo{exists: sectors}, ch, pub, fixedClock{t: time.Unix(1700000000, 0).UTC()})
 	return svc, cr, mr, er, pub
 }
 
@@ -211,13 +229,45 @@ func adminCtx() context.Context {
 	return actorCtx("t1", "admin", authz.ScopeAll, nil)
 }
 
+// TestCreate_RequiresChannelID: the internal create now requires channel_id.
+func TestCreate_RequiresChannelID(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	_, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", SectorID: "s1"})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("expected validation_error without channel_id, got %v", err)
+	}
+}
+
+// TestCreate_UnknownChannelIDRejected: a channel_id that does not resolve (or
+// belongs to another tenant) is a validation error.
+func TestCreate_UnknownChannelIDRejected(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	_, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", ChannelID: "ghost", SectorID: "s1"})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("expected validation_error for unknown channel_id, got %v", err)
+	}
+}
+
+// TestCreate_DerivesChannelTypeFromConnection: the stored channel TYPE comes from
+// the connection (whatsapp here), never from the client.
+func TestCreate_DerivesChannelTypeFromConnection(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	conv, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if conv.ChannelID != "ch1" || conv.Channel != "whatsapp" {
+		t.Errorf("channel must be derived from the connection: got channel=%q channel_id=%q", conv.Channel, conv.ChannelID)
+	}
+}
+
 // TestList_FilterByContact backs GET /v1/conversations?contact_id= (the contact's
 // conversation history): only that contact's conversations come back.
 func TestList_FilterByContact(t *testing.T) {
 	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
 	for _, cid := range []string{"c1", "c1", "c2"} {
 		if _, err := svc.Create(adminCtx(), contracts.CreateConversation{
-			ContactID: cid, Channel: "whatsapp", SectorID: "s1",
+			ContactID: cid, ChannelID: "ch1", SectorID: "s1",
 		}); err != nil {
 			t.Fatalf("create: %v", err)
 		}
@@ -242,7 +292,7 @@ func TestList_FilterByContact(t *testing.T) {
 func TestCreate_DefaultsAndEvent(t *testing.T) {
 	svc, _, _, er, pub := newService(map[string]string{"s1": "t1"})
 	conv, err := svc.Create(adminCtx(), contracts.CreateConversation{
-		ContactID: "c1", Channel: "whatsapp", SectorID: "s1",
+		ContactID: "c1", ChannelID: "ch1", SectorID: "s1",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -310,7 +360,7 @@ func TestListEvents_ReturnsTimeline(t *testing.T) {
 
 func TestCreate_UnknownSector(t *testing.T) {
 	svc, _, _, _, _ := newService(map[string]string{})
-	_, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "ghost"})
+	_, err := svc.Create(adminCtx(), contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "ghost"})
 	if apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("expected validation_error, got %v", err)
 	}
@@ -319,7 +369,7 @@ func TestCreate_UnknownSector(t *testing.T) {
 func TestSendMessage_PendingAndEventsAndLastMessageAt(t *testing.T) {
 	svc, cr, mr, er, pub := newService(map[string]string{"s1": "t1"})
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 
 	pub.events = nil
 	er.items = nil
@@ -371,7 +421,7 @@ func TestSendMessage_PendingAndEventsAndLastMessageAt(t *testing.T) {
 func TestInternalNote_IsInternalDirection(t *testing.T) {
 	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 
 	note, err := svc.AddInternalNote(ctx, conv.ID, contracts.AddInternalNote{Text: "internal"})
 	if err != nil {
@@ -388,7 +438,7 @@ func TestInternalNote_IsInternalDirection(t *testing.T) {
 func TestCloseAndReopen(t *testing.T) {
 	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 
 	closed, err := svc.Close(ctx, conv.ID, contracts.CloseConversation{CloseReasonID: "solved", Note: "done"})
 	if err != nil {
@@ -424,9 +474,9 @@ func TestVisibility_AgentSeesOwnSectorOrAssigned(t *testing.T) {
 
 	// Seed: one conv in s1, one in s2 assigned to bob.
 	admin := adminCtx()
-	inS1, _ := svc.Create(admin, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
-	inS2Assigned, _ := svc.Create(admin, contracts.CreateConversation{ContactID: "c2", Channel: "wa", SectorID: "s2", AssignedTo: "bob"})
-	inS2Other, _ := svc.Create(admin, contracts.CreateConversation{ContactID: "c3", Channel: "wa", SectorID: "s2"})
+	inS1, _ := svc.Create(admin, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
+	inS2Assigned, _ := svc.Create(admin, contracts.CreateConversation{ContactID: "c2", ChannelID: "ch1", SectorID: "s2", AssignedTo: "bob"})
+	inS2Other, _ := svc.Create(admin, contracts.CreateConversation{ContactID: "c3", ChannelID: "ch1", SectorID: "s2"})
 
 	// Bob: scope own, member of s1, assigned inS2Assigned.
 	bob := actorCtx("t1", "bob", authz.ScopeOwn, []string{"s1"})
@@ -451,7 +501,7 @@ func TestVisibility_AgentSeesOwnSectorOrAssigned(t *testing.T) {
 func TestSendMessage_RequiresText(t *testing.T) {
 	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
 	ctx := adminCtx()
-	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", Channel: "wa", SectorID: "s1"})
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
 	if _, err := svc.SendMessage(ctx, conv.ID, contracts.SendMessage{}); apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("expected validation_error for empty message, got %v", err)
 	}
