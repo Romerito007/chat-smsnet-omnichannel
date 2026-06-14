@@ -174,6 +174,68 @@ func TestCreateConnection_InvalidType(t *testing.T) {
 	}
 }
 
+func validHours() map[string]any {
+	return map[string]any{
+		"timezone": "America/Sao_Paulo",
+		"weekly": []any{
+			map[string]any{"day": 1, "intervals": []any{
+				map[string]any{"start": "09:00", "end": "12:00"},
+				map[string]any{"start": "13:00", "end": "18:00"},
+			}},
+		},
+	}
+}
+
+// invalidHours has an interval whose end is not after its start (no overnight).
+func invalidHours() map[string]any {
+	return map[string]any{
+		"timezone": "UTC",
+		"weekly":   []any{map[string]any{"day": 1, "intervals": []any{map[string]any{"start": "22:00", "end": "02:00"}}}},
+	}
+}
+
+func TestCreateConnection_BusinessHoursValidationAndPersist(t *testing.T) {
+	svc, repo, _ := newConnService()
+
+	// Invalid business_hours → validation_error, nothing persisted.
+	if _, err := svc.Create(tenantCtx(), chcontracts.CreateConnection{
+		Type: chentity.TypeWhatsApp, BusinessHours: invalidHours(),
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("expected validation_error for bad business_hours, got %v", err)
+	}
+
+	// Valid business_hours → persisted on the connection.
+	conn, err := svc.Create(tenantCtx(), chcontracts.CreateConnection{
+		Type: chentity.TypeWhatsApp, BusinessHours: validHours(),
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if repo.byID[conn.ID].BusinessHours["timezone"] != "America/Sao_Paulo" {
+		t.Errorf("business_hours not persisted, got %v", repo.byID[conn.ID].BusinessHours)
+	}
+}
+
+func TestUpdateConnection_BusinessHoursValidationAndPersist(t *testing.T) {
+	svc, repo, _ := newConnService()
+	conn, _ := svc.Create(tenantCtx(), chcontracts.CreateConnection{Type: chentity.TypeWhatsApp})
+
+	// Invalid business_hours on update → validation_error.
+	bad := invalidHours()
+	if _, err := svc.Update(tenantCtx(), conn.ID, chcontracts.UpdateConnection{BusinessHours: &bad}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("expected validation_error on update, got %v", err)
+	}
+
+	// Valid business_hours on update → persisted.
+	good := validHours()
+	if _, err := svc.Update(tenantCtx(), conn.ID, chcontracts.UpdateConnection{BusinessHours: &good}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if repo.byID[conn.ID].BusinessHours["timezone"] != "America/Sao_Paulo" {
+		t.Errorf("updated business_hours not persisted, got %v", repo.byID[conn.ID].BusinessHours)
+	}
+}
+
 func TestTest_SuccessAndFailureUpdateStatus(t *testing.T) {
 	svc, _, adapter := newConnService()
 	conn, _ := svc.Create(tenantCtx(), chcontracts.CreateConnection{Type: chentity.TypeCustom, Secret: "s"})
