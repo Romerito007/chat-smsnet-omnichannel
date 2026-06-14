@@ -8,10 +8,10 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0010 adds indexes for webhook subscriptions and deliveries. Idempotent.
+// 0008 adds indexes for webhook subscriptions and deliveries. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 10,
+		Version: 8,
 		Name:    "webhook_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			if _, err := db.Collection("webhook_subscriptions").Indexes().CreateMany(ctx, []mongo.IndexModel{

@@ -8,11 +8,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0012 adds indexes for conversationtools (tags, canned responses, close
+// 0010 adds indexes for conversationtools (tags, canned responses, close
 // reasons). Idempotent.
 func init() {
 	Register(Migration{
-		Version: 12,
+		Version: 10,
 		Name:    "conversationtools_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			if _, err := db.Collection("tags").Indexes().CreateOne(ctx, mongo.IndexModel{

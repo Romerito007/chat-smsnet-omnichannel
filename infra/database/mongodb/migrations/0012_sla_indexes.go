@@ -8,13 +8,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0016 adds indexes for CSAT surveys and responses. Idempotent.
+// 0012 adds indexes for SLA policies and trackings. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 16,
-		Name:    "csat_indexes",
+		Version: 12,
+		Name:    "sla_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
-			if _, err := db.Collection("csat_surveys").Indexes().CreateMany(ctx, []mongo.IndexModel{
+			if _, err := db.Collection("sla_policies").Indexes().CreateMany(ctx, []mongo.IndexModel{
 				{
 					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "created_at", Value: -1}, {Key: "_id", Value: -1}},
 					Options: options.Index().SetName("tenant_keyset"),
@@ -27,20 +27,19 @@ func init() {
 				return err
 			}
 
-			if _, err := db.Collection("csat_responses").Indexes().CreateMany(ctx, []mongo.IndexModel{
+			if _, err := db.Collection("sla_trackings").Indexes().CreateMany(ctx, []mongo.IndexModel{
 				{
-					// Public token lookup (globally unique).
-					Keys:    bson.D{{Key: "token", Value: 1}},
-					Options: options.Index().SetName("token_unique").SetUnique(true),
-				},
-				{
-					// One survey per conversation (no re-send).
 					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "conversation_id", Value: 1}},
 					Options: options.Index().SetName("tenant_conversation_unique").SetUnique(true),
 				},
 				{
-					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "created_at", Value: -1}, {Key: "_id", Value: -1}},
-					Options: options.Index().SetName("tenant_keyset"),
+					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "status", Value: 1}, {Key: "created_at", Value: -1}, {Key: "_id", Value: -1}},
+					Options: options.Index().SetName("tenant_status_keyset"),
+				},
+				{
+					// Used by the cross-tenant sla.check scheduler scan.
+					Keys:    bson.D{{Key: "status", Value: 1}},
+					Options: options.Index().SetName("status"),
 				},
 			}); err != nil {
 				return err

@@ -8,12 +8,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0022 adds indexes for the MCP collections: per-tenant server keyset + enabled
+// 0020 adds indexes for the MCP collections: per-tenant server keyset + enabled
 // lookup, approvals by conversation, and call logs by tenant/conversation.
 // Idempotent.
 func init() {
 	Register(Migration{
-		Version: 22,
+		Version: 20,
 		Name:    "mcp_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			if _, err := db.Collection("mcp_servers").Indexes().CreateMany(ctx, []mongo.IndexModel{

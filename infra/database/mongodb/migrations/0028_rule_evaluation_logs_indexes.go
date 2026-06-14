@@ -8,11 +8,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0033 adds the keyset index for rule_evaluation_logs (the minimal automation-rule
+// 0028 adds the keyset index for rule_evaluation_logs (the minimal automation-rule
 // firing log), used by GET /v1/automation-rules/{id}/logs. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 33,
+		Version: 28,
 		Name:    "rule_evaluation_logs_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			_, err := db.Collection("rule_evaluation_logs").Indexes().CreateOne(ctx, mongo.IndexModel{

@@ -8,19 +8,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0008 adds indexes for providerhub config and the query log. Idempotent.
+// 0007 adds indexes for the providerhub query log. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 8,
+		Version: 7,
 		Name:    "providerhub_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
-			if _, err := db.Collection("providerhub_configs").Indexes().CreateOne(ctx, mongo.IndexModel{
-				Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "enabled", Value: 1}},
-				Options: options.Index().SetName("tenant_enabled"),
-			}); err != nil {
-				return err
-			}
-
 			// Query log: keyset + per-conversation lookup. Kept lean (no payload).
 			if _, err := db.Collection("provider_query_logs").Indexes().CreateMany(ctx, []mongo.IndexModel{
 				{

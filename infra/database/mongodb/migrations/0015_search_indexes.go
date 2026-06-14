@@ -8,11 +8,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0017 adds the search indexes: a text index on contacts (name/document/phone)
+// 0015 adds the search indexes: a text index on contacts (name/document/phone)
 // and on messages (text), plus supporting keyset indexes. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 17,
+		Version: 15,
 		Name:    "search_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			// Contacts free-text search.

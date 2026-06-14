@@ -8,13 +8,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0031 adds indexes for copilot_assistants (many per tenant): a tenant listing
-// index, a channel-type resolution index (enabled assistant serving a channel),
-// and an isp_profile_id index for the referential-integrity check on profile
-// delete. Idempotent.
+// 0026 adds indexes for copilot_assistants (many per tenant): a tenant listing
+// index, a channel resolution index (enabled assistant serving a SPECIFIC channel
+// connection by id), and an isp_profile_id index for the referential-integrity
+// check on profile delete. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 31,
+		Version: 26,
 		Name:    "copilot_assistants_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			_, err := db.Collection("copilot_assistants").Indexes().CreateMany(ctx, []mongo.IndexModel{
@@ -23,8 +23,8 @@ func init() {
 					Options: options.Index().SetName("tenant_id"),
 				},
 				{
-					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "enabled", Value: 1}, {Key: "channel_types", Value: 1}},
-					Options: options.Index().SetName("tenant_channel_type"),
+					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "enabled", Value: 1}, {Key: "channel_ids", Value: 1}},
+					Options: options.Index().SetName("tenant_channel_id"),
 				},
 				{
 					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "isp_profile_id", Value: 1}},

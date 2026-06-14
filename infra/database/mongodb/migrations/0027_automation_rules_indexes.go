@@ -8,13 +8,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0032 adds indexes for the automation_rules collection: a tenant listing index,
+// 0027 adds indexes for the automation_rules collection: a tenant listing index,
 // the enabled-by-event resolution index used by the async evaluator, and an
 // actions.webhook_id index for the referential-integrity check that blocks
 // deleting a webhook a rule references. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 32,
+		Version: 27,
 		Name:    "automation_rules_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			_, err := db.Collection("automation_rules").Indexes().CreateMany(ctx, []mongo.IndexModel{

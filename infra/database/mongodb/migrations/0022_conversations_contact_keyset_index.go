@@ -8,7 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0026 adds the covering index for GET /v1/conversations?contact_id= (the
+// 0022 adds the covering index for GET /v1/conversations?contact_id= (the
 // contact's conversation history). The list filters by {tenant_id, contact_id}
 // and orders by the inbox keyset {updated_at desc, _id desc}. The existing
 // tenant_contact_created index (…, created_at) covers the equality but not this
@@ -16,7 +16,7 @@ import (
 // history paginates without a collection scan. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 26,
+		Version: 22,
 		Name:    "conversations_contact_keyset_index",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			_, err := db.Collection("conversations").Indexes().CreateOne(ctx, mongo.IndexModel{

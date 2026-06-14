@@ -8,11 +8,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0011 adds indexes for the copilot config (one per tenant) and the AI usage
+// 0009 adds indexes for the copilot config (one per tenant) and the AI usage
 // log. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 11,
+		Version: 9,
 		Name:    "copilot_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			if _, err := db.Collection("copilot_configs").Indexes().CreateOne(ctx, mongo.IndexModel{

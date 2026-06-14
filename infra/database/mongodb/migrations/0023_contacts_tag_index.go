@@ -8,7 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0027 adds the covering index for GET /v1/contacts?tag_id= (filter contacts by
+// 0023 adds the covering index for GET /v1/contacts?tag_id= (filter contacts by
 // tag). The list filters by {tenant_id, tags} (exact membership in the tags
 // array) and orders by the keyset {created_at desc, _id desc}; this index covers
 // both, so the tag filter paginates without a collection scan.
@@ -19,7 +19,7 @@ import (
 // Idempotent.
 func init() {
 	Register(Migration{
-		Version: 27,
+		Version: 23,
 		Name:    "contacts_tag_keyset_index",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			_, err := db.Collection("contacts").Indexes().CreateOne(ctx, mongo.IndexModel{

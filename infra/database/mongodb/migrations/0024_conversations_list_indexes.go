@@ -8,7 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0028 closes the conversation list index gaps flagged in docs/performance-audit.md
+// 0024 closes the conversation list index gaps flagged in docs/performance-audit.md
 // (§4/§9), so hot list filters no longer sort in memory:
 //   - tenant_assignee_updated_keyset: the agent "Minhas" tab
 //     (GET /v1/conversations?assigned_to=me) — filter + the updated_at keyset sort.
@@ -19,7 +19,7 @@ import (
 // Idempotent: re-creating an identical index is a no-op.
 func init() {
 	Register(Migration{
-		Version: 28,
+		Version: 24,
 		Name:    "conversations_list_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			_, err := db.Collection("conversations").Indexes().CreateMany(ctx, []mongo.IndexModel{

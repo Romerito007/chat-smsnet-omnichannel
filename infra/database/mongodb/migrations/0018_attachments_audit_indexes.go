@@ -8,12 +8,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0020 adds the final MVP indexes: attachment lookups (by conversation and by
+// 0018 adds the final MVP indexes: attachment lookups (by conversation and by
 // message) and an audit-log index by action so the audit.view query can filter
 // by action prefix efficiently. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 20,
+		Version: 18,
 		Name:    "attachments_audit_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			if _, err := db.Collection("attachments").Indexes().CreateMany(ctx, []mongo.IndexModel{

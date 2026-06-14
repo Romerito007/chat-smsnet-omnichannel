@@ -8,12 +8,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0029 adds indexes for the new isp_profiles collection (multiple ISP profiles
+// 0025 adds indexes for the new isp_profiles collection (multiple ISP profiles
 // per tenant). The partial-unique index guarantees at most one default profile
 // per tenant at the database level. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 29,
+		Version: 25,
 		Name:    "isp_profiles_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			_, err := db.Collection("isp_profiles").Indexes().CreateMany(ctx, []mongo.IndexModel{

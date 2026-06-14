@@ -8,12 +8,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0019 adds indexes for the privacy (LGPD) domain: export-request lookups, the
+// 0017 adds indexes for the privacy (LGPD) domain: export-request lookups, the
 // retention policy (one per tenant) and the legal-hold lookup used to exempt
 // contacts from anonymization/retention. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 19,
+		Version: 17,
 		Name:    "privacy_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			// privacy_exports: tenant keyset listing + per-contact lookup.

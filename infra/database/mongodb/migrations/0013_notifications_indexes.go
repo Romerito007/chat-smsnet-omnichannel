@@ -8,10 +8,10 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0015 adds indexes for notifications and preferences. Idempotent.
+// 0013 adds indexes for notifications and preferences. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 15,
+		Version: 13,
 		Name:    "notifications_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			if _, err := db.Collection("notifications").Indexes().CreateMany(ctx, []mongo.IndexModel{

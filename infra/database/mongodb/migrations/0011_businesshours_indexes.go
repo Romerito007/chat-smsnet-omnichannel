@@ -8,10 +8,10 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0013 adds indexes for holidays. Idempotent.
+// 0011 adds indexes for holidays. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 13,
+		Version: 11,
 		Name:    "businesshours_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			if _, err := db.Collection("holidays").Indexes().CreateMany(ctx, []mongo.IndexModel{

@@ -8,12 +8,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0021 adds indexes for the account-lifecycle tokens: email verification,
+// 0019 adds indexes for the account-lifecycle tokens: email verification,
 // password reset and invitations. Each has a unique token hash and a TTL on the
 // expiry so spent/expired records are reaped automatically. Idempotent.
 func init() {
 	Register(Migration{
-		Version: 21,
+		Version: 19,
 		Name:    "account_tokens_indexes",
 		Up: func(ctx context.Context, db *mongo.Database) error {
 			hashTTL := func(coll string, extra ...mongo.IndexModel) error {
