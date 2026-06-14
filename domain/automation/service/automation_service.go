@@ -132,9 +132,10 @@ func (s *Service) StartConversationAutomation(ctx context.Context, conversationI
 		CallbackURL:    s.callbackBaseURL + "/v1/automation/callbacks/" + tenantID,
 	}
 	// Let the external flow route off-hours conversations: pass whether the
-	// sector is within business hours. We never send an automatic message here.
-	if conv.SectorID != "" {
-		if within, herr := s.businessHours.IsWithinBusinessHours(ctx, conv.SectorID, now); herr == nil {
+	// conversation's channel is within business hours. We never send an automatic
+	// message here.
+	if conv.ChannelID != "" {
+		if within, herr := s.businessHours.IsWithinBusinessHours(ctx, conv.ChannelID, now); herr == nil {
 			input.Metadata = map[string]any{"within_business_hours": within}
 		}
 	}

@@ -1,16 +1,19 @@
 // Package entity holds the businesshours domain entities: the weekly schedule
-// (parsed from a sector's free-form business_hours document) and holidays.
+// (parsed from a channel's free-form business_hours document) and holidays.
 package entity
 
 import (
 	"encoding/json"
+	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
 // Interval is an open period within a day, expressed in minutes from midnight in
-// the sector's local timezone (e.g. 09:00 → 540).
+// the channel's local timezone (e.g. 09:00 → 540). Intervals never cross midnight
+// (EndMin > StartMin); model an overnight shift as two days.
 type Interval struct {
 	StartMin int
 	EndMin   int
@@ -21,33 +24,36 @@ func (i Interval) Contains(m int) bool {
 	return m >= i.StartMin && m < i.EndMin
 }
 
-// Schedule is a sector's weekly business hours plus its timezone. Configured is
-// false when the sector has no business hours set, in which case it is treated
-// as always open (no restriction).
+// Schedule is a channel's weekly business hours plus its timezone. Configured is
+// false when the channel has no business hours set, in which case it is treated
+// as always open (24/7, no restriction).
 type Schedule struct {
 	Timezone   string
 	Weekly     map[time.Weekday][]Interval
 	Configured bool
 }
 
-// weekdayNames maps the canonical lowercase day names to time.Weekday.
-var weekdayNames = map[string]time.Weekday{
-	"sunday":    time.Sunday,
-	"monday":    time.Monday,
-	"tuesday":   time.Tuesday,
-	"wednesday": time.Wednesday,
-	"thursday":  time.Thursday,
-	"friday":    time.Friday,
-	"saturday":  time.Saturday,
+// rawSchedule is the JSON shape of a channel's business_hours document:
+//
+//	{
+//	  "timezone": "America/Sao_Paulo",
+//	  "weekly": [
+//	    { "day": 1, "intervals": [ {"start":"08:00","end":"12:00"}, {"start":"13:00","end":"18:00"} ] },
+//	    { "day": 0, "intervals": [] }
+//	  ]
+//	}
+//
+// day is 0=Sunday..6=Saturday; a day with no intervals (or absent) is closed.
+// Parsing goes through JSON so the source map can come from any decoder (the Mongo
+// driver decodes nested documents/arrays as its own named types).
+type rawSchedule struct {
+	Timezone string   `json:"timezone"`
+	Weekly   []rawDay `json:"weekly"`
 }
 
-// rawSchedule is the JSON shape of a sector's business_hours document. Parsing
-// goes through JSON so the source map can come from any decoder (the Mongo
-// driver decodes nested documents/arrays as its own named types, not plain
-// map[string]any/[]any).
-type rawSchedule struct {
-	Timezone string                   `json:"timezone"`
-	Weekly   map[string][]rawInterval `json:"weekly"`
+type rawDay struct {
+	Day       int           `json:"day"`
+	Intervals []rawInterval `json:"intervals"`
 }
 
 type rawInterval struct {
@@ -55,39 +61,25 @@ type rawInterval struct {
 	End   string `json:"end"`
 }
 
-// ParseSchedule reads a sector's free-form business_hours document into a
-// Schedule. The expected shape is:
-//
-//	{
-//	  "timezone": "America/Sao_Paulo",
-//	  "weekly": { "monday": [{"start":"09:00","end":"18:00"}], ... }
-//	}
-//
-// Missing/blank timezone defaults to UTC. An empty document yields an
-// unconfigured schedule (always open).
+// ParseSchedule reads a channel's free-form business_hours document into a
+// Schedule, leniently (invalid days/intervals are skipped). Missing/blank
+// timezone defaults to UTC. An empty/invalid document yields an unconfigured
+// schedule (always open). Use ValidateSchedule for the write path.
 func ParseSchedule(doc map[string]any) Schedule {
 	s := Schedule{Timezone: "UTC", Weekly: map[time.Weekday][]Interval{}}
-	if len(doc) == 0 {
+	raw, ok := decodeRaw(doc)
+	if !ok {
 		return s
 	}
-	b, err := json.Marshal(doc)
-	if err != nil {
-		return s
+	if tz := strings.TrimSpace(raw.Timezone); tz != "" {
+		s.Timezone = tz
 	}
-	var raw rawSchedule
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return s
-	}
-	if strings.TrimSpace(raw.Timezone) != "" {
-		s.Timezone = strings.TrimSpace(raw.Timezone)
-	}
-	for day, intervals := range raw.Weekly {
-		wd, ok := weekdayNames[strings.ToLower(strings.TrimSpace(day))]
-		if !ok {
+	for _, day := range raw.Weekly {
+		if day.Day < 0 || day.Day > 6 {
 			continue
 		}
 		var out []Interval
-		for _, iv := range intervals {
+		for _, iv := range day.Intervals {
 			start, sok := parseHHMM(iv.Start)
 			end, eok := parseHHMM(iv.End)
 			if !sok || !eok || end <= start {
@@ -96,11 +88,79 @@ func ParseSchedule(doc map[string]any) Schedule {
 			out = append(out, Interval{StartMin: start, EndMin: end})
 		}
 		if len(out) > 0 {
-			s.Weekly[wd] = out
+			s.Weekly[time.Weekday(day.Day)] = out
 			s.Configured = true
 		}
 	}
 	return s
+}
+
+// ValidateSchedule strictly validates a business_hours document for the write
+// path: timezone must be loadable; each day in [0,6]; each interval "HH:MM" with
+// end > start (no overnight crossing); intervals within a day must not overlap. An
+// empty document is valid (means 24/7).
+func ValidateSchedule(doc map[string]any) error {
+	if len(doc) == 0 {
+		return nil
+	}
+	raw, ok := decodeRaw(doc)
+	if !ok {
+		return fmt.Errorf("business_hours: malformed document")
+	}
+	tz := strings.TrimSpace(raw.Timezone)
+	if tz == "" {
+		tz = "UTC"
+	}
+	if _, err := time.LoadLocation(tz); err != nil {
+		return fmt.Errorf("business_hours: unknown timezone %q", tz)
+	}
+	seen := map[int]bool{}
+	for _, day := range raw.Weekly {
+		if day.Day < 0 || day.Day > 6 {
+			return fmt.Errorf("business_hours: day must be 0..6, got %d", day.Day)
+		}
+		if seen[day.Day] {
+			return fmt.Errorf("business_hours: day %d repeated", day.Day)
+		}
+		seen[day.Day] = true
+		ivs := make([]Interval, 0, len(day.Intervals))
+		for _, iv := range day.Intervals {
+			start, sok := parseHHMM(iv.Start)
+			end, eok := parseHHMM(iv.End)
+			if !sok {
+				return fmt.Errorf("business_hours: day %d invalid start %q", day.Day, iv.Start)
+			}
+			if !eok {
+				return fmt.Errorf("business_hours: day %d invalid end %q", day.Day, iv.End)
+			}
+			if end <= start {
+				return fmt.Errorf("business_hours: day %d interval end must be after start (no overnight crossing)", day.Day)
+			}
+			ivs = append(ivs, Interval{StartMin: start, EndMin: end})
+		}
+		sort.Slice(ivs, func(i, j int) bool { return ivs[i].StartMin < ivs[j].StartMin })
+		for i := 1; i < len(ivs); i++ {
+			if ivs[i].StartMin < ivs[i-1].EndMin {
+				return fmt.Errorf("business_hours: day %d intervals overlap", day.Day)
+			}
+		}
+	}
+	return nil
+}
+
+func decodeRaw(doc map[string]any) (rawSchedule, bool) {
+	if len(doc) == 0 {
+		return rawSchedule{}, false
+	}
+	b, err := json.Marshal(doc)
+	if err != nil {
+		return rawSchedule{}, false
+	}
+	var raw rawSchedule
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return rawSchedule{}, false
+	}
+	return raw, true
 }
 
 // IsOpenAt reports whether the schedule is open at the given local time. An

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
+	bhentity "github.com/romerito007/chat-smsnet-omnichannel/domain/businesshours/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
@@ -101,6 +102,9 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 	if authType == "" {
 		authType = entity.AuthToken
 	}
+	if err := bhentity.ValidateSchedule(cmd.BusinessHours); err != nil {
+		return nil, apperror.Validation(err.Error()).WithDetails(map[string]any{"business_hours": err.Error()})
+	}
 	// The API channel signs outbound deliveries with an HMAC secret. When the
 	// company does not supply one, generate it so a signing key always exists;
 	// it is returned once on creation and never again.
@@ -122,6 +126,7 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 		InboundToken:      token,
 		InboundTokenHash:  hashInboundToken(token),
 		DefaultSectorID:   cmd.DefaultSectorID,
+		BusinessHours:     cmd.BusinessHours,
 		Enabled:           true,
 		AutomationEnabled: cmd.AutomationEnabled,
 		CreatedAt:         now,
@@ -189,6 +194,12 @@ func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts
 	}
 	if cmd.DefaultSectorID != nil {
 		conn.DefaultSectorID = *cmd.DefaultSectorID
+	}
+	if cmd.BusinessHours != nil {
+		if err := bhentity.ValidateSchedule(*cmd.BusinessHours); err != nil {
+			return nil, apperror.Validation(err.Error()).WithDetails(map[string]any{"business_hours": err.Error()})
+		}
+		conn.BusinessHours = *cmd.BusinessHours
 	}
 	if cmd.Enabled != nil {
 		conn.Enabled = *cmd.Enabled

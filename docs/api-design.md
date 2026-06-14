@@ -285,7 +285,9 @@ POST   /csat/conversations/{id}/send
 GET    /csat/responses              # agregação/listagem
 POST   /csat/responses              # coleta (link público assinado)
 
-GET/POST/PATCH/DELETE  /business-hours[/{id}]
+GET/POST/PATCH/DELETE  /holidays[/{id}]
+GET    /channels/{id}/business-status   # aberto/fechado agora (?at= opcional)
+# horário do channel: campo business_hours em PATCH /channels/{id}
 ```
 
 ### webhooks / notifications

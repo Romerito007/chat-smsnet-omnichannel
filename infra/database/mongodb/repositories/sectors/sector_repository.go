@@ -42,11 +42,10 @@ func (r *Repository) Update(ctx context.Context, s *entity.Sector) error {
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": s.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
-			"name":           s.Name,
-			"description":    s.Description,
-			"enabled":        s.Enabled,
-			"business_hours": s.BusinessHours,
-			"updated_at":     s.UpdatedAt,
+			"name":        s.Name,
+			"description": s.Description,
+			"enabled":     s.Enabled,
+			"updated_at":  s.UpdatedAt,
 		}},
 	)
 	if err != nil {
@@ -114,10 +113,9 @@ func (r *Repository) List(ctx context.Context, page shared.PageRequest) ([]*enti
 
 func toModel(s *entity.Sector) models.Sector {
 	m := models.Sector{
-		Name:          s.Name,
-		Description:   s.Description,
-		Enabled:       s.Enabled,
-		BusinessHours: s.BusinessHours,
+		Name:        s.Name,
+		Description: s.Description,
+		Enabled:     s.Enabled,
 	}
 	m.ID = s.ID
 	m.TenantID = s.TenantID
@@ -128,14 +126,13 @@ func toModel(s *entity.Sector) models.Sector {
 
 func toEntity(m *models.Sector) *entity.Sector {
 	return &entity.Sector{
-		ID:            m.ID,
-		TenantID:      m.TenantID,
-		Name:          m.Name,
-		Description:   m.Description,
-		Enabled:       m.Enabled,
-		BusinessHours: m.BusinessHours,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
+		ID:          m.ID,
+		TenantID:    m.TenantID,
+		Name:        m.Name,
+		Description: m.Description,
+		Enabled:     m.Enabled,
+		CreatedAt:   m.CreatedAt,
+		UpdatedAt:   m.UpdatedAt,
 	}
 }
 

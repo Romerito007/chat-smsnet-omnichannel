@@ -76,7 +76,8 @@ audit.view          privacy.manage
 | Funcionalidade (rota) | Permissão exigida |
 |---|---|
 | Setores & filas (`/sectors`, `/queues`) | `sector.manage` / `queue.manage` |
-| **Horário/feriados** (`/holidays`, `/sectors/{id}/business-status`) | `sector.manage` |
+| **Feriados** (`/holidays`) | `sector.manage` |
+| **Horário do channel** (`/channels/{id}/business-status`, `business_hours` em `PATCH /channels/{id}`) | `channel.manage` |
 | **Etiquetas, respostas prontas, motivos** (`/tags`, `/canned-responses`, `/close-reasons`) | ler=`conversation.read`, escrever=`sector.manage` |
 | Aplicar tag em conversa (`/conversations/{id}/tags`) | `conversation.read` |
 | Políticas de SLA (`/sla/policies`) / SLA em risco (`/sla/at-risk`) | escrever=`sector.manage`, ler=`conversation.read` |

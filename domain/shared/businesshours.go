@@ -5,13 +5,13 @@ import (
 	"time"
 )
 
-// BusinessHoursChecker reports whether a sector is within its business hours at a
-// given instant, considering the sector's timezone and holidays. It is
+// BusinessHoursChecker reports whether a channel is within its business hours at a
+// given instant, considering the channel's timezone and holidays. It is
 // implemented by the businesshours domain and consulted by routing/automation;
 // the default no-op treats everything as always open so the check never blocks
 // when unwired.
 type BusinessHoursChecker interface {
-	IsWithinBusinessHours(ctx context.Context, sectorID string, at time.Time) (bool, error)
+	IsWithinBusinessHours(ctx context.Context, channelID string, at time.Time) (bool, error)
 }
 
 // NoopBusinessHoursChecker always reports "open".
@@ -22,17 +22,17 @@ func (NoopBusinessHoursChecker) IsWithinBusinessHours(context.Context, string, t
 	return true, nil
 }
 
-// BusinessClock does business-time arithmetic for a sector, honoring its
+// BusinessClock does business-time arithmetic for a channel, honoring its
 // timezone, weekly schedule and holidays. It is implemented by the businesshours
 // domain and consulted by the SLA domain to compute due dates "em horário útil".
 // The default no-op treats time as 24/7 (wall-clock).
 type BusinessClock interface {
 	// AddBusinessDuration advances `from` by d of open business time, returning
 	// the resulting instant. With no business hours configured it is from+d.
-	AddBusinessDuration(ctx context.Context, sectorID string, from time.Time, d time.Duration) (time.Time, error)
+	AddBusinessDuration(ctx context.Context, channelID string, from time.Time, d time.Duration) (time.Time, error)
 	// BusinessDurationBetween returns the amount of open business time in
 	// [from, to]. With no business hours configured it is to-from.
-	BusinessDurationBetween(ctx context.Context, sectorID string, from, to time.Time) (time.Duration, error)
+	BusinessDurationBetween(ctx context.Context, channelID string, from, to time.Time) (time.Duration, error)
 }
 
 // NoopBusinessClock treats all time as business time (wall-clock 24/7).

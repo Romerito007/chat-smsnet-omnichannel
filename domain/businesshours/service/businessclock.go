@@ -13,20 +13,20 @@ import (
 // sector that is never open) can never loop forever.
 const maxDaysWalk = 4000
 
-// resolved bundles everything needed to reason about a sector's open time.
+// resolved bundles everything needed to reason about a channel's open time.
 type resolved struct {
-	sched    entity.Schedule
-	loc      *time.Location
-	holidays []*entity.Holiday
-	sectorID string
+	sched     entity.Schedule
+	loc       *time.Location
+	holidays  []*entity.Holiday
+	channelID string
 }
 
-func (s *BusinessHoursService) resolve(ctx context.Context, sectorID string) (resolved, error) {
-	sector, err := s.sectors.FindByID(ctx, sectorID)
+func (s *BusinessHoursService) resolve(ctx context.Context, channelID string) (resolved, error) {
+	conn, err := s.channels.FindByID(ctx, channelID)
 	if err != nil {
 		return resolved{}, err
 	}
-	sched := entity.ParseSchedule(sector.BusinessHours)
+	sched := entity.ParseSchedule(conn.BusinessHours)
 	loc, lerr := time.LoadLocation(sched.Timezone)
 	if lerr != nil {
 		loc = time.UTC
@@ -36,12 +36,12 @@ func (s *BusinessHoursService) resolve(ctx context.Context, sectorID string) (re
 	if err != nil {
 		return resolved{}, err
 	}
-	return resolved{sched: sched, loc: loc, holidays: holidays, sectorID: sectorID}, nil
+	return resolved{sched: sched, loc: loc, holidays: holidays, channelID: channelID}, nil
 }
 
 func (r resolved) isHoliday(localDay time.Time) bool {
 	for _, h := range r.holidays {
-		if h.AppliesTo(r.sectorID) && h.FallsOn(localDay) {
+		if h.AppliesTo(r.channelID) && h.FallsOn(localDay) {
 			return true
 		}
 	}
@@ -63,14 +63,14 @@ func (r resolved) dayIntervals(localDay time.Time) [][2]time.Time {
 }
 
 // BusinessDurationBetween returns the open business time within [from, to].
-func (s *BusinessHoursService) BusinessDurationBetween(ctx context.Context, sectorID string, from, to time.Time) (time.Duration, error) {
+func (s *BusinessHoursService) BusinessDurationBetween(ctx context.Context, channelID string, from, to time.Time) (time.Duration, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return 0, err
 	}
 	if !to.After(from) {
 		return 0, nil
 	}
-	r, err := s.resolve(ctx, sectorID)
+	r, err := s.resolve(ctx, channelID)
 	if err != nil {
 		return 0, err
 	}
@@ -98,14 +98,14 @@ func (s *BusinessHoursService) BusinessDurationBetween(ctx context.Context, sect
 }
 
 // AddBusinessDuration advances `from` by d of open business time.
-func (s *BusinessHoursService) AddBusinessDuration(ctx context.Context, sectorID string, from time.Time, d time.Duration) (time.Time, error) {
+func (s *BusinessHoursService) AddBusinessDuration(ctx context.Context, channelID string, from time.Time, d time.Duration) (time.Time, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return time.Time{}, err
 	}
 	if d <= 0 {
 		return from, nil
 	}
-	r, err := s.resolve(ctx, sectorID)
+	r, err := s.resolve(ctx, channelID)
 	if err != nil {
 		return time.Time{}, err
 	}

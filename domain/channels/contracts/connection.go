@@ -10,6 +10,7 @@ type CreateConnection struct {
 	AuthType          chentity.AuthType
 	Secret            string
 	DefaultSectorID   string
+	BusinessHours     map[string]any
 	AutomationEnabled bool
 }
 
@@ -21,6 +22,7 @@ type UpdateConnection struct {
 	AuthType          *chentity.AuthType
 	Secret            *string
 	DefaultSectorID   *string
+	BusinessHours     *map[string]any
 	Enabled           *bool
 	AutomationEnabled *bool
 }

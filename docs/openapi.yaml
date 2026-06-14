@@ -313,15 +313,67 @@ components:
                 key:
                     type: string
             type: object
+        BusinessHours:
+            description: A channel's weekly business hours. Lives on the ChannelConnection (each connection of the same type can have its own). An empty object means the channel is always open.
+            properties:
+                timezone:
+                    description: IANA timezone the schedule is evaluated in (e.g. "America/Sao_Paulo"). Defaults to UTC. "Open now?" is resolved in this timezone, not the server's.
+                    type: string
+                weekly:
+                    description: Per-weekday open intervals. An empty/absent document means always open (24/7).
+                    items:
+                        $ref: '#/components/schemas/BusinessHoursDay'
+                    type: array
+            type: object
+        BusinessHoursDay:
+            properties:
+                day:
+                    description: Weekday, 0=Sunday..6=Saturday. A day absent (or with no intervals) is closed.
+                    type: integer
+                intervals:
+                    description: Open intervals for the day, e.g. a morning and an afternoon window split by lunch. Must not overlap.
+                    items:
+                        $ref: '#/components/schemas/BusinessHoursInterval'
+                    type: array
+            required:
+                - day
+            type: object
+        BusinessHoursInterval:
+            properties:
+                end:
+                    description: Local closing time "HH:MM" (exclusive). Must be after start — overnight intervals are not supported; model an overnight shift as two separate days.
+                    type: string
+                start:
+                    description: Local opening time "HH:MM" (inclusive).
+                    type: string
+            required:
+                - start
+                - end
+            type: object
         BusinessStatus:
             properties:
-                next_change_at:
+                channel_id:
+                    type: string
+                holiday_name:
+                    type: string
+                local_time:
                     format: date-time
                     type: string
                 open:
                     type: boolean
                 reason:
+                    enum:
+                        - open
+                        - outside_hours
+                        - holiday
+                        - unconfigured
                     type: string
+                timezone:
+                    type: string
+                today_intervals:
+                    items:
+                        type: string
+                    type: array
             type: object
         CSATResponse:
             properties:
@@ -416,6 +468,8 @@ components:
                     type: boolean
                 base_url:
                     type: string
+                business_hours:
+                    $ref: '#/components/schemas/BusinessHours'
                 created_at:
                     format: date-time
                     type: string
@@ -449,6 +503,8 @@ components:
                     type: boolean
                 base_url:
                     type: string
+                business_hours:
+                    $ref: '#/components/schemas/BusinessHours'
                 created_at:
                     format: date-time
                     type: string
@@ -1013,6 +1069,8 @@ components:
                     type: boolean
                 base_url:
                     type: string
+                business_hours:
+                    $ref: '#/components/schemas/BusinessHours'
                 default_sector_id:
                     type: string
                 name:
@@ -1263,9 +1321,6 @@ components:
             type: object
         CreateSectorRequest:
             properties:
-                business_hours:
-                    additionalProperties: true
-                    type: object
                 description:
                     type: string
                 enabled:
@@ -2542,9 +2597,6 @@ components:
             type: object
         Sector:
             properties:
-                business_hours:
-                    additionalProperties: true
-                    type: object
                 created_at:
                     format: date-time
                     type: string
@@ -2802,6 +2854,8 @@ components:
                     type: boolean
                 base_url:
                     type: string
+                business_hours:
+                    $ref: '#/components/schemas/BusinessHours'
                 default_sector_id:
                     type: string
                 enabled:
@@ -3051,9 +3105,6 @@ components:
             type: object
         UpdateSectorRequest:
             properties:
-                business_hours:
-                    additionalProperties: true
-                    type: object
                 description:
                     type: string
                 enabled:
@@ -4775,6 +4826,42 @@ paths:
             summary: Update a channel connection
             tags:
                 - channels
+    /v1/channels/{id}/business-status:
+        get:
+            operationId: getChannelsByIdBusinessStatus
+            parameters:
+                - description: channel connection id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional RFC3339 instant to evaluate instead of now (preview/testing).
+                  in: query
+                  name: at
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BusinessStatus'
+                    description: Business status
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Channel open/closed status
+            tags:
+                - businesshours
     /v1/channels/{id}/rotate-inbound-token:
         post:
             operationId: postChannelsByIdRotateInboundToken
@@ -9151,36 +9238,6 @@ paths:
             summary: Update sector
             tags:
                 - sectors
-    /v1/sectors/{id}/business-status:
-        get:
-            operationId: getSectorsByIdBusinessStatus
-            parameters:
-                - description: sector id
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/BusinessStatus'
-                    description: Business status
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: Sector open/closed status
-            tags:
-                - businesshours
     /v1/sla/at-risk:
         get:
             operationId: getSlaAtRisk
@@ -10121,7 +10178,7 @@ tags:
       name: mcp
     - description: Tags, canned responses and close reasons.
       name: conversationtools
-    - description: Holidays and sector business status.
+    - description: Holidays and channel business status.
       name: businesshours
     - description: SLA policies and tracking.
       name: sla

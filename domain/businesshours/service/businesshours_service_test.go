@@ -8,27 +8,33 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/businesshours/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/businesshours/entity"
-	sectorentity "github.com/romerito007/chat-smsnet-omnichannel/domain/sectors/entity"
+	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
 // ── fakes ────────────────────────────────────────────────────────────────────
 
-type fakeSectorRepo struct {
-	sectors map[string]*sectorentity.Sector
+type fakeChannelRepo struct {
+	conns map[string]*chentity.ChannelConnection
 }
 
-func (r *fakeSectorRepo) Create(context.Context, *sectorentity.Sector) error { return nil }
-func (r *fakeSectorRepo) Update(context.Context, *sectorentity.Sector) error { return nil }
-func (r *fakeSectorRepo) Delete(context.Context, string) error               { return nil }
-func (r *fakeSectorRepo) FindByID(_ context.Context, id string) (*sectorentity.Sector, error) {
-	if s, ok := r.sectors[id]; ok {
-		return s, nil
+func (r *fakeChannelRepo) Create(context.Context, *chentity.ChannelConnection) error { return nil }
+func (r *fakeChannelRepo) Update(context.Context, *chentity.ChannelConnection) error { return nil }
+func (r *fakeChannelRepo) Delete(context.Context, string) error                      { return nil }
+func (r *fakeChannelRepo) FindByID(_ context.Context, id string) (*chentity.ChannelConnection, error) {
+	if c, ok := r.conns[id]; ok {
+		return c, nil
 	}
 	return nil, apperror.NotFound("nf")
 }
-func (r *fakeSectorRepo) List(context.Context, shared.PageRequest) ([]*sectorentity.Sector, error) {
+func (r *fakeChannelRepo) List(context.Context, shared.PageRequest) ([]*chentity.ChannelConnection, error) {
 	return nil, nil
+}
+func (r *fakeChannelRepo) FindEnabledByType(context.Context, chentity.Type) (*chentity.ChannelConnection, error) {
+	return nil, apperror.NotFound("nf")
+}
+func (r *fakeChannelRepo) FindByInboundTokenHash(context.Context, string) (*chentity.ChannelConnection, error) {
+	return nil, apperror.NotFound("nf")
 }
 
 type fakeHolidayRepo struct{ all []*entity.Holiday }
@@ -46,25 +52,37 @@ func (r *fakeHolidayRepo) ListAll(context.Context) ([]*entity.Holiday, error) { 
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// schedule builds a sector business_hours document with the given timezone and a
-// single mon-fri 09:00-18:00 window.
+// weekdaysDoc builds a channel business_hours document with the given timezone and
+// a single mon-fri 09:00-18:00 window (new list-of-intervals shape, day 1..5).
 func weekdaysDoc(tz string) map[string]any {
-	window := []any{map[string]any{"start": "09:00", "end": "18:00"}}
+	intervals := []any{map[string]any{"start": "09:00", "end": "18:00"}}
+	weekly := make([]any, 0, 5)
+	for day := 1; day <= 5; day++ { // Monday..Friday
+		weekly = append(weekly, map[string]any{"day": day, "intervals": intervals})
+	}
+	return map[string]any{"timezone": tz, "weekly": weekly}
+}
+
+// lunchDoc builds a Monday-only schedule with a lunch break: 09:00-12:00 and
+// 13:00-18:00 (two intervals on the same day).
+func lunchDoc(tz string) map[string]any {
 	return map[string]any{
 		"timezone": tz,
-		"weekly": map[string]any{
-			"monday": window, "tuesday": window, "wednesday": window,
-			"thursday": window, "friday": window,
+		"weekly": []any{
+			map[string]any{"day": 1, "intervals": []any{
+				map[string]any{"start": "09:00", "end": "12:00"},
+				map[string]any{"start": "13:00", "end": "18:00"},
+			}},
 		},
 	}
 }
 
-func newSvc(sectorDoc map[string]any, holidays ...*entity.Holiday) *BusinessHoursService {
-	sectors := &fakeSectorRepo{sectors: map[string]*sectorentity.Sector{
-		"s1": {ID: "s1", TenantID: "t1", BusinessHours: sectorDoc},
+func newSvc(channelDoc map[string]any, holidays ...*entity.Holiday) *BusinessHoursService {
+	channels := &fakeChannelRepo{conns: map[string]*chentity.ChannelConnection{
+		"s1": {ID: "s1", TenantID: "t1", BusinessHours: channelDoc},
 		"s2": {ID: "s2", TenantID: "t1", BusinessHours: weekdaysDoc("UTC")},
 	}}
-	return NewBusinessHoursService(sectors, &fakeHolidayRepo{all: holidays}, nil)
+	return NewBusinessHoursService(channels, &fakeHolidayRepo{all: holidays}, nil)
 }
 
 func ctxT() context.Context { return shared.WithTenant(context.Background(), "t1") }
@@ -105,6 +123,31 @@ func TestStatus_InsideAndOutsideHours(t *testing.T) {
 	}
 }
 
+func TestStatus_LunchBreakClosed(t *testing.T) {
+	svc := newSvc(lunchDoc("UTC"))
+	// 2025-01-06 is a Monday with 09:00-12:00 and 13:00-18:00 windows.
+	cases := []struct {
+		at   string
+		open bool
+	}{
+		{"2025-01-06T09:30:00Z", true},  // morning window
+		{"2025-01-06T12:00:00Z", false}, // start of lunch (exclusive end of morning)
+		{"2025-01-06T12:30:00Z", false}, // lunch break
+		{"2025-01-06T13:00:00Z", true},  // afternoon reopen (inclusive)
+		{"2025-01-06T17:00:00Z", true},  // afternoon window
+		{"2025-01-06T18:00:00Z", false}, // close
+	}
+	for _, c := range cases {
+		st, err := svc.Status(ctxT(), "s1", mustUTC(t, c.at))
+		if err != nil {
+			t.Fatalf("status %s: %v", c.at, err)
+		}
+		if st.Open != c.open {
+			t.Errorf("at %s: open=%v, want %v (reason=%s)", c.at, st.Open, c.open, st.Reason)
+		}
+	}
+}
+
 func TestStatus_WeekendClosed(t *testing.T) {
 	svc := newSvc(weekdaysDoc("UTC"))
 	// 2025-01-04 is a Saturday (no window configured).
@@ -118,7 +161,7 @@ func TestStatus_WeekendClosed(t *testing.T) {
 }
 
 func TestStatus_TimezoneRespected(t *testing.T) {
-	// Same UTC instant, different sector timezones → different local wall time.
+	// Same UTC instant, different channel timezones → different local wall time.
 	// 2025-01-06T13:00:00Z is Monday 10:00 in São Paulo (UTC-3): open.
 	spSvc := newSvc(weekdaysDoc("America/Sao_Paulo"))
 	st, err := spSvc.Status(ctxT(), "s1", mustUTC(t, "2025-01-06T13:00:00Z"))
@@ -175,23 +218,6 @@ func TestStatus_RecurringHoliday(t *testing.T) {
 	st, _ = svc2.Status(ctxT(), "s1", mustUTC(t, "2025-12-25T13:00:00Z"))
 	if !st.Open {
 		t.Errorf("expected one-off 2020 holiday NOT to affect 2025")
-	}
-}
-
-func TestStatus_SectorScopedHoliday(t *testing.T) {
-	// Holiday only for sector s2 must not close s1.
-	holiday := &entity.Holiday{
-		ID: "h4", TenantID: "t1", Date: "2025-01-06", Name: "S2 only",
-		Scope: entity.ScopeSectors, SectorIDs: []string{"s2"},
-	}
-	svc := newSvc(weekdaysDoc("UTC"), holiday)
-	st, _ := svc.Status(ctxT(), "s1", mustUTC(t, "2025-01-06T13:00:00Z"))
-	if !st.Open {
-		t.Errorf("sector-scoped holiday for s2 must not close s1")
-	}
-	st, _ = svc.Status(ctxT(), "s2", mustUTC(t, "2025-01-06T13:00:00Z"))
-	if st.Open || st.Reason != contracts.ReasonHoliday {
-		t.Errorf("expected s2 closed by its scoped holiday, got open=%v", st.Open)
 	}
 }
 

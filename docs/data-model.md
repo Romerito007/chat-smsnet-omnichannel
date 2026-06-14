@@ -194,9 +194,13 @@ api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
   `answered_at`.
 
 ### `business_hours` / `holidays`
-- `business_hours`: `tenant_id`🔑, `sector_id?`, `timezone`, `weekly` (faixas
-  por dia).
-- `holidays`: `tenant_id`🔑, `date`, `name`, `recurring` bool.
+- `business_hours`: **não é coleção própria** — vive embutido na
+  `ChannelConnection` (campo `business_hours`). Shape: `timezone` (IANA) +
+  `weekly` (lista de `{day: 0..6, intervals: [{start:"HH:MM", end:"HH:MM"}]}`).
+  Vários intervalos no mesmo dia modelam o almoço; `end > start` (sem cruzar
+  meia-noite). Documento vazio/ausente = aberto 24/7. Avaliado na timezone do
+  channel.
+- `holidays`: `tenant_id`🔑, `date`, `name`, `recurring` bool, escopo.
 
 ---
 

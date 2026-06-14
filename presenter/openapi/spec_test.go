@@ -145,7 +145,7 @@ func TestSpec_CoversEveryDomain(t *testing.T) {
 		{"/v1/copilot/config", "get"}, {"/v1/copilot/suggest-reply", "post"},
 		{"/v1/mcp/servers", "post"}, {"/v1/mcp/servers/{id}/test", "post"},
 		{"/v1/tags", "get"}, {"/v1/canned-responses", "post"}, {"/v1/close-reasons/{id}", "delete"},
-		{"/v1/holidays", "get"}, {"/v1/sectors/{id}/business-status", "get"},
+		{"/v1/holidays", "get"}, {"/v1/channels/{id}/business-status", "get"},
 		{"/v1/sla/policies", "post"}, {"/v1/sla/at-risk", "get"},
 		{"/v1/notifications", "get"}, {"/v1/notifications/read-all", "post"}, {"/v1/notifications/preferences", "patch"},
 		{"/v1/csat/surveys", "post"}, {"/v1/csat/responses", "get"}, {"/v1/csat/responses/{token}", "post"},

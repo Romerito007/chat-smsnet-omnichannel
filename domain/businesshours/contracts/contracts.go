@@ -32,9 +32,9 @@ const (
 	ReasonUnconfigured StatusReason = "unconfigured" // open: no hours set
 )
 
-// BusinessStatus is the result of GET /v1/sectors/{id}/business-status.
+// BusinessStatus is the result of GET /v1/channels/{id}/business-status.
 type BusinessStatus struct {
-	SectorID    string       `json:"sector_id"`
+	ChannelID   string       `json:"channel_id"`
 	Open        bool         `json:"open"`
 	Reason      StatusReason `json:"reason"`
 	Timezone    string       `json:"timezone"`

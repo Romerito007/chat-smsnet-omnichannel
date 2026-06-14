@@ -243,11 +243,17 @@ expõe (REST / WS / jobs).
 - **Expõe:** REST (`/csat/*`); jobs (`csat.send`, `csat.expire`).
 
 ### `businesshours`
-- **Responsabilidade:** horários de funcionamento por tenant/setor, feriados,
-  fuso. Base para roteamento, SLA e mensagens automáticas fora de expediente.
-- **Entidades:** `BusinessHours`, `Holiday`.
-- **Depende de:** `tenant`, `sectors`.
-- **Expõe:** REST (`/business-hours`); consultado por `sla` e `routing`.
+- **Responsabilidade:** horários de funcionamento **por channel** (cada
+  `ChannelConnection` tem o seu, mesmo que várias sejam do mesmo tipo), feriados
+  e fuso. Base para roteamento, SLA e mensagens automáticas fora de expediente.
+  O `business_hours` vive na `ChannelConnection` (não no setor — setor é só
+  roteamento); a janela é avaliada na timezone do próprio channel. Intervalos não
+  cruzam a meia-noite (`end > start`); um turno noturno é modelado como dois dias.
+- **Entidades:** `Schedule` (parseado do `business_hours` do channel), `Holiday`.
+- **Depende de:** `tenant`, `channels`.
+- **Expõe:** REST — `PATCH /v1/channels/{id}` (campo `business_hours`),
+  `GET /v1/channels/{id}/business-status`, `/v1/holidays`; consultado por `sla` e
+  `automation`.
 
 ---
 

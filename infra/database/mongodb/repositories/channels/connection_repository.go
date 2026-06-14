@@ -169,6 +169,7 @@ func (r *ConnectionRepository) toModel(c *entity.ChannelConnection) (models.Chan
 		EncryptedSecret:   enc,
 		InboundTokenHash:  c.InboundTokenHash,
 		DefaultSectorID:   c.DefaultSectorID,
+		BusinessHours:     c.BusinessHours,
 		Enabled:           c.Enabled,
 		AutomationEnabled: c.AutomationEnabled,
 	}
@@ -195,6 +196,7 @@ func (r *ConnectionRepository) toEntity(m *models.ChannelConnection) (*entity.Ch
 		Secret:            secret,
 		InboundTokenHash:  m.InboundTokenHash,
 		DefaultSectorID:   m.DefaultSectorID,
+		BusinessHours:     m.BusinessHours,
 		Enabled:           m.Enabled,
 		AutomationEnabled: m.AutomationEnabled,
 		CreatedAt:         m.CreatedAt,

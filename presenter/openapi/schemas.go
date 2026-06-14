@@ -69,10 +69,10 @@ func schemas() M {
 		"UpdateTenantRequest": object(M{"name": str(), "settings": freeObject()}),
 		"Sector": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "description": str(),
-			"enabled": boolean(), "business_hours": freeObject(), "created_at": dateTime(), "updated_at": dateTime(),
+			"enabled": boolean(), "created_at": dateTime(), "updated_at": dateTime(),
 		}),
-		"CreateSectorRequest": object(M{"name": str(), "description": str(), "enabled": boolean(), "business_hours": freeObject()}, "name"),
-		"UpdateSectorRequest": object(M{"name": str(), "description": str(), "enabled": boolean(), "business_hours": freeObject()}),
+		"CreateSectorRequest": object(M{"name": str(), "description": str(), "enabled": boolean()}, "name"),
+		"UpdateSectorRequest": object(M{"name": str(), "description": str(), "enabled": boolean()}),
 		"Queue": object(M{
 			"id": str(), "tenant_id": str(), "sector_id": str(), "name": str(),
 			"strategy": str(), "max_wait_seconds": integer(), "enabled": boolean(),
@@ -152,25 +152,28 @@ func schemas() M {
 		"Channel": object(M{
 			"id": str(), "tenant_id": str(), "type": str(), "name": str(), "status": str(),
 			"base_url": str(), "auth_type": str(), "has_secret": boolean(), "has_inbound_token": boolean(),
-			"default_sector_id": str(), "enabled": boolean(), "automation_enabled": boolean(),
+			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
+			"enabled": boolean(), "automation_enabled": boolean(),
 			"created_at": dateTime(), "updated_at": dateTime(),
 		}),
 		"ChannelCreated": object(M{
 			"id": str(), "tenant_id": str(), "type": str(), "name": str(), "status": str(),
 			"base_url": str(), "auth_type": str(), "has_secret": boolean(), "has_inbound_token": boolean(),
-			"default_sector_id": str(), "enabled": boolean(), "automation_enabled": boolean(),
+			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
+			"enabled": boolean(), "automation_enabled": boolean(),
 			"created_at": dateTime(), "updated_at": dateTime(),
 			"inbound_token": str(), "outbound_secret": str(),
 		}),
 		"CreateChannelRequest": object(M{
 			"type": str(), "name": str(), "base_url": str(), "outbound_url": str(),
 			"auth_type": str(), "secret": str(), "outbound_secret": str(),
-			"default_sector_id": str(), "automation_enabled": boolean(),
+			"default_sector_id": str(), "business_hours": ref("BusinessHours"), "automation_enabled": boolean(),
 		}, "type"),
 		"UpdateChannelRequest": object(M{
 			"name": str(), "status": str(), "base_url": str(), "outbound_url": str(),
 			"auth_type": str(), "secret": str(), "outbound_secret": str(),
-			"default_sector_id": str(), "enabled": boolean(), "automation_enabled": boolean(),
+			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
+			"enabled": boolean(), "automation_enabled": boolean(),
 		}),
 		"InboundMessageRequest": object(M{
 			"inbound_token": str(), "tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
@@ -548,7 +551,23 @@ func schemas() M {
 		"Holiday":              object(M{"id": str(), "tenant_id": str(), "date": str(), "name": str(), "scope": str(), "sector_ids": arr(str()), "recurring": boolean(), "created_at": dateTime(), "updated_at": dateTime()}),
 		"CreateHolidayRequest": object(M{"date": str(), "name": str(), "sector_ids": arr(str()), "recurring": boolean()}, "date", "name"),
 		"UpdateHolidayRequest": object(M{"date": str(), "name": str(), "sector_ids": arr(str()), "recurring": boolean()}),
-		"BusinessStatus":       object(M{"open": boolean(), "reason": str(), "next_change_at": dateTime()}),
+		"BusinessHoursInterval": object(M{
+			"start": describedStr(`Local opening time "HH:MM" (inclusive).`),
+			"end":   describedStr(`Local closing time "HH:MM" (exclusive). Must be after start — overnight intervals are not supported; model an overnight shift as two separate days.`),
+		}, "start", "end"),
+		"BusinessHoursDay": object(M{
+			"day":       describedInt("Weekday, 0=Sunday..6=Saturday. A day absent (or with no intervals) is closed."),
+			"intervals": describedArr(ref("BusinessHoursInterval"), "Open intervals for the day, e.g. a morning and an afternoon window split by lunch. Must not overlap."),
+		}, "day"),
+		"BusinessHours": withDesc(object(M{
+			"timezone": describedStr(`IANA timezone the schedule is evaluated in (e.g. "America/Sao_Paulo"). Defaults to UTC. "Open now?" is resolved in this timezone, not the server's.`),
+			"weekly":   describedArr(ref("BusinessHoursDay"), "Per-weekday open intervals. An empty/absent document means always open (24/7)."),
+		}), "A channel's weekly business hours. Lives on the ChannelConnection (each connection of the same type can have its own). An empty object means the channel is always open."),
+		"BusinessStatus": object(M{
+			"channel_id": str(), "open": boolean(), "reason": enum("open", "outside_hours", "holiday", "unconfigured"),
+			"timezone": str(), "local_time": dateTime(), "holiday_name": str(),
+			"today_intervals": arr(str()),
+		}),
 
 		// ── sla ────────────────────────────────────────────────────────────────
 		"SLAPolicy": object(M{

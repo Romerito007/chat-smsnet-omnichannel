@@ -7,16 +7,17 @@ import "time"
 // SHA-256 hash (inbound_token_hash), never in plaintext.
 type ChannelConnection struct {
 	Base              `bson:",inline"`
-	Type              string `bson:"type"`
-	Name              string `bson:"name,omitempty"`
-	Status            string `bson:"status"`
-	BaseURL           string `bson:"base_url,omitempty"`
-	AuthType          string `bson:"auth_type,omitempty"`
-	EncryptedSecret   string `bson:"encrypted_secret,omitempty"`
-	InboundTokenHash  string `bson:"inbound_token_hash"`
-	DefaultSectorID   string `bson:"default_sector_id,omitempty"`
-	Enabled           bool   `bson:"enabled"`
-	AutomationEnabled bool   `bson:"automation_enabled"`
+	Type              string         `bson:"type"`
+	Name              string         `bson:"name,omitempty"`
+	Status            string         `bson:"status"`
+	BaseURL           string         `bson:"base_url,omitempty"`
+	AuthType          string         `bson:"auth_type,omitempty"`
+	EncryptedSecret   string         `bson:"encrypted_secret,omitempty"`
+	InboundTokenHash  string         `bson:"inbound_token_hash"`
+	DefaultSectorID   string         `bson:"default_sector_id,omitempty"`
+	BusinessHours     map[string]any `bson:"business_hours,omitempty"`
+	Enabled           bool           `bson:"enabled"`
+	AutomationEnabled bool           `bson:"automation_enabled"`
 }
 
 // OutboundDelivery is the BSON document for an outbound delivery record.

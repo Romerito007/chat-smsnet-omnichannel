@@ -364,7 +364,7 @@ func tags() []any {
 		{"copilot", "AI copilot configuration and inference (agentic tool loop)."},
 		{"mcp", "MCP servers, tool discovery, manual runs and write-action approvals."},
 		{"conversationtools", "Tags, canned responses and close reasons."},
-		{"businesshours", "Holidays and sector business status."},
+		{"businesshours", "Holidays and channel business status."},
 		{"sla", "SLA policies and tracking."},
 		{"notifications", "Operator notifications and preferences."},
 		{"csat", "Satisfaction surveys and responses."},

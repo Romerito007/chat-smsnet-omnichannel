@@ -43,14 +43,13 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateSector) (*enti
 	}
 	now := s.clock.Now()
 	sector := &entity.Sector{
-		ID:            shared.NewID(),
-		TenantID:      tenantID,
-		Name:          name,
-		Description:   strings.TrimSpace(cmd.Description),
-		Enabled:       enabled,
-		BusinessHours: cmd.BusinessHours,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:          shared.NewID(),
+		TenantID:    tenantID,
+		Name:        name,
+		Description: strings.TrimSpace(cmd.Description),
+		Enabled:     enabled,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := s.repo.Create(ctx, sector); err != nil {
 		return nil, err
@@ -79,9 +78,6 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateSec
 	}
 	if cmd.Enabled != nil {
 		sector.Enabled = *cmd.Enabled
-	}
-	if cmd.BusinessHours != nil {
-		sector.BusinessHours = *cmd.BusinessHours
 	}
 	sector.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, sector); err != nil {

@@ -99,10 +99,10 @@ func (s *Service) OnConversationCreated(ctx context.Context, conv *conventity.Co
 		ConversationID:         conv.ID,
 		PolicyID:               policy.ID,
 		SectorID:               conv.SectorID,
-		FirstResponseDueAt:     s.computeDue(ctx, conv.SectorID, start, policy.FirstResponseTargetSec, bizOnly),
-		FirstResponseWarnAt:    s.computeDue(ctx, conv.SectorID, start, pct(policy.FirstResponseTargetSec, warnPct), bizOnly),
-		ResolutionDueAt:        s.computeDue(ctx, conv.SectorID, start, policy.ResolutionTargetSec, bizOnly),
-		ResolutionWarnAt:       s.computeDue(ctx, conv.SectorID, start, pct(policy.ResolutionTargetSec, warnPct), bizOnly),
+		FirstResponseDueAt:     s.computeDue(ctx, conv.ChannelID, start, policy.FirstResponseTargetSec, bizOnly),
+		FirstResponseWarnAt:    s.computeDue(ctx, conv.ChannelID, start, pct(policy.FirstResponseTargetSec, warnPct), bizOnly),
+		ResolutionDueAt:        s.computeDue(ctx, conv.ChannelID, start, policy.ResolutionTargetSec, bizOnly),
+		ResolutionWarnAt:       s.computeDue(ctx, conv.ChannelID, start, pct(policy.ResolutionTargetSec, warnPct), bizOnly),
 		PauseOnWaitingCustomer: policy.PauseOnWaitingCustomer,
 		Status:                 entity.StatusRunning,
 		CreatedAt:              s.clock.Now(),
@@ -285,14 +285,17 @@ func selectPolicy(policies []*entity.SLAPolicy, conv *conventity.Conversation) *
 	return best
 }
 
-func (s *Service) computeDue(ctx context.Context, sectorID string, from time.Time, targetSec int, bizOnly bool) *time.Time {
+func (s *Service) computeDue(ctx context.Context, channelID string, from time.Time, targetSec int, bizOnly bool) *time.Time {
 	if targetSec <= 0 {
 		return nil
 	}
 	d := time.Duration(targetSec) * time.Second
 	var due time.Time
-	if bizOnly && sectorID != "" {
-		t, err := s.bizClock.AddBusinessDuration(ctx, sectorID, from, d)
+	if bizOnly {
+		// Resolve in the channel's business hours. An empty/unknown channel id (e.g.
+		// a manually-created conversation) makes AddBusinessDuration error → fall
+		// back to wall-clock.
+		t, err := s.bizClock.AddBusinessDuration(ctx, channelID, from, d)
 		if err != nil {
 			t = from.Add(d)
 		}

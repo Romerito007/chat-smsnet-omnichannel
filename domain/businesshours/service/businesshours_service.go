@@ -10,47 +10,49 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/businesshours/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/businesshours/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/businesshours/repository"
-	sectorrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/sectors/repository"
+	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
-// BusinessHoursService answers whether a sector is open, considering its
+// BusinessHoursService answers whether a channel is open, considering its
 // timezone, weekly schedule and the tenant's holidays.
 type BusinessHoursService struct {
-	sectors  sectorrepo.SectorRepository
+	channels channelrepo.ConnectionRepository
 	holidays repository.HolidayRepository
 	clock    shared.Clock
 }
 
 // NewBusinessHoursService builds the service.
-func NewBusinessHoursService(sectors sectorrepo.SectorRepository, holidays repository.HolidayRepository, clock shared.Clock) *BusinessHoursService {
+func NewBusinessHoursService(channels channelrepo.ConnectionRepository, holidays repository.HolidayRepository, clock shared.Clock) *BusinessHoursService {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &BusinessHoursService{sectors: sectors, holidays: holidays, clock: clock}
+	return &BusinessHoursService{channels: channels, holidays: holidays, clock: clock}
 }
 
-// IsWithinBusinessHours reports whether the sector is open at the given instant.
+// IsWithinBusinessHours reports whether the channel is open at the given instant.
 // It is the port consulted by routing/automation.
-func (s *BusinessHoursService) IsWithinBusinessHours(ctx context.Context, sectorID string, at time.Time) (bool, error) {
-	status, err := s.Status(ctx, sectorID, at)
+func (s *BusinessHoursService) IsWithinBusinessHours(ctx context.Context, channelID string, at time.Time) (bool, error) {
+	status, err := s.Status(ctx, channelID, at)
 	if err != nil {
 		return false, err
 	}
 	return status.Open, nil
 }
 
-// Status computes the full business status for a sector at an instant.
-func (s *BusinessHoursService) Status(ctx context.Context, sectorID string, at time.Time) (contracts.BusinessStatus, error) {
+// Status computes the full business status for a channel at an instant. "Open
+// now?" is resolved in the CHANNEL's timezone (business_hours.timezone), not the
+// server's.
+func (s *BusinessHoursService) Status(ctx context.Context, channelID string, at time.Time) (contracts.BusinessStatus, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return contracts.BusinessStatus{}, err
 	}
-	sector, err := s.sectors.FindByID(ctx, sectorID)
+	conn, err := s.channels.FindByID(ctx, channelID)
 	if err != nil {
 		return contracts.BusinessStatus{}, err
 	}
 
-	sched := entity.ParseSchedule(sector.BusinessHours)
+	sched := entity.ParseSchedule(conn.BusinessHours)
 	loc, lerr := time.LoadLocation(sched.Timezone)
 	if lerr != nil {
 		loc = time.UTC
@@ -59,19 +61,21 @@ func (s *BusinessHoursService) Status(ctx context.Context, sectorID string, at t
 	local := at.In(loc)
 
 	base := contracts.BusinessStatus{
-		SectorID:       sectorID,
+		ChannelID:      channelID,
 		Timezone:       sched.Timezone,
 		LocalTime:      local,
 		TodayIntervals: formatIntervals(sched.IntervalsOn(local.Weekday())),
 	}
 
-	// A holiday closes the whole day regardless of the weekly schedule.
+	// A holiday closes the whole day regardless of the weekly schedule. Phase 2
+	// honors global (all-channels) holidays; channel-scoped holidays arrive in
+	// Phase 3.
 	holidays, err := s.holidays.ListAll(ctx)
 	if err != nil {
 		return contracts.BusinessStatus{}, err
 	}
 	for _, h := range holidays {
-		if h.AppliesTo(sectorID) && h.FallsOn(local) {
+		if h.AppliesTo(channelID) && h.FallsOn(local) {
 			base.Open = false
 			base.Reason = contracts.ReasonHoliday
 			base.HolidayName = h.Name
@@ -94,8 +98,8 @@ func (s *BusinessHoursService) Status(ctx context.Context, sectorID string, at t
 }
 
 // StatusNow computes the status at the current instant.
-func (s *BusinessHoursService) StatusNow(ctx context.Context, sectorID string) (contracts.BusinessStatus, error) {
-	return s.Status(ctx, sectorID, s.clock.Now())
+func (s *BusinessHoursService) StatusNow(ctx context.Context, channelID string) (contracts.BusinessStatus, error) {
+	return s.Status(ctx, channelID, s.clock.Now())
 }
 
 func formatIntervals(intervals []entity.Interval) []string {

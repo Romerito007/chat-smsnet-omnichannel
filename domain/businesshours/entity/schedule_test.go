@@ -14,11 +14,11 @@ type namedSlice []any
 func TestParseSchedule_HandlesNamedNestedTypes(t *testing.T) {
 	doc := map[string]any{
 		"timezone": "America/Sao_Paulo",
-		"weekly": namedMap{
-			"monday": namedSlice{
+		"weekly": namedSlice{
+			namedMap{"day": 1, "intervals": namedSlice{
 				namedMap{"start": "09:00", "end": "12:00"},
 				namedMap{"start": "13:00", "end": "18:00"},
-			},
+			}},
 		},
 	}
 	s := ParseSchedule(doc)
@@ -36,7 +36,10 @@ func TestParseSchedule_HandlesNamedNestedTypes(t *testing.T) {
 func TestSchedule_IsOpenAt_Boundaries(t *testing.T) {
 	doc := map[string]any{
 		"timezone": "UTC",
-		"weekly":   map[string]any{"monday": []any{map[string]any{"start": "09:00", "end": "18:00"}}},
+		"weekly": []any{map[string]any{
+			"day":       1,
+			"intervals": []any{map[string]any{"start": "09:00", "end": "18:00"}},
+		}},
 	}
 	s := ParseSchedule(doc)
 	// 2025-01-06 is Monday.
@@ -68,5 +71,69 @@ func TestParseSchedule_EmptyIsUnconfigured(t *testing.T) {
 	}
 	if !s.IsOpenAt(time.Now()) {
 		t.Errorf("unconfigured schedule should always be open")
+	}
+}
+
+func TestValidateSchedule(t *testing.T) {
+	day := func(d int, ivs ...map[string]any) map[string]any {
+		anyIvs := make([]any, len(ivs))
+		for i, iv := range ivs {
+			anyIvs[i] = iv
+		}
+		return map[string]any{"day": d, "intervals": anyIvs}
+	}
+	iv := func(s, e string) map[string]any { return map[string]any{"start": s, "end": e} }
+
+	cases := []struct {
+		name    string
+		doc     map[string]any
+		wantErr bool
+	}{
+		{"empty is valid (24/7)", nil, false},
+		{
+			"valid mon with lunch",
+			map[string]any{"timezone": "America/Sao_Paulo", "weekly": []any{
+				day(1, iv("09:00", "12:00"), iv("13:00", "18:00")),
+			}},
+			false,
+		},
+		{
+			"unknown timezone",
+			map[string]any{"timezone": "Mars/Phobos", "weekly": []any{day(1, iv("09:00", "18:00"))}},
+			true,
+		},
+		{
+			"day out of range",
+			map[string]any{"weekly": []any{day(7, iv("09:00", "18:00"))}},
+			true,
+		},
+		{
+			"repeated day",
+			map[string]any{"weekly": []any{day(1, iv("09:00", "12:00")), day(1, iv("13:00", "18:00"))}},
+			true,
+		},
+		{
+			"invalid start",
+			map[string]any{"weekly": []any{day(1, iv("9h", "18:00"))}},
+			true,
+		},
+		{
+			"end before start (overnight not supported)",
+			map[string]any{"weekly": []any{day(1, iv("22:00", "02:00"))}},
+			true,
+		},
+		{
+			"overlapping intervals",
+			map[string]any{"weekly": []any{day(1, iv("09:00", "13:00"), iv("12:00", "18:00"))}},
+			true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := ValidateSchedule(c.doc)
+			if (err != nil) != c.wantErr {
+				t.Errorf("ValidateSchedule err=%v, wantErr=%v", err, c.wantErr)
+			}
+		})
 	}
 }

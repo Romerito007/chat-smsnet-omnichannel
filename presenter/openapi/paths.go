@@ -54,8 +54,9 @@ func registerOrg(p *paths) {
 		params:    []M{queryParam("sector_id", "Only agents assignable to this sector (matches what assign accepts).")},
 		responses: M{"200": jsonResp("Assignable agents", dataArr(ref("AssignableAgent")))}}))
 
-	p.add("GET", "/v1/sectors/{id}/business-status", op(opConfig{tag: "businesshours", summary: "Sector open/closed status",
-		params: []M{pathParam("id", "sector id")}, responses: M{"200": jsonResp("Business status", ref("BusinessStatus"))}}))
+	p.add("GET", "/v1/channels/{id}/business-status", op(opConfig{tag: "businesshours", summary: "Channel open/closed status",
+		params:    []M{pathParam("id", "channel connection id"), queryParam("at", "Optional RFC3339 instant to evaluate instead of now (preview/testing).")},
+		responses: M{"200": jsonResp("Business status", ref("BusinessStatus"))}}))
 	p.crud("/v1/holidays", "businesshours", "holiday", ref("Holiday"), ref("CreateHolidayRequest"), ref("UpdateHolidayRequest"))
 }
 

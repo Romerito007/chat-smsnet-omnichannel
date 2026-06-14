@@ -88,7 +88,7 @@ func (c *Controller) Delete(w http.ResponseWriter, r *http.Request) {
 
 // ── business status ──────────────────────────────────────────────────────────
 
-// BusinessStatus handles GET /v1/sectors/{id}/business-status. An optional ?at=
+// BusinessStatus handles GET /v1/channels/{id}/business-status. An optional ?at=
 // RFC3339 instant overrides "now" (useful for previews/testing).
 func (c *Controller) BusinessStatus(w http.ResponseWriter, r *http.Request) {
 	at := time.Now()
