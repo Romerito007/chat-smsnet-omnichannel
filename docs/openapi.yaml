@@ -2604,6 +2604,14 @@ components:
             required:
                 - inbound_token
             type: object
+        RotatedOutboundSecret:
+            properties:
+                outbound_secret:
+                    description: The new outbound HMAC secret, revealed once. The previous secret stops working — the integrator must verify our outbound signature with this value, and the channel's managed webhook now signs with it.
+                    type: string
+            required:
+                - outbound_secret
+            type: object
         RoutingRunRequest:
             properties:
                 conversation_id:
@@ -4954,6 +4962,38 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Rotate the channel integration token (revokes the prior one; returned once)
+            tags:
+                - channels
+    /v1/channels/{id}/rotate-outbound-secret:
+        post:
+            operationId: postChannelsByIdRotateOutboundSecret
+            parameters:
+                - description: channel id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RotatedOutboundSecret'
+                    description: Rotated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Rotate the channel outbound HMAC secret (revokes the prior one; returned once). The integrator must switch to the new secret; the channel's managed webhook is re-synced to sign with it.
             tags:
                 - channels
     /v1/channels/{id}/test:

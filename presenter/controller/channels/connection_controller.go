@@ -99,6 +99,19 @@ func (c *ConnectionController) RotateInboundToken(w http.ResponseWriter, r *http
 	middleware.WriteJSON(w, http.StatusOK, dto.NewRotatedInboundTokenResponse(conn))
 }
 
+// RotateOutboundSecret handles POST /v1/channels/{id}/rotate-outbound-secret. It
+// issues a fresh outbound HMAC secret (invalidating the previous one) and returns
+// it once; the managed webhook is re-synced to sign with the new secret. The
+// integrator must switch to the new value.
+func (c *ConnectionController) RotateOutboundSecret(w http.ResponseWriter, r *http.Request) {
+	conn, err := c.connections.RotateOutboundSecret(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewRotatedOutboundSecretResponse(conn))
+}
+
 // Test handles POST /v1/channels/{id}/test.
 func (c *ConnectionController) Test(w http.ResponseWriter, r *http.Request) {
 	result, _, err := c.connections.Test(r.Context(), chi.URLParam(r, "id"))

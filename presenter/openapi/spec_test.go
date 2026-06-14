@@ -137,6 +137,7 @@ func TestSpec_CoversEveryDomain(t *testing.T) {
 		{"/v1/conversations/{id}/copilot/approvals/{approvalID}", "post"},
 		{"/v1/channels", "post"}, {"/v1/channels/{id}/test", "post"},
 		{"/v1/channels/{id}/rotate-inbound-token", "post"},
+		{"/v1/channels/{id}/rotate-outbound-secret", "post"},
 		{"/v1/inbound/channel/{channel}/messages", "post"},
 		{"/v1/providerhub/config", "get"}, {"/v1/providerhub/catalog", "get"},
 		{"/v1/providerhub/profiles", "post"}, {"/v1/providerhub/profiles/{id}/default", "post"},

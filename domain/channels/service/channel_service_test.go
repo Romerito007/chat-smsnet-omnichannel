@@ -304,3 +304,42 @@ func TestResolveInbound(t *testing.T) {
 		t.Errorf("disabled: want unauthorized, got %v", err)
 	}
 }
+
+// recordingWebhookManager records the last managed-webhook sync, to assert that a
+// secret rotation re-syncs the channel's managed subscription with the new secret.
+type recordingWebhookManager struct {
+	syncedChannelID string
+	syncedURL       string
+	syncedSecret    string
+}
+
+func (m *recordingWebhookManager) SyncChannelWebhook(_ context.Context, channelID, url, secret string) error {
+	m.syncedChannelID, m.syncedURL, m.syncedSecret = channelID, url, secret
+	return nil
+}
+func (m *recordingWebhookManager) RemoveChannelWebhook(context.Context, string) error { return nil }
+
+func TestRotateOutboundSecret_NewSecretRevealedAndManagedWebhookResynced(t *testing.T) {
+	svc, _, _ := newConnService()
+	wm := &recordingWebhookManager{}
+	svc.SetWebhookManager(wm)
+
+	conn, err := svc.Create(tenantCtx(), chcontracts.CreateConnection{
+		Type: chentity.TypeAPI, Name: "api", BaseURL: "https://x.example/in", Secret: "old-secret",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	rotated, err := svc.RotateOutboundSecret(tenantCtx(), conn.ID)
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if rotated.Secret == "" || rotated.Secret == "old-secret" {
+		t.Fatalf("rotation must produce a new non-empty secret, got %q", rotated.Secret)
+	}
+	// The managed webhook was re-synced with the channel URL and the NEW secret.
+	if wm.syncedChannelID != conn.ID || wm.syncedURL != "https://x.example/in" || wm.syncedSecret != rotated.Secret {
+		t.Errorf("managed webhook not re-synced with the new secret: %+v", wm)
+	}
+}

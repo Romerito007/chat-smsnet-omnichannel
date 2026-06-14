@@ -265,8 +265,9 @@ func schemas() M {
 			}),
 			"metadata": freeObject(),
 		}),
-		"RotatedInboundToken": object(M{"inbound_token": str()}, "inbound_token"),
-		"TestResult":          object(M{"ok": boolean(), "external_message_id": str(), "error": str()}),
+		"RotatedInboundToken":   object(M{"inbound_token": str()}, "inbound_token"),
+		"RotatedOutboundSecret": object(M{"outbound_secret": describedStr("The new outbound HMAC secret, revealed once. The previous secret stops working — the integrator must verify our outbound signature with this value, and the channel's managed webhook now signs with it.")}, "outbound_secret"),
+		"TestResult":            object(M{"ok": boolean(), "external_message_id": str(), "error": str()}),
 
 		// ── automation rules (Chatwoot-style trigger/conditions/actions engine) ──
 		// An AutomationRule reacts to a conversation/message lifecycle event, matches

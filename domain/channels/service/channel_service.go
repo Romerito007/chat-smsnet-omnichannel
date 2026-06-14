@@ -188,6 +188,45 @@ func (s *ConnectionService) RotateInboundToken(ctx context.Context, id string) (
 	return conn, nil
 }
 
+// RotateOutboundSecret issues a fresh outbound HMAC secret for the channel,
+// replacing the previous one. The plaintext is returned once on the entity's
+// Secret field; thereafter only has_secret is shown — symmetric to
+// RotateInboundToken. The managed webhook subscription (if any) is re-synced so it
+// keeps signing its deliveries with the NEW secret automatically.
+//
+// IMPORTANT: rotation INVALIDATES the old secret. Any integrator verifying our
+// outbound signature with the previous secret will start failing until it switches
+// to the new value returned here. This is the intended behavior of a secret
+// rotation. Audited as channel.outbound_secret_rotated.
+func (s *ConnectionService) RotateOutboundSecret(ctx context.Context, id string) (*entity.ChannelConnection, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	conn.Secret = randomToken(32)
+	conn.UpdatedAt = s.clock.Now()
+	if err := s.repo.Update(ctx, conn); err != nil {
+		return nil, err
+	}
+	// Re-sync the managed webhook so it signs with the new secret (the channel owns
+	// that subscription's secret).
+	if err := s.webhooks.SyncChannelWebhook(ctx, conn.ID, conn.BaseURL, conn.Secret); err != nil {
+		return nil, err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		TenantID:     tenantID,
+		Action:       "channel.outbound_secret_rotated",
+		ResourceType: "channel",
+		ResourceID:   conn.ID,
+		Data:         map[string]any{"type": string(conn.Type)},
+	})
+	return conn, nil
+}
+
 // Update applies the non-nil fields of cmd.
 func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts.UpdateConnection) (*entity.ChannelConnection, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {

@@ -181,6 +181,18 @@ func NewRotatedInboundTokenResponse(c *chentity.ChannelConnection) RotatedInboun
 	return RotatedInboundTokenResponse{InboundToken: c.InboundToken}
 }
 
+// RotatedOutboundSecretResponse is returned by POST /v1/channels/{id}/rotate-outbound-secret.
+// It is the only place the freshly issued outbound HMAC secret is revealed; the old
+// secret stops working, so the integrator must switch to this value.
+type RotatedOutboundSecretResponse struct {
+	OutboundSecret string `json:"outbound_secret"`
+}
+
+// NewRotatedOutboundSecretResponse maps the one-time plaintext outbound secret.
+func NewRotatedOutboundSecretResponse(c *chentity.ChannelConnection) RotatedOutboundSecretResponse {
+	return RotatedOutboundSecretResponse{OutboundSecret: c.Secret}
+}
+
 // ── inbound ──────────────────────────────────────────────────────────────────
 
 // AttachmentItem mirrors an attachment on the wire.

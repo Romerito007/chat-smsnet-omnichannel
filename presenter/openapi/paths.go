@@ -180,6 +180,10 @@ func registerChannels(p *paths) {
 		summary:   "Rotate the channel integration token (revokes the prior one; returned once)",
 		params:    idp,
 		responses: M{"200": jsonResp("Rotated", ref("RotatedInboundToken")), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/channels/{id}/rotate-outbound-secret", op(opConfig{tag: "channels",
+		summary:   "Rotate the channel outbound HMAC secret (revokes the prior one; returned once). The integrator must switch to the new secret; the channel's managed webhook is re-synced to sign with it.",
+		params:    idp,
+		responses: M{"200": jsonResp("Rotated", ref("RotatedOutboundSecret")), "404": respRef("Error404")}}))
 
 	// Public inbound endpoints authenticate with the channel integration token via
 	// the X-Inbound-Token header (preferred) or an inbound_token body field — never

@@ -230,6 +230,7 @@ PUT    /presence/me                 # define status (online/away/busy)
 GET/POST/PATCH/DELETE  /channels[/{id}]                    # channel.manage
 POST   /channels/{id}/test                                 # testa entrega outbound
 POST   /channels/{id}/rotate-inbound-token                 # gera novo inbound_token (1x); revoga o anterior
+POST   /channels/{id}/rotate-outbound-secret               # gera novo outbound_secret HMAC (1x); revoga o anterior; ressincroniza o webhook gerenciado
 
 # Borda pública (sem JWT — autenticada pelo inbound_token do canal):
 POST   /inbound/channel/{channel}/messages                 # ingestão de mensagem
@@ -248,9 +249,18 @@ front↔back; o `inbound_token` vale **só** para as rotas públicas de canal.
   hash (SHA-256)** no banco. O **texto em claro aparece uma única vez** no corpo
   do `ChannelCreated` (campos `inbound_token` e, p/ canal `api`,
   `outbound_secret`). Depois disso, leituras expõem apenas `has_inbound_token`.
-- **Rotacionar:** `POST /v1/channels/{id}/rotate-inbound-token` →
+- **Rotacionar inbound:** `POST /v1/channels/{id}/rotate-inbound-token` →
   `{ "inbound_token": "<novo>" }` (mostrado uma vez; o anterior é **revogado**).
   Auditado como `channel.token_rotated`.
+- **Rotacionar outbound (simétrico):** `POST /v1/channels/{id}/rotate-outbound-secret`
+  → `{ "outbound_secret": "<novo>" }` (alta entropia, mostrado **uma única vez**;
+  depois só `has_secret`). Resolve a assimetria de um canal cujo `outbound_secret`
+  não foi copiado na criação. Auditado como `channel.outbound_secret_rotated`.
+  **Efeito colateral (esperado):** o secret antigo **para de valer** — o integrador
+  que valida a **assinatura HMAC de saída** (header `Signature`) precisa passar a
+  usar o **novo** secret, senão a verificação falha. O **webhook gerenciado pelo
+  canal** é **ressincronizado automaticamente** para assinar suas entregas com o
+  secret novo (não precisa de ação manual).
 - **Autenticar inbound:** envie o token no header **`X-Inbound-Token: <token>`**
   (preferido) ou no corpo (`inbound_token`). O backend compara **por hash em
   tempo constante**; token inválido/canal desabilitado → **401**. O **tenant**,
