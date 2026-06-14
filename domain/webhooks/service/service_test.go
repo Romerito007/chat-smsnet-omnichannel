@@ -23,9 +23,25 @@ type fakeSubs struct {
 	byEvent map[string][]*entity.WebhookSubscription
 }
 
-func (r *fakeSubs) Create(context.Context, *entity.WebhookSubscription) error { return nil }
-func (r *fakeSubs) Update(context.Context, *entity.WebhookSubscription) error { return nil }
-func (r *fakeSubs) Delete(context.Context, string) error                      { return nil }
+func (r *fakeSubs) Create(_ context.Context, s *entity.WebhookSubscription) error {
+	if r.byID == nil {
+		r.byID = map[string]*entity.WebhookSubscription{}
+	}
+	cp := *s
+	r.byID[s.ID] = &cp
+	return nil
+}
+func (r *fakeSubs) Update(_ context.Context, s *entity.WebhookSubscription) error {
+	if r.byID != nil {
+		cp := *s
+		r.byID[s.ID] = &cp
+	}
+	return nil
+}
+func (r *fakeSubs) Delete(_ context.Context, id string) error {
+	delete(r.byID, id)
+	return nil
+}
 func (r *fakeSubs) FindByID(_ context.Context, id string) (*entity.WebhookSubscription, error) {
 	if s, ok := r.byID[id]; ok {
 		return s, nil
@@ -37,6 +53,14 @@ func (r *fakeSubs) List(context.Context, shared.PageRequest) ([]*entity.WebhookS
 }
 func (r *fakeSubs) ListEnabledByEvent(_ context.Context, _ string, event string) ([]*entity.WebhookSubscription, error) {
 	return r.byEvent[event], nil
+}
+func (r *fakeSubs) FindByChannelID(_ context.Context, channelID string) (*entity.WebhookSubscription, error) {
+	for _, s := range r.byID {
+		if s.OwnedByChannelID == channelID {
+			return s, nil
+		}
+	}
+	return nil, apperror.NotFound("nf")
 }
 
 type fakeDeliveries struct {

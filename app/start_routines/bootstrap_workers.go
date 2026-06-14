@@ -12,7 +12,6 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
 	arcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automationrules/contracts"
-	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	ccontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/contracts"
 	ncontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/notifications/contracts"
 	pcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/privacy/contracts"
@@ -55,19 +54,8 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 		return ruleEvaluator.Evaluate(ctx, p)
 	})
 
-	// channel.deliver / channel.retry: send an outbound message to the channel.
-	outbound := factories.OutboundService(c)
-	deliver := func(ctx context.Context, t *asynq.Task) error {
-		var p chcontracts.DeliverTask
-		if err := json.Unmarshal(t.Payload(), &p); err != nil {
-			return err
-		}
-		// The job carries its tenant; downstream repos are tenant-scoped.
-		ctx = shared.WithTenant(ctx, p.TenantID)
-		return outbound.Deliver(ctx, p.DeliveryID)
-	}
-	mux.HandleFunc(infraasynq.TaskChannelDeliver, deliver)
-	mux.HandleFunc(infraasynq.TaskChannelRetry, deliver)
+	// Outbound message delivery is no longer a separate channel rail: an agent's
+	// reply reaches the customer through the message_created webhook below.
 
 	// webhook.deliver / webhook.retry: deliver an outbound webhook with HMAC
 	// signing, driving retry/backoff and dead-lettering.

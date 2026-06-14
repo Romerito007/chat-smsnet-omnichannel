@@ -15,10 +15,19 @@ type WebhookSubscription struct {
 	Secret          string
 	Enabled         bool
 	RateLimitPerMin int
-	CreatedBy       string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// OwnedByChannelID, when set, marks this subscription as MANAGED by a channel
+	// connection (its URL/secret/events are kept in sync by the channel and it
+	// cannot be edited or deleted directly through the webhooks API). Empty for a
+	// normal, manually-created subscription.
+	OwnedByChannelID string
+	CreatedBy        string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
+
+// Managed reports whether the subscription is owned/kept in sync by a channel
+// connection (so the webhooks API must refuse to edit or delete it directly).
+func (s *WebhookSubscription) Managed() bool { return s.OwnedByChannelID != "" }
 
 // SubscribesTo reports whether the subscription is enabled and listens for the
 // given event.

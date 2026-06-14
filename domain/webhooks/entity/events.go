@@ -12,7 +12,11 @@ const (
 	EventConversationStatusChanged = "conversation_status_changed" // Chatwoot ✓ (fired on close)
 	EventConversationAssigned      = "conversation_assigned"       // ours
 	EventConversationTransferred   = "conversation_transferred"    // ours
+	EventConversationUpdated       = "conversation_updated"        // Chatwoot ✓
 	EventMessageCreated            = "message_created"             // Chatwoot ✓
+	EventMessageUpdated            = "message_updated"             // Chatwoot ✓ (edit)
+	EventContactCreated            = "contact_created"             // Chatwoot ✓
+	EventContactUpdated            = "contact_updated"             // Chatwoot ✓
 	EventSLABreached               = "sla_breached"                // ours
 )
 
@@ -23,7 +27,11 @@ var SupportedEvents = []string{
 	EventConversationStatusChanged,
 	EventConversationAssigned,
 	EventConversationTransferred,
+	EventConversationUpdated,
 	EventMessageCreated,
+	EventMessageUpdated,
+	EventContactCreated,
+	EventContactUpdated,
 	EventSLABreached,
 }
 
@@ -36,7 +44,11 @@ var internalToWire = map[string]string{
 	"conversation.closed":      EventConversationStatusChanged,
 	"conversation.assigned":    EventConversationAssigned,
 	"conversation.transferred": EventConversationTransferred,
+	"conversation.updated":     EventConversationUpdated,
 	"message.created":          EventMessageCreated,
+	"message.updated":          EventMessageUpdated,
+	"contact.created":          EventContactCreated,
+	"contact.updated":          EventContactUpdated,
 	"sla.breached":             EventSLABreached,
 }
 

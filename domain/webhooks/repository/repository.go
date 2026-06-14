@@ -19,6 +19,9 @@ type SubscriptionRepository interface {
 	// ListEnabledByEvent returns every enabled subscription for the tenant that
 	// listens for the given event. Used by the dispatcher on event emission.
 	ListEnabledByEvent(ctx context.Context, tenantID, event string) ([]*entity.WebhookSubscription, error)
+	// FindByChannelID returns the subscription managed by the given channel
+	// connection (owned_by_channel_id), or a not-found error when there is none.
+	FindByChannelID(ctx context.Context, channelID string) (*entity.WebhookSubscription, error)
 }
 
 // DeliveryRepository persists per-attempt delivery records.

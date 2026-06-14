@@ -28,7 +28,7 @@ type Service struct {
 	channels      channelrepo.ConnectionRepository
 	publisher     shared.EventPublisher
 	clock         shared.Clock
-	outbound      contracts.OutboundDispatcher
+	media         shared.IntegrationMediaResolver
 	webhooks      shared.WebhookEmitter
 	ruleSink      shared.RuleEventSink
 	tags          contracts.TagCatalog
@@ -161,10 +161,14 @@ func (s *Service) SetSLAHook(h contracts.SLAHook) {
 	}
 }
 
-// SetOutboundDispatcher wires the channels delivery dispatcher. Optional: when
-// unset, outbound messages are persisted (pending) but not delivered.
-func (s *Service) SetOutboundDispatcher(d contracts.OutboundDispatcher) {
-	s.outbound = d
+// SetIntegrationMediaResolver wires the resolver that turns message attachment ids
+// into signed, public channel-media URLs for the OUTBOUND webhook payload, so a
+// delivered message carries fetchable media (not the internal JWT-gated URL).
+// Optional: when unset, attachment URLs are sent as-is.
+func (s *Service) SetIntegrationMediaResolver(r shared.IntegrationMediaResolver) {
+	if r != nil {
+		s.media = r
+	}
 }
 
 // SetTagCatalog wires the conversationtools tag catalog used to validate tag ids
@@ -405,8 +409,9 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 
 	s.recordEvent(ctx, conv, entity.EventConversationUpdated, nil)
 	s.publishConversation(ctx, conv)
-	// conversation.updated drives automation rules only from an explicit Update
-	// (PATCH), not from every internal publishConversation caller.
+	// conversation.updated drives webhooks + automation rules only from an explicit
+	// Update (PATCH), not from every internal publishConversation caller.
+	s.webhooks.Emit(ctx, conv.TenantID, contracts.RealtimeConversationUpdated, conv.SectorID, contracts.NewConversationPayload(conv))
 	s.emitRuleEvent(ctx, conv, contracts.RealtimeConversationUpdated, contracts.NewConversationPayload(conv))
 	// A status change that lands on a terminal state also emits the named
 	// lifecycle event (e.g. resolving a conversation via PATCH status=resolved).
@@ -531,11 +536,9 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 	if err != nil {
 		return nil, err
 	}
-	// Hand off to the channels domain for delivery (best-effort: a channel
-	// failure must not fail the agent's send).
-	if s.outbound != nil {
-		s.outbound.Dispatch(ctx, conv, saved)
-	}
+	// Delivery to the customer happens through the message_created webhook emitted
+	// in persistMessage (the integrator receives it and delivers); there is no
+	// separate outbound rail.
 	// SLA: an agent's outbound message is the first response (idempotent).
 	s.sla.OnFirstResponse(ctx, conv, saved.CreatedAt)
 	return saved, nil
@@ -710,9 +713,7 @@ func (s *Service) SendSystemMessage(ctx context.Context, conversationID, text st
 	if err != nil {
 		return nil, err
 	}
-	if s.outbound != nil {
-		s.outbound.Dispatch(ctx, conv, saved)
-	}
+	// Delivery flows through the message_created webhook (no separate outbound rail).
 	return saved, nil
 }
 
@@ -938,6 +939,11 @@ func (s *Service) EditMessage(ctx context.Context, conversationID, messageID str
 	s.recordEvent(ctx, conv, entity.EventMessageEdited, map[string]any{"message_id": msg.ID})
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
 		contracts.RealtimeMessageUpdated, contracts.NewMessagePayload(msg))
+	// message_updated webhook (edit). Internal notes are never edited out to channels.
+	if msg.Direction != entity.DirectionInternal {
+		s.webhooks.Emit(ctx, conv.TenantID, contracts.RealtimeMessageUpdated, conv.SectorID,
+			contracts.NewIntegrationMessagePayload(msg, s.resolveIntegrationMedia(ctx, msg)))
+	}
 	return msg, nil
 }
 
@@ -1008,6 +1014,60 @@ func (s *Service) canManageMessage(ac authz.AuthContext, msg *entity.Message) bo
 	return ac.Has(authz.MessageDelete)
 }
 
+// ApplyDeliveryReceipt advances a message's delivery status from an OPTIONAL,
+// out-of-band receipt reported by the integrator (delivered/read/failed),
+// correlated by the chat's own message id. The context is tenant-scoped (set from
+// the resolved channel connection). It is idempotent and order-tolerant: a receipt
+// that does not advance the status is a no-op. Delivery itself does NOT depend on
+// this — a message with no receipt simply stays without a delivery status.
+func (s *Service) ApplyDeliveryReceipt(ctx context.Context, messageID, status string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	var to entity.DeliveryStatus
+	switch strings.TrimSpace(status) {
+	case "delivered":
+		to = entity.DeliveryDelivered
+	case "read":
+		to = entity.DeliveryRead
+	case "failed":
+		to = entity.DeliveryFailed
+	default:
+		return apperror.Validation("status must be one of: delivered, read, failed").
+			WithDetails(map[string]any{"status": "must be delivered|read|failed"})
+	}
+	msg, err := s.messages.FindByID(ctx, messageID)
+	if err != nil {
+		return err
+	}
+	if !entity.DeliveryAdvances(msg.DeliveryStatus, to) {
+		return nil // duplicate / out-of-order → idempotent no-op
+	}
+	now := s.clock.Now()
+	msg.DeliveryStatus = to
+	switch to {
+	case entity.DeliveryDelivered:
+		msg.DeliveredAt = &now
+	case entity.DeliveryRead:
+		msg.ReadAt = &now
+	}
+	if err := s.messages.Update(ctx, msg); err != nil {
+		return err
+	}
+	event := map[entity.DeliveryStatus]string{
+		entity.DeliveryDelivered: contracts.RealtimeMessageDelivered,
+		entity.DeliveryRead:      contracts.RealtimeMessageRead,
+		entity.DeliveryFailed:    contracts.RealtimeMessageFailed,
+	}[to]
+	payload := contracts.MessageStatusPayload{
+		MessageID:      msg.ID,
+		ConversationID: msg.ConversationID,
+		DeliveryStatus: string(to),
+	}
+	_ = s.publisher.Publish(ctx, shared.TopicConversation(msg.TenantID, msg.ConversationID), event, payload)
+	return nil
+}
+
 // ── internals ────────────────────────────────────────────────────────────────
 
 // persistMessage stores a message, bumps conversation activity, records the
@@ -1039,11 +1099,34 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 	s.publishConversation(ctx, conv)
 
 	// Outbound webhook + automation rules: only real messages, not internal notes.
+	// The webhook payload is delivery-ready: attachment URLs are swapped for signed,
+	// public channel-media URLs and the template (id+params) is included, so the
+	// integrator can deliver the message to the customer from this single event.
 	if eventType == entity.EventMessageCreated {
-		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, conv.SectorID, contracts.NewMessagePayload(msg))
+		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, conv.SectorID,
+			contracts.NewIntegrationMessagePayload(msg, s.resolveIntegrationMedia(ctx, msg)))
 		s.emitRuleEvent(ctx, conv, entity.EventMessageCreated, contracts.NewMessagePayload(msg))
 	}
 	return msg, nil
+}
+
+// resolveIntegrationMedia best-effort resolves a message's attachment ids to
+// signed, public channel-media URLs (keyed by id) for the outbound webhook
+// payload. Returns nil when no resolver is wired or the message has no attachments.
+func (s *Service) resolveIntegrationMedia(ctx context.Context, msg *entity.Message) map[string]string {
+	if s.media == nil || len(msg.Attachments) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(msg.Attachments))
+	for _, a := range msg.Attachments {
+		if a.ID == "" {
+			continue
+		}
+		if u, err := s.media.IntegrationMediaURL(ctx, a.ID); err == nil && u != "" {
+			out[a.ID] = u
+		}
+	}
+	return out
 }
 
 // hydrateMessages fills each message's attachments with their full media metadata

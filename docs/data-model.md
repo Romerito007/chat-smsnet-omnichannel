@@ -153,10 +153,14 @@ text `(name)`, 🔑 keyset.
 
 ### `channel_connections`
 `tenant_id`🔑, `type` (api/whatsapp/telegram/instagram/messenger/webchat/custom), `name`,
-`status` (connected/disconnected/error), `base_url` (= `outbound_url` no canal
-api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
-**nunca** em claro nem retornado após criação), `webhook_verify_token` (=
-`inbound_token`, exibido uma vez), `default_sector_id`, `business_hours`,
+`status` (connected/disconnected/error), `base_url` (= `outbound_url`; quando
+preenchida o canal **gera/atualiza um webhook gerenciado** — uma subscription do
+pipeline normal de webhooks, assinada com o secret do canal, com
+`owned_by_channel_id` = id do canal — que entrega os eventos de conversa+mensagem;
+**não há** trilho de entrega separado), `auth_type`, `encrypted_secret` (=
+`outbound_secret` cifrado AES-GCM, **nunca** em claro nem retornado após criação),
+`webhook_verify_token` (= `inbound_token`, exibido uma vez), `business_hours`
+(o canal **não** tem setor — no modelo Chatwoot o setor é decidido na conversa),
 `enabled`, `uses_protocol` bool (liga numeração de protocolo por conversa neste
 channel; default false — ver `conversations.protocol`), `whatsapp_templates`
 (espelho **render-only** dos templates do integrador: `id` opaque, `name`,
@@ -231,11 +235,24 @@ doc começando em 1).
 ## Plataforma
 
 ### `webhook_subscriptions` / `webhook_deliveries`
-- `webhook_subscriptions`: `tenant_id`🔑, `url`, `events` []string,
-  `secret_ref` (HMAC), `enabled`.
+- `webhook_subscriptions`: `tenant_id`🔑, `url`, `events` []string (eventos:
+  `conversation_created`, `conversation_status_changed`, `conversation_assigned`,
+  `conversation_transferred`, `conversation_updated`, `message_created`,
+  `message_updated`, `contact_created`, `contact_updated`, `sla_breached`),
+  `secret_ref` (HMAC), `enabled`, `owned_by_channel_id` (🔑 parcial
+  `(tenant_id, owned_by_channel_id)`; quando preenchido a subscription é
+  **gerenciada por um canal** — read-only na API de webhooks, sincronizada
+  pelo canal). Vários webhooks por tenant (cada um com sua URL/eventos).
 - `webhook_deliveries`: `tenant_id`🔑, `subscription_id`🔑, `event`,
   `status` (pending/success/failed), `attempts`, `response_code`,
   `next_retry_at`🔑.
+
+> **Entrega de mensagem de saída** flui por este pipeline (webhook
+> `message_created`, payload pronto-para-entrega: anexos com URL assinada de
+> channel-media + `template{id,params}`), **não** por um trilho `outbound_deliveries`
+> separado (removido). O **status** (entregue/lido/falhou) é opcional: o
+> integrador reporta em `POST /v1/inbound/channel/{channel}/delivery-receipts`
+> com `{message_id, status}`, correlato pelo `message_id` do chat.
 
 ### `notifications` / `notification_preferences`
 - `notifications`: `tenant_id`🔑, `user_id`🔑, `type`, `payload`,

@@ -12,6 +12,16 @@ type AvatarURLResolver interface {
 	SignedAvatarURLs(ctx context.Context, attachmentIDs []string) (map[string]string, error)
 }
 
+// IntegrationMediaResolver resolves a message attachment id to a signed, public
+// (JWT-less) channel-media URL an external integrator can fetch. Implemented by
+// the attachments service and consulted when building the outbound webhook
+// payload, so a delivered message carries fetchable media URLs (not the internal
+// JWT-gated ones). Returns an empty string/error when the attachment is not
+// resolvable; callers fall back to the original URL.
+type IntegrationMediaResolver interface {
+	IntegrationMediaURL(ctx context.Context, attachmentID string) (string, error)
+}
+
 // DisplayCard is the resolved display info (name + short-lived signed avatar URL)
 // for a related entity embedded in another payload — e.g. the contact and the
 // assignee shown per row in the conversation inbox — so the client renders the

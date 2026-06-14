@@ -103,15 +103,25 @@ type MessagePayload struct {
 	MessageType    string              `json:"message_type"`
 	Text           string              `json:"text"`
 	Attachments    []entity.Attachment `json:"attachments,omitempty"`
-	Internal       bool                `json:"internal"`
-	DeliveryStatus string              `json:"delivery_status,omitempty"`
-	CreatedAt      time.Time           `json:"created_at"`
-	EditedAt       *time.Time          `json:"edited_at,omitempty"`
+	// Template carries the integrator template id + filled params for a template
+	// message, so an outbound-webhook receiver can render/send it. Nil otherwise.
+	Template       *MessageTemplatePayload `json:"template,omitempty"`
+	Internal       bool                    `json:"internal"`
+	DeliveryStatus string                  `json:"delivery_status,omitempty"`
+	CreatedAt      time.Time               `json:"created_at"`
+	EditedAt       *time.Time              `json:"edited_at,omitempty"`
+}
+
+// MessageTemplatePayload is the template section of a message payload: the opaque
+// integrator template id and the filled named params (no resolved text/structure).
+type MessageTemplatePayload struct {
+	ID     string            `json:"id"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // NewMessagePayload builds the payload from a message entity.
 func NewMessagePayload(m *entity.Message) MessagePayload {
-	return MessagePayload{
+	p := MessagePayload{
 		ID:             m.ID,
 		ConversationID: m.ConversationID,
 		SenderType:     string(m.SenderType),
@@ -125,6 +135,31 @@ func NewMessagePayload(m *entity.Message) MessagePayload {
 		CreatedAt:      m.CreatedAt,
 		EditedAt:       m.EditedAt,
 	}
+	if m.Template != nil {
+		p.Template = &MessageTemplatePayload{ID: m.Template.TemplateID, Params: m.Template.Params}
+	}
+	return p
+}
+
+// NewIntegrationMessagePayload builds the message payload destined for an OUTBOUND
+// webhook: a copy of NewMessagePayload with each attachment URL swapped for its
+// signed, public channel-media URL (so the integrator can fetch the media without
+// a JWT). mediaURLs is keyed by attachment id; an id absent from the map keeps its
+// original URL. The template section (id + params) is included as usual.
+func NewIntegrationMessagePayload(m *entity.Message, mediaURLs map[string]string) MessagePayload {
+	p := NewMessagePayload(m)
+	if len(p.Attachments) == 0 || len(mediaURLs) == 0 {
+		return p
+	}
+	out := make([]entity.Attachment, len(p.Attachments))
+	for i, a := range p.Attachments {
+		if u, ok := mediaURLs[a.ID]; ok && u != "" {
+			a.URL = u
+		}
+		out[i] = a
+	}
+	p.Attachments = out
+	return p
 }
 
 // MessageRefPayload is the minimal reference broadcast for a message.deleted

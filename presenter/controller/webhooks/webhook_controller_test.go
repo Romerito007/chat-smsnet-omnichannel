@@ -52,6 +52,9 @@ func (f *fakeSubs) List(ctx context.Context, _ shared.PageRequest) ([]*wentity.W
 func (f *fakeSubs) ListEnabledByEvent(context.Context, string, string) ([]*wentity.WebhookSubscription, error) {
 	return nil, nil
 }
+func (f *fakeSubs) FindByChannelID(context.Context, string) (*wentity.WebhookSubscription, error) {
+	return nil, apperror.NotFound("not found")
+}
 
 type fakeDeliveries struct{}
 

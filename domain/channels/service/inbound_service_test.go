@@ -299,10 +299,9 @@ func newInboundFixture() inboundFixture {
 	return inboundFixture{svc: svc, convs: cr, msgs: mr, events: er, rules: rules, pub: pub}
 }
 
-func conn(sector string) *chentity.ChannelConnection {
+func conn(_ string) *chentity.ChannelConnection {
 	return &chentity.ChannelConnection{
 		ID: "conn1", TenantID: "t1", Type: chentity.TypeWhatsApp, Enabled: true,
-		DefaultSectorID: sector,
 	}
 }
 
@@ -313,17 +312,19 @@ func inMsg(ext string) chcontracts.InboundMessage {
 	}
 }
 
-func TestInbound_CreatesAndQueuesIntoDefaultSector(t *testing.T) {
+func TestInbound_CreatesAndQueuesWithoutSector(t *testing.T) {
 	fx := newInboundFixture()
-	res, err := fx.svc.Handle(tenantCtx(), conn("sector-x"), inMsg("ext-1"))
+	res, err := fx.svc.Handle(tenantCtx(), conn(""), inMsg("ext-1"))
 	if err != nil {
 		t.Fatalf("handle: %v", err)
 	}
 	if res.Status != string(conventity.StatusQueued) {
 		t.Errorf("status = %q, want queued", res.Status)
 	}
-	if fx.convs.items[res.ConversationID].SectorID != "sector-x" {
-		t.Errorf("expected default sector set")
+	// The channel no longer carries a sector: a new conversation is queued WITHOUT
+	// one, awaiting assignment (Chatwoot model).
+	if fx.convs.items[res.ConversationID].SectorID != "" {
+		t.Errorf("expected no sector on a channel-less-sector inbound, got %q", fx.convs.items[res.ConversationID].SectorID)
 	}
 	// The conversation must persist the SPECIFIC channel connection id (conn1),
 	// not just the type — this is what makes per-channel routing/hours/assistant work.

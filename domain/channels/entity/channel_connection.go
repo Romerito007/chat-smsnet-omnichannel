@@ -69,7 +69,6 @@ type ChannelConnection struct {
 	Secret           string
 	InboundToken     string // transient plaintext (create/rotate only; never persisted)
 	InboundTokenHash string // SHA-256 hex stored at rest
-	DefaultSectorID  string
 	// BusinessHours is the channel's free-form weekly schedule + timezone (parsed
 	// by businesshours/entity.ParseSchedule). Empty/absent = 24/7.
 	BusinessHours map[string]any

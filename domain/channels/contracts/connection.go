@@ -9,7 +9,6 @@ type CreateConnection struct {
 	BaseURL           string
 	AuthType          chentity.AuthType
 	Secret            string
-	DefaultSectorID   string
 	BusinessHours     map[string]any
 	UsesProtocol      bool
 	WhatsAppTemplates []chentity.WhatsAppTemplate
@@ -22,7 +21,6 @@ type UpdateConnection struct {
 	BaseURL           *string
 	AuthType          *chentity.AuthType
 	Secret            *string
-	DefaultSectorID   *string
 	BusinessHours     *map[string]any
 	Enabled           *bool
 	UsesProtocol      *bool

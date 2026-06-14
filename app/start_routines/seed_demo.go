@@ -559,7 +559,6 @@ func (d *demoSeeder) seedIntegrations() error {
 	// plaintext is logged once at INFO so dev can inject inbound calls.
 	connSvc := channelservice.NewConnectionService(
 		channelrepo.NewConnectionRepository(d.db, d.c.Cipher), nil, shared.SystemClock{})
-	suporteSec := d.sectorIDs["Suporte Técnico"]
 	chans := []struct {
 		name  string
 		typ   chentity.Type
@@ -577,7 +576,7 @@ func (d *demoSeeder) seedIntegrations() error {
 	for _, ch := range chans {
 		conn, err := connSvc.Create(d.ctx, chcontracts.CreateConnection{
 			Type: ch.typ, Name: ch.name, BaseURL: "https://gateway.demo.local/" + string(ch.typ),
-			AuthType: chentity.AuthToken, DefaultSectorID: suporteSec, BusinessHours: ch.hours,
+			AuthType: chentity.AuthToken, BusinessHours: ch.hours,
 		})
 		if err != nil {
 			return err

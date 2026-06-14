@@ -143,6 +143,9 @@ func (s *SubscriptionService) Update(ctx context.Context, id string, cmd contrac
 	if err != nil {
 		return nil, err
 	}
+	if sub.Managed() {
+		return nil, apperror.Conflict("webhook gerenciado pelo canal; edite pela configuração do canal")
+	}
 	if cmd.Name != nil {
 		sub.Name = strings.TrimSpace(*cmd.Name)
 	}
@@ -185,8 +188,12 @@ func (s *SubscriptionService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	// Ensure it exists (and belongs to the tenant) before deleting.
-	if _, err := s.subs.FindByID(ctx, id); err != nil {
+	sub, err := s.subs.FindByID(ctx, id)
+	if err != nil {
 		return err
+	}
+	if sub.Managed() {
+		return apperror.Conflict("webhook gerenciado pelo canal; remova pela configuração do canal")
 	}
 	// Referential integrity: refuse to delete a webhook an automation rule
 	// references, with a clear message — never silently break the rule.
@@ -207,6 +214,85 @@ func (s *SubscriptionService) Delete(ctx context.Context, id string) error {
 	})
 	return nil
 }
+
+// managedChannelEvents is the fixed event set of a channel-managed webhook: the
+// conversation + message lifecycle the integrator needs to mirror a channel
+// (NO sla_breached, NO contact_*). Kept in sync on every channel create/update.
+var managedChannelEvents = []string{
+	entity.EventConversationCreated,
+	entity.EventConversationStatusChanged,
+	entity.EventConversationAssigned,
+	entity.EventConversationTransferred,
+	entity.EventConversationUpdated,
+	entity.EventMessageCreated,
+	entity.EventMessageUpdated,
+}
+
+// SyncChannelWebhook upserts the subscription managed by a channel connection.
+// With a non-empty url it creates (or updates) a subscription owned by the
+// channel, carrying the channel's secret and the managed event set; with an empty
+// url it removes any existing managed subscription. Implements
+// shared.ChannelWebhookManager so the channels service stays decoupled from the
+// webhooks domain.
+func (s *SubscriptionService) SyncChannelWebhook(ctx context.Context, channelID, url, secret string) error {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return err
+	}
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return s.RemoveChannelWebhook(ctx, channelID)
+	}
+	if err := validateURL(url); err != nil {
+		return err
+	}
+	now := s.clock.Now()
+	existing, err := s.subs.FindByChannelID(ctx, channelID)
+	if err != nil {
+		if apperror.From(err).Code != apperror.CodeNotFound {
+			return err
+		}
+		// None yet → create the managed subscription.
+		sub := &entity.WebhookSubscription{
+			ID:               shared.NewID(),
+			TenantID:         tenantID,
+			Name:             "Canal " + channelID,
+			URL:              url,
+			Events:           managedChannelEvents,
+			Secret:           secret,
+			Enabled:          true,
+			OwnedByChannelID: channelID,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+		return s.subs.Create(ctx, sub)
+	}
+	// Keep URL, secret and the managed event set in sync.
+	existing.URL = url
+	existing.Secret = secret
+	existing.Events = managedChannelEvents
+	existing.Enabled = true
+	existing.UpdatedAt = now
+	return s.subs.Update(ctx, existing)
+}
+
+// RemoveChannelWebhook deletes the channel's managed subscription, if any. A
+// missing subscription is a no-op (idempotent).
+func (s *SubscriptionService) RemoveChannelWebhook(ctx context.Context, channelID string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	existing, err := s.subs.FindByChannelID(ctx, channelID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return nil
+		}
+		return err
+	}
+	return s.subs.Delete(ctx, existing.ID)
+}
+
+var _ shared.ChannelWebhookManager = (*SubscriptionService)(nil)
 
 // Test sends a signed test event to the webhook synchronously and records the
 // delivery, returning the immediate outcome so the integrator can verify HMAC.

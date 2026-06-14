@@ -17,8 +17,8 @@ const (
 // Task type identifiers. Centralized here so producers and consumers agree on
 // the wire name. Payload structs live in each domain's contracts/tasks.go.
 const (
-	TaskChannelDeliver = "channel.deliver"
-	TaskChannelRetry   = "channel.retry"
+	// Outbound message delivery is no longer a separate channel job: an agent's
+	// reply is delivered through the message_created webhook (webhook.deliver).
 
 	TaskWebhookDeliver = "webhook.deliver"
 	TaskWebhookRetry   = "webhook.retry"

@@ -73,6 +73,43 @@ const (
 	DeliveryFailed    DeliveryStatus = "failed"
 )
 
+// deliveryRank orders the forward-only delivery lifecycle so a receipt can only
+// advance a message's status (never regress). failed is off-ladder (-1): it is
+// reachable from any non-terminal status but never overwritten by a later
+// delivered/read.
+func (d DeliveryStatus) deliveryRank() int {
+	switch d {
+	case DeliveryNone:
+		return 0
+	case DeliveryPending:
+		return 1
+	case DeliverySent:
+		return 2
+	case DeliveryDelivered:
+		return 3
+	case DeliveryRead:
+		return 4
+	case DeliveryFailed:
+		return -1
+	default:
+		return 0
+	}
+}
+
+// DeliveryAdvances reports whether a receipt moving a message from->to is a real
+// forward transition (so applying receipts is idempotent and order-tolerant). A
+// failed receipt advances unless the message is already read or failed; otherwise
+// to must rank strictly above from.
+func DeliveryAdvances(from, to DeliveryStatus) bool {
+	if to == DeliveryFailed {
+		return from != DeliveryRead && from != DeliveryFailed
+	}
+	if from == DeliveryFailed {
+		return false
+	}
+	return to.deliveryRank() > from.deliveryRank()
+}
+
 // Attachment is a media reference carried by a message.
 type Attachment struct {
 	ID          string `json:"id,omitempty"`

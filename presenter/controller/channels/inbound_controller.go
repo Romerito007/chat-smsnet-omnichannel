@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -23,17 +24,24 @@ const (
 	maxInboundMultipart = 30 << 20 // 30 MiB (multipart with media)
 )
 
+// ReceiptApplier advances a message's delivery status from an optional receipt,
+// correlated by the chat's own message id. Implemented by the conversations
+// service.
+type ReceiptApplier interface {
+	ApplyDeliveryReceipt(ctx context.Context, messageID, status string) error
+}
+
 // InboundController serves the public, signature-authenticated inbound endpoints
 // (messages and delivery receipts).
 type InboundController struct {
 	connections *channelservice.ConnectionService
 	inbound     *channelservice.InboundService
-	outbound    *channelservice.OutboundService
+	receipts    ReceiptApplier
 }
 
 // NewInboundController builds the controller.
-func NewInboundController(connections *channelservice.ConnectionService, inbound *channelservice.InboundService, outbound *channelservice.OutboundService) *InboundController {
-	return &InboundController{connections: connections, inbound: inbound, outbound: outbound}
+func NewInboundController(connections *channelservice.ConnectionService, inbound *channelservice.InboundService, receipts ReceiptApplier) *InboundController {
+	return &InboundController{connections: connections, inbound: inbound, receipts: receipts}
 }
 
 // verifyHeaders extracts the signature/secret headers an adapter checks.
@@ -152,6 +160,9 @@ func parseMultipartInbound(r *http.Request) (dto.InboundRequest, []chcontracts.R
 }
 
 // HandleDeliveryReceipts processes POST /v1/inbound/channel/{channel}/delivery-receipts.
+// This is the OPTIONAL status channel: the integrator reports a message's delivery
+// status (delivered/read/failed) keyed by the chat's own message_id. Delivery
+// itself does not depend on it — a message with no receipt simply has no status.
 func (c *InboundController) HandleDeliveryReceipts(w http.ResponseWriter, r *http.Request) {
 	channel := chi.URLParam(r, "channel")
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboundBody))
@@ -160,26 +171,34 @@ func (c *InboundController) HandleDeliveryReceipts(w http.ResponseWriter, r *htt
 		return
 	}
 
+	var req struct {
+		InboundToken string `json:"inbound_token"`
+		MessageID    string `json:"message_id"`
+		Status       string `json:"status"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		middleware.WriteError(w, r, apperror.Validation("invalid JSON body").Wrap(err))
+		return
+	}
+
 	token := r.Header.Get("X-Inbound-Token")
 	if token == "" {
-		// Fall back to a body inbound_token (the receipts payload is otherwise opaque).
-		var tok struct {
-			InboundToken string `json:"inbound_token"`
-		}
-		_ = json.Unmarshal(body, &tok)
-		token = tok.InboundToken
+		token = req.InboundToken
 	}
 	conn, err := c.connections.ResolveInbound(r.Context(), token, chentity.Type(channel), body, verifyHeaders(r))
 	if err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
+	if strings.TrimSpace(req.MessageID) == "" {
+		middleware.WriteError(w, r, apperror.Validation("message_id is required"))
+		return
+	}
 
 	ctx := shared.WithTenant(r.Context(), conn.TenantID)
-	applied, err := c.outbound.ProcessReceipts(ctx, conn, body)
-	if err != nil {
+	if err := c.receipts.ApplyDeliveryReceipt(ctx, req.MessageID, req.Status); err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, map[string]any{"applied": applied})
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

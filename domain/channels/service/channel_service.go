@@ -27,6 +27,7 @@ type ConnectionService struct {
 	clock    shared.Clock
 	health   contracts.ConnectionHealthChecker
 	auditor  shared.Auditor
+	webhooks shared.ChannelWebhookManager
 }
 
 // NewConnectionService builds the service.
@@ -34,7 +35,16 @@ func NewConnectionService(repo repository.ConnectionRepository, registry contrac
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &ConnectionService{repo: repo, registry: registry, clock: clock, health: contracts.NoopHealthChecker{}, auditor: shared.NoopAuditor{}}
+	return &ConnectionService{repo: repo, registry: registry, clock: clock, health: contracts.NoopHealthChecker{}, auditor: shared.NoopAuditor{}, webhooks: shared.NoopChannelWebhookManager{}}
+}
+
+// SetWebhookManager wires the manager that keeps the channel's MANAGED webhook
+// subscription (created from its outbound URL) in sync. Optional: when unset, a
+// channel does not produce a webhook.
+func (s *ConnectionService) SetWebhookManager(m shared.ChannelWebhookManager) {
+	if m != nil {
+		s.webhooks = m
+	}
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, token rotations are
@@ -129,7 +139,6 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 		Secret:            secret,
 		InboundToken:      token,
 		InboundTokenHash:  hashInboundToken(token),
-		DefaultSectorID:   cmd.DefaultSectorID,
 		BusinessHours:     cmd.BusinessHours,
 		Enabled:           true,
 		UsesProtocol:      cmd.UsesProtocol,
@@ -138,6 +147,12 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 		UpdatedAt:         now,
 	}
 	if err := s.repo.Create(ctx, conn); err != nil {
+		return nil, err
+	}
+	// A channel with an outbound URL produces a managed webhook subscription (the
+	// integrator receives conversation + message events through the webhook
+	// pipeline, signed with the channel secret).
+	if err := s.webhooks.SyncChannelWebhook(ctx, conn.ID, conn.BaseURL, conn.Secret); err != nil {
 		return nil, err
 	}
 	return conn, nil
@@ -197,9 +212,6 @@ func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts
 	if cmd.Secret != nil {
 		conn.Secret = *cmd.Secret
 	}
-	if cmd.DefaultSectorID != nil {
-		conn.DefaultSectorID = *cmd.DefaultSectorID
-	}
 	if cmd.BusinessHours != nil {
 		if err := bhentity.ValidateSchedule(*cmd.BusinessHours); err != nil {
 			return nil, apperror.Validation(err.Error()).WithDetails(map[string]any{"business_hours": err.Error()})
@@ -222,15 +234,23 @@ func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts
 	if err := s.repo.Update(ctx, conn); err != nil {
 		return nil, err
 	}
+	// Keep the managed webhook in sync with the channel's URL/secret (created,
+	// updated, or removed when the URL is cleared).
+	if err := s.webhooks.SyncChannelWebhook(ctx, conn.ID, conn.BaseURL, conn.Secret); err != nil {
+		return nil, err
+	}
 	return conn, nil
 }
 
-// Delete removes a connection.
+// Delete removes a connection and its managed webhook subscription.
 func (s *ConnectionService) Delete(ctx context.Context, id string) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	return s.webhooks.RemoveChannelWebhook(ctx, id)
 }
 
 // Get returns a connection by id.

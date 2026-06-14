@@ -47,6 +47,10 @@ func (r *SubscriptionRepository) Update(ctx context.Context, s *entity.WebhookSu
 	if err != nil {
 		return err
 	}
+	enc, err := r.cipher.Encrypt(s.Secret)
+	if err != nil {
+		return apperror.Internal("encrypt secret").Wrap(err)
+	}
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": s.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
@@ -54,8 +58,10 @@ func (r *SubscriptionRepository) Update(ctx context.Context, s *entity.WebhookSu
 			"url":                   s.URL,
 			"events":                s.Events,
 			"scopes":                s.Scopes,
+			"encrypted_secret":      enc,
 			"enabled":               s.Enabled,
 			"rate_limit_per_minute": s.RateLimitPerMin,
+			"owned_by_channel_id":   s.OwnedByChannelID,
 			"updated_at":            s.UpdatedAt,
 		}},
 	)
@@ -123,6 +129,20 @@ func (r *SubscriptionRepository) ListEnabledByEvent(ctx context.Context, tenantI
 	return r.decodeAll(ctx, c)
 }
 
+// FindByChannelID returns the subscription managed by the given channel
+// connection, or a not-found error when the channel has none.
+func (r *SubscriptionRepository) FindByChannelID(ctx context.Context, channelID string) (*entity.WebhookSubscription, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var m models.WebhookSubscription
+	if err := r.coll.FindOne(ctx, bson.M{"tenant_id": tenantID, "owned_by_channel_id": channelID}).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return r.toEntity(&m)
+}
+
 func (r *SubscriptionRepository) decodeAll(ctx context.Context, c *mongo.Cursor) ([]*entity.WebhookSubscription, error) {
 	var out []*entity.WebhookSubscription
 	for c.Next(ctx) {
@@ -141,14 +161,15 @@ func (r *SubscriptionRepository) decodeAll(ctx context.Context, c *mongo.Cursor)
 
 func toModel(s *entity.WebhookSubscription, encryptedSecret string) models.WebhookSubscription {
 	m := models.WebhookSubscription{
-		Name:            s.Name,
-		URL:             s.URL,
-		Events:          s.Events,
-		Scopes:          s.Scopes,
-		EncryptedSecret: encryptedSecret,
-		Enabled:         s.Enabled,
-		RateLimitPerMin: s.RateLimitPerMin,
-		CreatedBy:       s.CreatedBy,
+		Name:             s.Name,
+		URL:              s.URL,
+		Events:           s.Events,
+		Scopes:           s.Scopes,
+		EncryptedSecret:  encryptedSecret,
+		Enabled:          s.Enabled,
+		RateLimitPerMin:  s.RateLimitPerMin,
+		OwnedByChannelID: s.OwnedByChannelID,
+		CreatedBy:        s.CreatedBy,
 	}
 	m.ID = s.ID
 	m.TenantID = s.TenantID
@@ -163,18 +184,19 @@ func (r *SubscriptionRepository) toEntity(m *models.WebhookSubscription) (*entit
 		return nil, apperror.Internal("decrypt secret").Wrap(err)
 	}
 	return &entity.WebhookSubscription{
-		ID:              m.ID,
-		TenantID:        m.TenantID,
-		Name:            m.Name,
-		URL:             m.URL,
-		Events:          m.Events,
-		Scopes:          m.Scopes,
-		Secret:          secret,
-		Enabled:         m.Enabled,
-		RateLimitPerMin: m.RateLimitPerMin,
-		CreatedBy:       m.CreatedBy,
-		CreatedAt:       m.CreatedAt,
-		UpdatedAt:       m.UpdatedAt,
+		ID:               m.ID,
+		TenantID:         m.TenantID,
+		Name:             m.Name,
+		URL:              m.URL,
+		Events:           m.Events,
+		Scopes:           m.Scopes,
+		Secret:           secret,
+		Enabled:          m.Enabled,
+		RateLimitPerMin:  m.RateLimitPerMin,
+		OwnedByChannelID: m.OwnedByChannelID,
+		CreatedBy:        m.CreatedBy,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
 	}, nil
 }
 

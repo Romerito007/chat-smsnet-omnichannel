@@ -180,8 +180,9 @@ func schemas() M {
 		// ── channels ───────────────────────────────────────────────────────────
 		"Channel": object(M{
 			"id": str(), "tenant_id": str(), "type": str(), "name": str(), "status": str(),
-			"base_url": str(), "auth_type": str(), "has_secret": boolean(), "has_inbound_token": boolean(),
-			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
+			"base_url":  describedStr("Outbound URL: when set, the channel auto-manages a webhook subscription (signed with the channel secret) that delivers conversation + message events to it. outbound_url is an accepted alias on write."),
+			"auth_type": str(), "has_secret": boolean(), "has_inbound_token": boolean(),
+			"business_hours":     ref("BusinessHours"),
 			"enabled":            boolean(),
 			"uses_protocol":      describedBool("When true, inbound opens a NEW conversation with a NEW protocol number for this channel; a closed last conversation is NOT reopened. When false (default), a closed last conversation is reopened and no protocol is assigned."),
 			"whatsapp_templates": arr(ref("WhatsAppTemplate")),
@@ -190,22 +191,24 @@ func schemas() M {
 		"ChannelCreated": object(M{
 			"id": str(), "tenant_id": str(), "type": str(), "name": str(), "status": str(),
 			"base_url": str(), "auth_type": str(), "has_secret": boolean(), "has_inbound_token": boolean(),
-			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
-			"enabled": boolean(), "uses_protocol": boolean(), "whatsapp_templates": arr(ref("WhatsAppTemplate")),
+			"business_hours": ref("BusinessHours"),
+			"enabled":        boolean(), "uses_protocol": boolean(), "whatsapp_templates": arr(ref("WhatsAppTemplate")),
 			"created_at": dateTime(), "updated_at": dateTime(),
 			"inbound_token": str(), "outbound_secret": str(),
 		}),
 		"CreateChannelRequest": object(M{
-			"type": str(), "name": str(), "base_url": str(), "outbound_url": str(),
-			"auth_type": str(), "secret": str(), "outbound_secret": str(),
-			"default_sector_id": str(), "business_hours": ref("BusinessHours"), "uses_protocol": boolean(),
+			"type": str(), "name": str(),
+			"base_url":     describedStr("Outbound URL the channel delivers events to (auto-managed webhook). outbound_url is an accepted alias."),
+			"outbound_url": str(),
+			"auth_type":    str(), "secret": str(), "outbound_secret": str(),
+			"business_hours": ref("BusinessHours"), "uses_protocol": boolean(),
 			"whatsapp_templates": arr(ref("WhatsAppTemplate")),
 		}, "type"),
 		"UpdateChannelRequest": object(M{
 			"name": str(), "status": str(), "base_url": str(), "outbound_url": str(),
 			"auth_type": str(), "secret": str(), "outbound_secret": str(),
-			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
-			"enabled": boolean(), "uses_protocol": boolean(),
+			"business_hours": ref("BusinessHours"),
+			"enabled":        boolean(), "uses_protocol": boolean(),
 			"whatsapp_templates": withDesc(arr(ref("WhatsAppTemplate")), "Render-only mirror of the integrator's WhatsApp templates. Replaces the whole list (the integrator pushes the full set)."),
 		}),
 		"WhatsAppTemplate": object(M{
@@ -221,6 +224,11 @@ func schemas() M {
 			"buttons": arr(object(M{"type": str(), "text": str(), "url": str()})),
 			"footer":  str(),
 		}, "id", "name"),
+		"DeliveryReceiptRequest": object(M{
+			"inbound_token": describedStr("Channel integration token (alternative to the X-Inbound-Token header)."),
+			"message_id":    describedStr("The chat's own message id (as delivered in the message_created webhook). The receipt is correlated by this id."),
+			"status":        enum("delivered", "read", "failed"),
+		}, "message_id", "status"),
 		"InboundMessageRequest": object(M{
 			"inbound_token": str(), "tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
 			"external_message_id": str(), "external_contact_id": str(), "contact_name": str(),
@@ -466,7 +474,10 @@ func schemas() M {
 		"Webhook": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),
 			"events": arr(webhookEventEnum()), "scopes": arr(str()), "has_secret": boolean(), "enabled": boolean(),
-			"rate_limit_per_minute": integer(), "created_by": str(), "created_at": dateTime(), "updated_at": dateTime(),
+			"rate_limit_per_minute": integer(),
+			"managed":               describedBool("True when this subscription is owned/kept in sync by a channel connection (created from the channel's outbound URL). Managed subscriptions are read-only here — edit/delete them through the channel, not the webhooks API."),
+			"owned_by_channel_id":   describedStr("Id of the channel that manages this subscription (present only when managed)."),
+			"created_by":            str(), "created_at": dateTime(), "updated_at": dateTime(),
 		}),
 		"WebhookCreated": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),

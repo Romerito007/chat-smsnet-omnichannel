@@ -143,7 +143,8 @@ func conversationStatusEnum() M {
 // conversation_status_changed, message_created).
 func webhookEventEnum() M {
 	return enum("conversation_created", "conversation_status_changed",
-		"conversation_assigned", "conversation_transferred", "message_created",
+		"conversation_assigned", "conversation_transferred", "conversation_updated",
+		"message_created", "message_updated", "contact_created", "contact_updated",
 		"sla_breached")
 }
 

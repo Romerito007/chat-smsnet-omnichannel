@@ -24,7 +24,6 @@ type CreateConnectionRequest struct {
 	AuthType          string                `json:"auth_type"`
 	Secret            string                `json:"secret"`
 	OutboundSecret    string                `json:"outbound_secret"`
-	DefaultSectorID   string                `json:"default_sector_id"`
 	BusinessHours     map[string]any        `json:"business_hours"`
 	UsesProtocol      bool                  `json:"uses_protocol"`
 	WhatsAppTemplates []WhatsAppTemplateDTO `json:"whatsapp_templates"`
@@ -47,7 +46,6 @@ func (r CreateConnectionRequest) ToCommand() chcontracts.CreateConnection {
 		BaseURL:           baseURL,
 		AuthType:          chentity.AuthType(r.AuthType),
 		Secret:            secret,
-		DefaultSectorID:   r.DefaultSectorID,
 		BusinessHours:     r.BusinessHours,
 		UsesProtocol:      r.UsesProtocol,
 		WhatsAppTemplates: templatesToEntity(r.WhatsAppTemplates),
@@ -63,7 +61,6 @@ type UpdateConnectionRequest struct {
 	AuthType          *string                `json:"auth_type"`
 	Secret            *string                `json:"secret"`
 	OutboundSecret    *string                `json:"outbound_secret"`
-	DefaultSectorID   *string                `json:"default_sector_id"`
 	BusinessHours     *map[string]any        `json:"business_hours"`
 	Enabled           *bool                  `json:"enabled"`
 	UsesProtocol      *bool                  `json:"uses_protocol"`
@@ -82,13 +79,12 @@ func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
 		secret = r.OutboundSecret
 	}
 	cmd := chcontracts.UpdateConnection{
-		Name:            r.Name,
-		BaseURL:         baseURL,
-		Secret:          secret,
-		DefaultSectorID: r.DefaultSectorID,
-		BusinessHours:   r.BusinessHours,
-		Enabled:         r.Enabled,
-		UsesProtocol:    r.UsesProtocol,
+		Name:          r.Name,
+		BaseURL:       baseURL,
+		Secret:        secret,
+		BusinessHours: r.BusinessHours,
+		Enabled:       r.Enabled,
+		UsesProtocol:  r.UsesProtocol,
 	}
 	if r.Status != nil {
 		st := chentity.Status(*r.Status)
@@ -118,7 +114,6 @@ type ConnectionResponse struct {
 	AuthType          string                `json:"auth_type,omitempty"`
 	HasSecret         bool                  `json:"has_secret"`
 	HasInboundToken   bool                  `json:"has_inbound_token"`
-	DefaultSectorID   string                `json:"default_sector_id,omitempty"`
 	BusinessHours     map[string]any        `json:"business_hours,omitempty"`
 	Enabled           bool                  `json:"enabled"`
 	UsesProtocol      bool                  `json:"uses_protocol"`
@@ -139,7 +134,6 @@ func NewConnectionResponse(c *chentity.ChannelConnection) ConnectionResponse {
 		AuthType:          string(c.AuthType),
 		HasSecret:         c.Secret != "",
 		HasInboundToken:   c.InboundTokenHash != "",
-		DefaultSectorID:   c.DefaultSectorID,
 		BusinessHours:     c.BusinessHours,
 		Enabled:           c.Enabled,
 		UsesProtocol:      c.UsesProtocol,

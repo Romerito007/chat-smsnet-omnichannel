@@ -194,8 +194,10 @@ func registerChannels(p *paths) {
 	}}
 	p.add("POST", "/v1/inbound/channel/{channel}/messages", op(opConfig{tag: "channels", summary: "Ingest an inbound message (channel-authenticated; JSON or Chatwoot multipart)",
 		public: true, params: inboundParams, reqBody: inboundBody, responses: M{"200": jsonResp("Accepted", ref("TestResult"))}}))
-	p.add("POST", "/v1/inbound/channel/{channel}/delivery-receipts", op(opConfig{tag: "channels", summary: "Ingest delivery receipts (channel-authenticated)",
-		public: true, params: inboundParams, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
+	p.add("POST", "/v1/inbound/channel/{channel}/delivery-receipts", op(opConfig{tag: "channels",
+		summary: "Report a message delivery status (channel-authenticated; OPTIONAL)",
+		public:  true, params: inboundParams, reqBody: body(ref("DeliveryReceiptRequest")),
+		responses: M{"200": jsonResp("Accepted", freeObject())}}))
 }
 
 func registerIntegrations(p *paths) {

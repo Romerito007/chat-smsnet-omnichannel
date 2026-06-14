@@ -37,6 +37,8 @@ type InboundService struct {
 	clock         shared.Clock
 	attachments   chcontracts.InboundAttachmentStore
 	ruleSink      shared.RuleEventSink
+	webhooks      shared.WebhookEmitter
+	media         shared.IntegrationMediaResolver
 }
 
 // SetAttachmentStore wires the persister for raw (multipart) inbound attachments.
@@ -52,6 +54,23 @@ func (s *InboundService) SetAttachmentStore(a chcontracts.InboundAttachmentStore
 func (s *InboundService) SetRuleSink(sink shared.RuleEventSink) {
 	if sink != nil {
 		s.ruleSink = sink
+	}
+}
+
+// SetWebhookEmitter wires the outbound webhook emitter so inbound customer
+// messages and conversation lifecycle (created/reopened) flow to the tenant's
+// webhooks — the same pipeline an agent's outbound message uses. Optional.
+func (s *InboundService) SetWebhookEmitter(e shared.WebhookEmitter) {
+	if e != nil {
+		s.webhooks = e
+	}
+}
+
+// SetIntegrationMediaResolver wires the resolver that turns inbound attachment ids
+// into signed, public channel-media URLs for the webhook payload. Optional.
+func (s *InboundService) SetIntegrationMediaResolver(r shared.IntegrationMediaResolver) {
+	if r != nil {
+		s.media = r
 	}
 }
 
@@ -80,6 +99,7 @@ func NewInboundService(
 		contacts: contacts, conversations: conversations, messages: messages,
 		events: events, protocols: protocols, inbound: inbound,
 		locker: locker, publisher: publisher, clock: clock,
+		webhooks: shared.NoopWebhookEmitter{},
 	}
 }
 
@@ -144,16 +164,17 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		return chcontracts.InboundResult{}, err
 	}
 
+	// New conversations enter queued (no sector) awaiting assignment; route first so
+	// the conversation_created webhook reflects the final (queued) state.
+	if isNew {
+		if err := s.routeNew(ctx, conv); err != nil {
+			return chcontracts.InboundResult{}, err
+		}
+	}
+
 	message, err := s.appendInboundMessage(ctx, conv, contact.ID, msg)
 	if err != nil {
 		return chcontracts.InboundResult{}, err
-	}
-
-	// New conversations are routed: automation first, else enqueue.
-	if isNew {
-		if err := s.routeNew(ctx, conn, conv, message.ID); err != nil {
-			return chcontracts.InboundResult{}, err
-		}
 	}
 
 	// Record idempotency last; a duplicate here (race despite the lock) is benign.
@@ -289,6 +310,8 @@ func (s *InboundService) reopen(ctx context.Context, conv *conventity.Conversati
 	}
 	s.recordEvent(ctx, conv, conventity.EventConversationReopened, nil)
 	s.emitRule(ctx, conv, conventity.EventConversationReopened)
+	// A reopen is a significant change → conversation_updated webhook.
+	s.webhooks.Emit(ctx, conv.TenantID, convcontracts.RealtimeConversationUpdated, conv.SectorID, convcontracts.NewConversationPayload(conv))
 	return nil
 }
 
@@ -366,20 +389,45 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
 		convcontracts.RealtimeMessageCreated, convcontracts.NewMessagePayload(message))
 	s.publishConversation(ctx, conv)
+	// Inbound customer messages flow to webhooks too (Chatwoot model: entrada and
+	// saída both via message_created), with signed channel-media attachment URLs.
+	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventMessageCreated, conv.SectorID,
+		convcontracts.NewIntegrationMessagePayload(message, s.integrationMedia(ctx, message)))
 	return message, nil
 }
 
-// routeNew applies the initial routing of a brand-new conversation: enqueue it
-// into the connection's default sector.
-func (s *InboundService) routeNew(ctx context.Context, conn *chentity.ChannelConnection, conv *conventity.Conversation, _ string) error {
-	conv.SectorID = conn.DefaultSectorID
+// integrationMedia best-effort resolves a message's attachment ids to signed,
+// public channel-media URLs (keyed by id) for the outbound webhook payload.
+func (s *InboundService) integrationMedia(ctx context.Context, msg *conventity.Message) map[string]string {
+	if s.media == nil || len(msg.Attachments) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(msg.Attachments))
+	for _, a := range msg.Attachments {
+		if a.ID == "" {
+			continue
+		}
+		if u, err := s.media.IntegrationMediaURL(ctx, a.ID); err == nil && u != "" {
+			out[a.ID] = u
+		}
+	}
+	return out
+}
+
+// routeNew applies the initial routing of a brand-new conversation. The channel
+// no longer carries a sector (Chatwoot model: the team/sector is decided on the
+// conversation, not the inbox), so a new conversation enters queued WITHOUT a
+// sector, awaiting assignment by an agent or an automation rule.
+func (s *InboundService) routeNew(ctx context.Context, conv *conventity.Conversation) error {
 	conv.Status = conventity.StatusQueued
 	conv.UpdatedAt = s.clock.Now()
 	if err := s.conversations.Update(ctx, conv); err != nil {
 		return err
 	}
-	s.recordEvent(ctx, conv, conventity.EventConversationEnqueued, map[string]any{"sector_id": conv.SectorID})
+	s.recordEvent(ctx, conv, conventity.EventConversationEnqueued, nil)
 	s.publishConversation(ctx, conv)
+	// The conversation is now in its initial (queued) state → fan out to webhooks.
+	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationCreated, conv.SectorID, convcontracts.NewConversationPayload(conv))
 	return nil
 }
 

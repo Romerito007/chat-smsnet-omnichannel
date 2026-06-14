@@ -22,8 +22,10 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 		c.Events,
 		clock,
 	)
-	svc.SetOutboundDispatcher(OutboundService(c))
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	// Outbound webhook payloads carry signed, public channel-media URLs so the
+	// integrator can fetch a delivered message's attachments without a JWT.
+	svc.SetIntegrationMediaResolver(AttachmentService(c))
 	// Evaluate automation rules off the hot path (async via Asynq).
 	svc.SetRuleEventSink(AutomationRuleSink(c))
 	svc.SetTagCatalog(ConversationToolsTagService(c))

@@ -59,35 +59,42 @@ func (r UpdateRequest) ToCommand() wcontracts.UpdateSubscription {
 
 // SubscriptionResponse is the public representation (secret never included).
 type SubscriptionResponse struct {
-	ID              string    `json:"id"`
-	TenantID        string    `json:"tenant_id"`
-	Name            string    `json:"name,omitempty"`
-	URL             string    `json:"url"`
-	Events          []string  `json:"events"`
-	Scopes          []string  `json:"scopes,omitempty"`
-	HasSecret       bool      `json:"has_secret"`
-	Enabled         bool      `json:"enabled"`
-	RateLimitPerMin int       `json:"rate_limit_per_minute"`
-	CreatedBy       string    `json:"created_by,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              string   `json:"id"`
+	TenantID        string   `json:"tenant_id"`
+	Name            string   `json:"name,omitempty"`
+	URL             string   `json:"url"`
+	Events          []string `json:"events"`
+	Scopes          []string `json:"scopes,omitempty"`
+	HasSecret       bool     `json:"has_secret"`
+	Enabled         bool     `json:"enabled"`
+	RateLimitPerMin int      `json:"rate_limit_per_minute"`
+	// Managed reports whether this subscription is owned/kept in sync by a channel
+	// connection (created from the channel's outbound URL). Managed subscriptions
+	// are read-only here: edit/delete them through the channel, not the webhooks API.
+	Managed          bool      `json:"managed"`
+	OwnedByChannelID string    `json:"owned_by_channel_id,omitempty"`
+	CreatedBy        string    `json:"created_by,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // NewSubscriptionResponse maps an entity (without exposing the secret).
 func NewSubscriptionResponse(s *wentity.WebhookSubscription) SubscriptionResponse {
 	return SubscriptionResponse{
-		ID:              s.ID,
-		TenantID:        s.TenantID,
-		Name:            s.Name,
-		URL:             s.URL,
-		Events:          s.Events,
-		Scopes:          s.Scopes,
-		HasSecret:       s.Secret != "",
-		Enabled:         s.Enabled,
-		RateLimitPerMin: s.RateLimitPerMin,
-		CreatedBy:       s.CreatedBy,
-		CreatedAt:       s.CreatedAt,
-		UpdatedAt:       s.UpdatedAt,
+		ID:               s.ID,
+		TenantID:         s.TenantID,
+		Name:             s.Name,
+		URL:              s.URL,
+		Events:           s.Events,
+		Scopes:           s.Scopes,
+		HasSecret:        s.Secret != "",
+		Enabled:          s.Enabled,
+		RateLimitPerMin:  s.RateLimitPerMin,
+		Managed:          s.Managed(),
+		OwnedByChannelID: s.OwnedByChannelID,
+		CreatedBy:        s.CreatedBy,
+		CreatedAt:        s.CreatedAt,
+		UpdatedAt:        s.UpdatedAt,
 	}
 }
 

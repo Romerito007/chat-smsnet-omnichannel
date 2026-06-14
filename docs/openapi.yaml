@@ -411,13 +411,12 @@ components:
                 auth_type:
                     type: string
                 base_url:
+                    description: 'Outbound URL: when set, the channel auto-manages a webhook subscription (signed with the channel secret) that delivers conversation + message events to it. outbound_url is an accepted alias on write.'
                     type: string
                 business_hours:
                     $ref: '#/components/schemas/BusinessHours'
                 created_at:
                     format: date-time
-                    type: string
-                default_sector_id:
                     type: string
                 enabled:
                     type: boolean
@@ -456,8 +455,6 @@ components:
                     $ref: '#/components/schemas/BusinessHours'
                 created_at:
                     format: date-time
-                    type: string
-                default_sector_id:
                     type: string
                 enabled:
                     type: boolean
@@ -1016,11 +1013,10 @@ components:
                 auth_type:
                     type: string
                 base_url:
+                    description: Outbound URL the channel delivers events to (auto-managed webhook). outbound_url is an accepted alias.
                     type: string
                 business_hours:
                     $ref: '#/components/schemas/BusinessHours'
-                default_sector_id:
-                    type: string
                 name:
                     type: string
                 outbound_secret:
@@ -1404,7 +1400,11 @@ components:
                             - conversation_status_changed
                             - conversation_assigned
                             - conversation_transferred
+                            - conversation_updated
                             - message_created
+                            - message_updated
+                            - contact_created
+                            - contact_updated
                             - sla_breached
                         type: string
                     type: array
@@ -1477,6 +1477,24 @@ components:
                     type: string
             required:
                 - approve
+            type: object
+        DeliveryReceiptRequest:
+            properties:
+                inbound_token:
+                    description: Channel integration token (alternative to the X-Inbound-Token header).
+                    type: string
+                message_id:
+                    description: The chat's own message id (as delivered in the message_created webhook). The receipt is correlated by this id.
+                    type: string
+                status:
+                    enum:
+                        - delivered
+                        - read
+                        - failed
+                    type: string
+            required:
+                - message_id
+                - status
             type: object
         EditMessageRequest:
             properties:
@@ -2925,8 +2943,6 @@ components:
                     type: string
                 business_hours:
                     $ref: '#/components/schemas/BusinessHours'
-                default_sector_id:
-                    type: string
                 enabled:
                     type: boolean
                 name:
@@ -3325,7 +3341,11 @@ components:
                             - conversation_status_changed
                             - conversation_assigned
                             - conversation_transferred
+                            - conversation_updated
                             - message_created
+                            - message_updated
+                            - contact_created
+                            - contact_updated
                             - sla_breached
                         type: string
                     type: array
@@ -3466,7 +3486,11 @@ components:
                             - conversation_status_changed
                             - conversation_assigned
                             - conversation_transferred
+                            - conversation_updated
                             - message_created
+                            - message_updated
+                            - contact_created
+                            - contact_updated
                             - sla_breached
                         type: string
                     type: array
@@ -3474,7 +3498,13 @@ components:
                     type: boolean
                 id:
                     type: string
+                managed:
+                    description: True when this subscription is owned/kept in sync by a channel connection (created from the channel's outbound URL). Managed subscriptions are read-only here — edit/delete them through the channel, not the webhooks API.
+                    type: boolean
                 name:
+                    type: string
+                owned_by_channel_id:
+                    description: Id of the channel that manages this subscription (present only when managed).
                     type: string
                 rate_limit_per_minute:
                     type: integer
@@ -3504,7 +3534,11 @@ components:
                             - conversation_status_changed
                             - conversation_assigned
                             - conversation_transferred
+                            - conversation_updated
                             - message_created
+                            - message_updated
+                            - contact_created
+                            - contact_updated
                             - sla_breached
                         type: string
                     type: array
@@ -3543,7 +3577,11 @@ components:
                         - conversation_status_changed
                         - conversation_assigned
                         - conversation_transferred
+                        - conversation_updated
                         - message_created
+                        - message_updated
+                        - contact_created
+                        - contact_updated
                         - sla_breached
                     type: string
                 id:
@@ -3577,7 +3615,11 @@ components:
                         - conversation_status_changed
                         - conversation_assigned
                         - conversation_transferred
+                        - conversation_updated
                         - message_created
+                        - message_updated
+                        - contact_created
+                        - contact_updated
                         - sla_breached
                     type: string
                 id:
@@ -7324,8 +7366,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            additionalProperties: true
-                            type: object
+                            $ref: '#/components/schemas/DeliveryReceiptRequest'
                 required: true
             responses:
                 "200":
@@ -7342,7 +7383,7 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             security: []
-            summary: Ingest delivery receipts (channel-authenticated)
+            summary: Report a message delivery status (channel-authenticated; OPTIONAL)
             tags:
                 - channels
     /v1/inbound/channel/{channel}/messages:

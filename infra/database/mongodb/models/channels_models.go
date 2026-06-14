@@ -14,7 +14,6 @@ type ChannelConnection struct {
 	AuthType          string             `bson:"auth_type,omitempty"`
 	EncryptedSecret   string             `bson:"encrypted_secret,omitempty"`
 	InboundTokenHash  string             `bson:"inbound_token_hash"`
-	DefaultSectorID   string             `bson:"default_sector_id,omitempty"`
 	BusinessHours     map[string]any     `bson:"business_hours,omitempty"`
 	Enabled           bool               `bson:"enabled"`
 	UsesProtocol      bool               `bson:"uses_protocol,omitempty"`
@@ -54,22 +53,6 @@ type WhatsAppTemplateButton struct {
 	Type string `bson:"type"`
 	Text string `bson:"text"`
 	URL  string `bson:"url,omitempty"`
-}
-
-// OutboundDelivery is the BSON document for an outbound delivery record.
-type OutboundDelivery struct {
-	ID                  string     `bson:"_id"`
-	TenantID            string     `bson:"tenant_id"`
-	ChannelConnectionID string     `bson:"channel_connection_id"`
-	ConversationID      string     `bson:"conversation_id"`
-	MessageID           string     `bson:"message_id"`
-	Status              string     `bson:"status"`
-	Attempts            int        `bson:"attempts"`
-	ExternalMessageID   string     `bson:"external_message_id,omitempty"`
-	LastError           string     `bson:"last_error,omitempty"`
-	NextRetryAt         *time.Time `bson:"next_retry_at,omitempty"`
-	CreatedAt           time.Time  `bson:"created_at"`
-	UpdatedAt           time.Time  `bson:"updated_at"`
 }
 
 // InboundRecord is the BSON document for the inbound idempotency ledger.

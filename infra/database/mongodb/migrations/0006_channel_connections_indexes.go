@@ -8,7 +8,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// 0006 adds indexes for channel connections and outbound deliveries. Idempotent.
+// 0006 adds indexes for channel connections. Idempotent. (Outbound deliveries are
+// no longer a separate rail — message delivery flows through webhooks — so there is
+// no outbound_deliveries collection to index.)
 func init() {
 	Register(Migration{
 		Version: 6,
@@ -30,20 +32,6 @@ func init() {
 			}); err != nil {
 				return err
 			}
-
-			if _, err := db.Collection("outbound_deliveries").Indexes().CreateMany(ctx, []mongo.IndexModel{
-				{
-					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "external_message_id", Value: 1}},
-					Options: options.Index().SetName("tenant_external_msg"),
-				},
-				{
-					Keys:    bson.D{{Key: "tenant_id", Value: 1}, {Key: "message_id", Value: 1}},
-					Options: options.Index().SetName("tenant_message"),
-				},
-			}); err != nil {
-				return err
-			}
-
 			return nil
 		},
 	})

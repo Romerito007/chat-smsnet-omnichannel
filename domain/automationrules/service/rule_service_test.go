@@ -82,6 +82,9 @@ func (r *fakeWebhookSubs) List(context.Context, shared.PageRequest) ([]*whentity
 func (r *fakeWebhookSubs) ListEnabledByEvent(context.Context, string, string) ([]*whentity.WebhookSubscription, error) {
 	return nil, nil
 }
+func (r *fakeWebhookSubs) FindByChannelID(context.Context, string) (*whentity.WebhookSubscription, error) {
+	return nil, apperror.NotFound("nf")
+}
 
 // fakeLogRepo is an in-memory LogRepository.
 type fakeLogRepo struct{ created []*entity.RuleEvaluationLog }

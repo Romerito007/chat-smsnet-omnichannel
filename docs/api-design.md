@@ -233,7 +233,7 @@ POST   /channels/{id}/rotate-inbound-token                 # gera novo inbound_t
 
 # Borda pública (sem JWT — autenticada pelo inbound_token do canal):
 POST   /inbound/channel/{channel}/messages                 # ingestão de mensagem
-POST   /inbound/channel/{channel}/delivery-receipts        # recibos de entrega (idempotente por external_message_id)
+POST   /inbound/channel/{channel}/delivery-receipts        # status de entrega OPCIONAL: {message_id, status}, correlato pelo message_id do chat
 ```
 
 #### Integração por token de canal (sem JWT)

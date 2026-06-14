@@ -27,11 +27,14 @@ func ContactService(c *container.Container) *contactservice.Service {
 	svc.SetAvatarURLResolver(AttachmentService(c))
 	// Validate custom_attributes against applies_to=contact definitions.
 	svc.SetCustomAttributeValidator(CustomAttributeService(c))
+	// Contact create/update fan out to webhooks (contact_created / contact_updated).
+	svc.SetWebhookEmitter(WebhookDispatcher(c))
 	return svc
 }
 
 // ConnectionService builds the channel connection service, wired to the HTTP
-// health checker used by the channels.health_check job.
+// health checker used by the channels.health_check job and to the webhook manager
+// that keeps the channel's managed (outbound-URL) webhook subscription in sync.
 func ConnectionService(c *container.Container) *channelservice.ConnectionService {
 	svc := channelservice.NewConnectionService(
 		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
@@ -40,6 +43,9 @@ func ConnectionService(c *container.Container) *channelservice.ConnectionService
 	)
 	svc.SetHealthChecker(infrachannels.NewHealthChecker())
 	svc.SetAuditor(AuditService(c))
+	// A channel with an outbound URL produces a managed webhook (full pipeline)
+	// instead of a separate outbound rail.
+	svc.SetWebhookManager(WebhookSubscriptionService(c))
 	return svc
 }
 
@@ -61,25 +67,10 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 	// Inbound lifecycle (conversation created/reopened) feeds the automation-rules
 	// engine.
 	svc.SetRuleSink(AutomationRuleSink(c))
-	return svc
-}
-
-// OutboundService builds the outbound delivery service.
-func OutboundService(c *container.Container) *channelservice.OutboundService {
-	svc := channelservice.NewOutboundService(
-		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
-		channelrepo.NewOutboundDeliveryRepository(c.Mongo.DB),
-		convrepo.NewConversationRepository(c.Mongo.DB),
-		convrepo.NewMessageRepository(c.Mongo.DB),
-		contactrepo.New(c.Mongo.DB),
-		channelRegistry(),
-		infrachannels.NewDeliveryEnqueuer(c.AsynqClient),
-		c.Events,
-		clock,
-	)
-	svc.SetNotifier(NotificationEnqueuer(c))
-	// Outbound integration media is delivered as signed, public (JWT-less) URLs.
-	svc.SetMediaURLBuilder(AttachmentService(c))
+	// Inbound messages + conversation lifecycle fan out to webhooks (Chatwoot
+	// model), with signed channel-media attachment URLs in the payload.
+	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	svc.SetIntegrationMediaResolver(AttachmentService(c))
 	return svc
 }
 
@@ -89,6 +80,8 @@ func ConnectionController(c *container.Container) *channelctl.ConnectionControll
 }
 
 // InboundController builds the public inbound controller (messages + receipts).
+// Delivery receipts (optional, by chat message_id) apply message status through
+// the conversations service.
 func InboundController(c *container.Container) *channelctl.InboundController {
-	return channelctl.NewInboundController(ConnectionService(c), InboundService(c), OutboundService(c))
+	return channelctl.NewInboundController(ConnectionService(c), InboundService(c), ConversationService(c))
 }

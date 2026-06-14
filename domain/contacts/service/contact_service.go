@@ -21,6 +21,7 @@ type Service struct {
 	avatars    contracts.AvatarValidator
 	avatarURLs shared.AvatarURLResolver
 	customAttr shared.CustomAttributeValidator
+	webhooks   shared.WebhookEmitter
 }
 
 // New builds the service.
@@ -28,7 +29,15 @@ func New(repo repository.ContactRepository, clock shared.Clock) *Service {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}, customAttr: shared.NoopCustomAttributeValidator{}}
+	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}, customAttr: shared.NoopCustomAttributeValidator{}, webhooks: shared.NoopWebhookEmitter{}}
+}
+
+// SetWebhookEmitter wires the outbound webhook emitter so contact create/update
+// fan out to the tenant's webhooks (contact_created / contact_updated). Optional.
+func (s *Service) SetWebhookEmitter(e shared.WebhookEmitter) {
+	if e != nil {
+		s.webhooks = e
+	}
 }
 
 // SetCustomAttributeValidator wires the validator for custom_attributes (against
@@ -211,6 +220,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateContact) (*ent
 		Action: "contact.created", ResourceType: "contact", ResourceID: contact.ID,
 		Data: map[string]any{"name": contact.Name},
 	})
+	s.webhooks.Emit(ctx, contact.TenantID, contracts.EventContactCreated, "", contracts.NewContactPayload(contact))
 	return contact, nil
 }
 
@@ -305,6 +315,7 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 	_ = s.auditor.Record(ctx, shared.AuditEntry{
 		Action: "contact.updated", ResourceType: "contact", ResourceID: contact.ID,
 	})
+	s.webhooks.Emit(ctx, contact.TenantID, contracts.EventContactUpdated, "", contracts.NewContactPayload(contact))
 	return contact, nil
 }
 
@@ -402,6 +413,7 @@ func (s *Service) UpsertFromInbound(ctx context.Context, cmd contracts.UpsertFro
 			if err := s.repo.Update(ctx, existing); err != nil {
 				return nil, err
 			}
+			s.webhooks.Emit(ctx, existing.TenantID, contracts.EventContactUpdated, "", contracts.NewContactPayload(existing))
 		}
 		return existing, nil
 	}
@@ -421,6 +433,7 @@ func (s *Service) UpsertFromInbound(ctx context.Context, cmd contracts.UpsertFro
 	if err := s.repo.Create(ctx, contact); err != nil {
 		return nil, err
 	}
+	s.webhooks.Emit(ctx, contact.TenantID, contracts.EventContactCreated, "", contracts.NewContactPayload(contact))
 	return contact, nil
 }
 

@@ -21,16 +21,6 @@ type ConnectionRepository interface {
 	FindByInboundTokenHash(ctx context.Context, tokenHash string) (*entity.ChannelConnection, error)
 }
 
-// OutboundDeliveryRepository persists outbound delivery records.
-type OutboundDeliveryRepository interface {
-	Create(ctx context.Context, d *entity.OutboundDelivery) error
-	Update(ctx context.Context, d *entity.OutboundDelivery) error
-	FindByID(ctx context.Context, id string) (*entity.OutboundDelivery, error)
-	// FindByExternalMessageID locates a delivery by the channel's external id,
-	// used to apply delivery receipts.
-	FindByExternalMessageID(ctx context.Context, externalMessageID string) (*entity.OutboundDelivery, error)
-}
-
 // InboundRepository is the idempotency ledger for processed inbound messages.
 type InboundRepository interface {
 	FindByExternalID(ctx context.Context, channel, externalMessageID string) (*entity.InboundRecord, error)
