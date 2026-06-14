@@ -186,6 +186,84 @@ components:
                     format: date-time
                     type: string
             type: object
+        AutomationRule:
+            properties:
+                actions:
+                    items:
+                        $ref: '#/components/schemas/AutomationRuleAction'
+                    type: array
+                conditions:
+                    items:
+                        $ref: '#/components/schemas/AutomationRuleCondition'
+                    type: array
+                created_at:
+                    format: date-time
+                    type: string
+                description:
+                    type: string
+                enabled:
+                    type: boolean
+                event:
+                    enum:
+                        - conversation_created
+                        - conversation_updated
+                        - conversation_resolved
+                        - conversation_opened
+                        - conversation_closed
+                        - message_created
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                tenant_id:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+            type: object
+        AutomationRuleAction:
+            properties:
+                type:
+                    description: Only send_webhook is supported; it delivers the event to webhook_id via the webhooks pipeline.
+                    enum:
+                        - send_webhook
+                    type: string
+                webhook_id:
+                    description: Id of a registered webhook (/v1/webhooks). Must exist for the tenant.
+                    type: string
+            required:
+                - type
+            type: object
+        AutomationRuleCondition:
+            properties:
+                field:
+                    enum:
+                        - status
+                        - channel
+                        - assigned_agent_id
+                        - sector_id
+                        - queue_id
+                        - priority
+                        - tags
+                        - contact_phone
+                    type: string
+                operator:
+                    description: 'Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags → contains/does_not_contain; contact_phone → equal_to/contains.'
+                    enum:
+                        - equal_to
+                        - not_equal_to
+                        - contains
+                        - does_not_contain
+                    type: string
+                value:
+                    description: Comparison value; for tags it is a single tag id.
+                    type: string
+            required:
+                - field
+                - operator
+                - value
+            type: object
         AutomationRun:
             properties:
                 conversation_id:
@@ -873,6 +951,38 @@ components:
                     type: integer
             required:
                 - base_url
+            type: object
+        CreateAutomationRuleRequest:
+            properties:
+                actions:
+                    items:
+                        $ref: '#/components/schemas/AutomationRuleAction'
+                    type: array
+                conditions:
+                    description: AND-combined. Empty = match every occurrence of the event.
+                    items:
+                        $ref: '#/components/schemas/AutomationRuleCondition'
+                    type: array
+                description:
+                    type: string
+                enabled:
+                    description: Defaults to true when omitted.
+                    type: boolean
+                event:
+                    enum:
+                        - conversation_created
+                        - conversation_updated
+                        - conversation_resolved
+                        - conversation_opened
+                        - conversation_closed
+                        - message_created
+                    type: string
+                name:
+                    type: string
+            required:
+                - name
+                - event
+                - actions
             type: object
         CreateCannedRequest:
             properties:
@@ -2276,6 +2386,36 @@ components:
             required:
                 - conversation_id
             type: object
+        RuleEvaluationLog:
+            properties:
+                conversation_id:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                error_summary:
+                    type: string
+                event:
+                    enum:
+                        - conversation_created
+                        - conversation_updated
+                        - conversation_resolved
+                        - conversation_opened
+                        - conversation_closed
+                        - message_created
+                    type: string
+                id:
+                    type: string
+                rule_id:
+                    type: string
+                status:
+                    description: Outcome of a rule firing. skipped_dedup is the anti-loop guard (same rule+conversation+event fired within a short window).
+                    enum:
+                        - action_enqueued
+                        - skipped_dedup
+                        - error
+                    type: string
+            type: object
         RunToolRequest:
             properties:
                 args:
@@ -2605,6 +2745,32 @@ components:
                     type: string
                 timeout_ms:
                     type: integer
+            type: object
+        UpdateAutomationRuleRequest:
+            properties:
+                actions:
+                    items:
+                        $ref: '#/components/schemas/AutomationRuleAction'
+                    type: array
+                conditions:
+                    items:
+                        $ref: '#/components/schemas/AutomationRuleCondition'
+                    type: array
+                description:
+                    type: string
+                enabled:
+                    type: boolean
+                event:
+                    enum:
+                        - conversation_created
+                        - conversation_updated
+                        - conversation_resolved
+                        - conversation_opened
+                        - conversation_closed
+                        - message_created
+                    type: string
+                name:
+                    type: string
             type: object
         UpdateCannedRequest:
             properties:
@@ -3721,6 +3887,221 @@ paths:
             summary: Confirm an email address
             tags:
                 - auth
+    /v1/automation-rules:
+        get:
+            operationId: getAutomationRules
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/AutomationRule'
+                                        type: array
+                                type: object
+                    description: Rules
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List automation rules
+            tags:
+                - automationrules
+        post:
+            operationId: postAutomationRules
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateAutomationRuleRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AutomationRule'
+                    description: Created
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Create an automation rule
+            tags:
+                - automationrules
+    /v1/automation-rules/{id}:
+        delete:
+            operationId: deleteAutomationRulesById
+            parameters:
+                - description: automation rule id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: Deleted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Delete an automation rule
+            tags:
+                - automationrules
+        get:
+            operationId: getAutomationRulesById
+            parameters:
+                - description: automation rule id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AutomationRule'
+                    description: Rule
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get an automation rule
+            tags:
+                - automationrules
+        patch:
+            operationId: patchAutomationRulesById
+            parameters:
+                - description: automation rule id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateAutomationRuleRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AutomationRule'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Not found.
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Update an automation rule
+            tags:
+                - automationrules
+    /v1/automation-rules/{id}/logs:
+        get:
+            operationId: getAutomationRulesByIdLogs
+            parameters:
+                - description: automation rule id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/RuleEvaluationLog'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Evaluation log page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List a rule's evaluation logs
+            tags:
+                - automationrules
     /v1/automation/callbacks/{tenant_id}:
         post:
             operationId: postAutomationCallbacksByTenantId
@@ -9721,6 +10102,8 @@ tags:
       name: channels
     - description: External automation integrations and runs.
       name: automation
+    - description: Trigger/condition/action rules (Chatwoot-style), distinct from the automation flow.
+      name: automationrules
     - description: smsnet-integrations config and on-demand external queries.
       name: providerhub
     - description: Outbound webhook subscriptions and deliveries.

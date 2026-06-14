@@ -108,6 +108,14 @@ func webhookEventEnum() M {
 		"sla_breached", "automation_completed", "automation_failed")
 }
 
+// automationRuleEventEnum is the closed set of lifecycle events an automation
+// rule can react to (domain/automationrules/entity.AllEvents). These map to the
+// internal conversation/message events the backend already emits.
+func automationRuleEventEnum() M {
+	return enum("conversation_created", "conversation_updated", "conversation_resolved",
+		"conversation_opened", "conversation_closed", "message_created")
+}
+
 func object(props M, required ...string) M {
 	o := M{"type": "object", "properties": props}
 	if len(required) > 0 {
@@ -350,6 +358,7 @@ func tags() []any {
 		{"routing", "Assignment, transfer and queue distribution."},
 		{"channels", "Channel connections and inbound ingestion."},
 		{"automation", "External automation integrations and runs."},
+		{"automationrules", "Trigger/condition/action rules (Chatwoot-style), distinct from the automation flow."},
 		{"providerhub", "smsnet-integrations config and on-demand external queries."},
 		{"webhooks", "Outbound webhook subscriptions and deliveries."},
 		{"copilot", "AI copilot configuration and inference (agentic tool loop)."},

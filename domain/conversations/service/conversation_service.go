@@ -27,6 +27,7 @@ type Service struct {
 	clock         shared.Clock
 	outbound      contracts.OutboundDispatcher
 	webhooks      shared.WebhookEmitter
+	ruleSink      shared.RuleEventSink
 	tags          contracts.TagCatalog
 	closeReasons  contracts.CloseReasonPolicy
 	sla           contracts.SLAHook
@@ -171,6 +172,23 @@ func (s *Service) SetCloseReasonPolicy(p contracts.CloseReasonPolicy) {
 func (s *Service) SetWebhookEmitter(e shared.WebhookEmitter) {
 	if e != nil {
 		s.webhooks = e
+	}
+}
+
+// SetRuleEventSink wires the automation-rules sink. Optional: when unset, lifecycle
+// events are not evaluated by automation rules. Emission is async (enqueue only).
+func (s *Service) SetRuleEventSink(sink shared.RuleEventSink) {
+	if sink != nil {
+		s.ruleSink = sink
+	}
+}
+
+// emitRuleEvent forwards a lifecycle event to the automation-rules sink (best
+// effort, async). event is the internal dot-notation name; payload is the event's
+// conversation/message payload (used as the webhook data).
+func (s *Service) emitRuleEvent(ctx context.Context, conv *entity.Conversation, event string, payload any) {
+	if s.ruleSink != nil {
+		s.ruleSink.EmitRuleEvent(ctx, conv.TenantID, event, conv.ID, payload)
 	}
 }
 
@@ -351,6 +369,9 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 
 	s.recordEvent(ctx, conv, entity.EventConversationUpdated, nil)
 	s.publishConversation(ctx, conv)
+	// conversation.updated drives automation rules only from an explicit Update
+	// (PATCH), not from every internal publishConversation caller.
+	s.emitRuleEvent(ctx, conv, contracts.RealtimeConversationUpdated, contracts.NewConversationPayload(conv))
 	// A status change that lands on a terminal state also emits the named
 	// lifecycle event (e.g. resolving a conversation via PATCH status=resolved).
 	if statusChanged {
@@ -914,9 +935,10 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 		contracts.RealtimeMessageCreated, contracts.NewMessagePayload(msg))
 	s.publishConversation(ctx, conv)
 
-	// Outbound webhook: only real messages, not internal notes.
+	// Outbound webhook + automation rules: only real messages, not internal notes.
 	if eventType == entity.EventMessageCreated {
 		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, conv.SectorID, contracts.NewMessagePayload(msg))
+		s.emitRuleEvent(ctx, conv, entity.EventMessageCreated, contracts.NewMessagePayload(msg))
 	}
 	return msg, nil
 }
@@ -1039,6 +1061,8 @@ func (s *Service) publishLifecycle(ctx context.Context, conv *entity.Conversatio
 	if conv.SectorID != "" {
 		_ = s.publisher.Publish(ctx, shared.TopicInbox(conv.TenantID, conv.SectorID), event, payload)
 	}
+	// Named lifecycle events (created/resolved/closed/reopened) drive automation rules.
+	s.emitRuleEvent(ctx, conv, event, payload)
 }
 
 // lifecycleEventFor maps a terminal status to its named realtime lifecycle event.

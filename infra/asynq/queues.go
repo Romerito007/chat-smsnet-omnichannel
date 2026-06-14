@@ -51,4 +51,8 @@ const (
 	// RetentionPolicy across the scheduled, multi-tenant fan-out.
 	TaskPrivacyExport    = "privacy.export"
 	TaskPrivacyRetention = "privacy.retention"
+
+	// TaskRuleEvaluate evaluates the tenant's automation rules for one conversation
+	// event, off the hot path of the emitting service.
+	TaskRuleEvaluate = "automationrule.evaluate"
 )

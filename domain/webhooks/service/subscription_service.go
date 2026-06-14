@@ -31,6 +31,7 @@ type SubscriptionService struct {
 	sender     contracts.Sender
 	clock      shared.Clock
 	auditor    shared.Auditor
+	usage      WebhookUsageChecker
 }
 
 // NewSubscriptionService builds the service.
@@ -53,6 +54,16 @@ func (s *SubscriptionService) SetAuditor(a shared.Auditor) {
 		s.auditor = a
 	}
 }
+
+// WebhookUsageChecker reports whether a webhook is referenced by a consumer (e.g.
+// an automation rule), so deletion can be blocked with a clear message.
+type WebhookUsageChecker interface {
+	IsWebhookInUse(ctx context.Context, webhookID string) (inUse bool, usedBy string, err error)
+}
+
+// SetUsageChecker wires the referential-integrity checker used to block deleting a
+// webhook in use. Optional.
+func (s *SubscriptionService) SetUsageChecker(c WebhookUsageChecker) { s.usage = c }
 
 // Create registers a webhook. The returned entity carries the plaintext secret
 // so the controller can expose it exactly once; it is never returned again.
@@ -176,6 +187,17 @@ func (s *SubscriptionService) Delete(ctx context.Context, id string) error {
 	// Ensure it exists (and belongs to the tenant) before deleting.
 	if _, err := s.subs.FindByID(ctx, id); err != nil {
 		return err
+	}
+	// Referential integrity: refuse to delete a webhook an automation rule
+	// references, with a clear message — never silently break the rule.
+	if s.usage != nil {
+		inUse, usedBy, err := s.usage.IsWebhookInUse(ctx, id)
+		if err != nil {
+			return err
+		}
+		if inUse {
+			return apperror.Conflict("webhook em uso pela regra " + usedBy)
+		}
 	}
 	if err := s.subs.Delete(ctx, id); err != nil {
 		return err

@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/webhooks/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/webhooks/entity"
@@ -80,6 +81,45 @@ func (d *Dispatcher) Emit(ctx context.Context, tenantID, event, sectorID string,
 			_ = d.enqueuer.EnqueueDeliver(contracts.DeliverTask{TenantID: tenantID, DeliveryID: delivery.ID})
 		}
 	}
+}
+
+// EmitTo delivers an event to ONE specific webhook by id, bypassing the
+// subscription's events[] filter — the caller (e.g. an automation rule) decides
+// what to send where. It reuses the full delivery pipeline (HMAC signing,
+// retry/backoff, dead-letter, per-webhook rate limit). The event string is used
+// as-is as the wire name. Returns an error so the caller can log the outcome; the
+// tenant is taken from ctx for the repository lookup.
+func (d *Dispatcher) EmitTo(ctx context.Context, tenantID, webhookID, event string, payload any) error {
+	sub, err := d.subs.FindByID(ctx, webhookID)
+	if err != nil {
+		return err
+	}
+	if !sub.Enabled {
+		return apperror.Validation("webhook is disabled")
+	}
+	now := d.clock.Now()
+	id := shared.NewID()
+	body, err := buildEnvelope(id, event, now, payload)
+	if err != nil {
+		return err
+	}
+	delivery := &entity.WebhookDelivery{
+		ID:        id,
+		TenantID:  tenantID,
+		WebhookID: sub.ID,
+		Event:     event,
+		Payload:   body,
+		Status:    entity.DeliveryPending,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := d.deliveries.Create(ctx, delivery); err != nil {
+		return err
+	}
+	if d.enqueuer != nil {
+		_ = d.enqueuer.EnqueueDeliver(contracts.DeliverTask{TenantID: tenantID, DeliveryID: delivery.ID})
+	}
+	return nil
 }
 
 // scopeAllows applies a subscription's sector scopes: empty scopes = every sector;

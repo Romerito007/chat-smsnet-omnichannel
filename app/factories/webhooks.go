@@ -17,6 +17,8 @@ func WebhookSubscriptionService(c *container.Container) *wservice.SubscriptionSe
 		clock,
 	)
 	svc.SetAuditor(AuditService(c))
+	// Block deleting a webhook an automation rule references (clear 409).
+	svc.SetUsageChecker(AutomationRuleService(c))
 	return svc
 }
 

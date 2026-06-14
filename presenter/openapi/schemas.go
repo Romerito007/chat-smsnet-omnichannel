@@ -222,6 +222,44 @@ func schemas() M {
 			"error": str(), "created_at": dateTime(), "updated_at": dateTime(),
 		}),
 
+		// ── automation rules (Chatwoot-style; distinct from the automation flow) ──
+		// An AutomationRule reacts to a conversation/message lifecycle event, matches
+		// AND-conditions against the conversation/contact, and runs actions (only
+		// send_webhook for now, referencing a registered webhook by id).
+		"AutomationRule": object(M{
+			"id": str(), "tenant_id": str(), "name": str(), "description": str(),
+			"event":      automationRuleEventEnum(),
+			"enabled":    boolean(),
+			"conditions": arr(ref("AutomationRuleCondition")),
+			"actions":    arr(ref("AutomationRuleAction")),
+			"created_at": dateTime(), "updated_at": dateTime(),
+		}),
+		"AutomationRuleCondition": object(M{
+			"field":    enum("status", "channel", "assigned_agent_id", "sector_id", "queue_id", "priority", "tags", "contact_phone"),
+			"operator": withDesc(enum("equal_to", "not_equal_to", "contains", "does_not_contain"), "Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags → contains/does_not_contain; contact_phone → equal_to/contains."),
+			"value":    describedStr("Comparison value; for tags it is a single tag id."),
+		}, "field", "operator", "value"),
+		"AutomationRuleAction": object(M{
+			"type":       withDesc(enum("send_webhook"), "Only send_webhook is supported; it delivers the event to webhook_id via the webhooks pipeline."),
+			"webhook_id": describedStr("Id of a registered webhook (/v1/webhooks). Must exist for the tenant."),
+		}, "type"),
+		"CreateAutomationRuleRequest": object(M{
+			"name": str(), "description": str(),
+			"event":      automationRuleEventEnum(),
+			"enabled":    describedBool("Defaults to true when omitted."),
+			"conditions": withDesc(arr(ref("AutomationRuleCondition")), "AND-combined. Empty = match every occurrence of the event."),
+			"actions":    arr(ref("AutomationRuleAction")),
+		}, "name", "event", "actions"),
+		"UpdateAutomationRuleRequest": object(M{
+			"name": str(), "description": str(), "event": automationRuleEventEnum(), "enabled": boolean(),
+			"conditions": arr(ref("AutomationRuleCondition")), "actions": arr(ref("AutomationRuleAction")),
+		}),
+		"RuleEvaluationLog": object(M{
+			"id": str(), "rule_id": str(), "event": automationRuleEventEnum(), "conversation_id": str(),
+			"status":        withDesc(enum("action_enqueued", "skipped_dedup", "error"), "Outcome of a rule firing. skipped_dedup is the anti-loop guard (same rule+conversation+event fired within a short window)."),
+			"error_summary": str(), "created_at": dateTime(),
+		}),
+
 		// ── providerhub ────────────────────────────────────────────────────────
 		// ProviderHubGatewayStatus is the GET /v1/providerhub/config response. The
 		// SMSNET gateway is infra now (env ISP_GATEWAY_API_HOST/KEY), so this reports
