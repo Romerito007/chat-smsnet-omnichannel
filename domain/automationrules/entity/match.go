@@ -15,6 +15,9 @@ type EvalContext struct {
 	Priority        string
 	Tags            []string
 	ContactPhone    string
+	// MessageContent is the text of the message that triggered a message_created
+	// event (empty for non-message events). Matched by FieldMessageContent.
+	MessageContent string
 }
 
 // Matches reports whether every condition holds (AND). An empty condition list
@@ -42,6 +45,12 @@ func (c Condition) match(ec EvalContext) bool {
 			return strings.Contains(ec.ContactPhone, c.Value)
 		}
 		return ec.ContactPhone == c.Value // OpEqualTo
+	case FieldMessageContent:
+		has := strings.Contains(strings.ToLower(ec.MessageContent), strings.ToLower(c.Value))
+		if c.Operator == OpDoesNotContain {
+			return !has
+		}
+		return has // OpContains (case-insensitive substring)
 	default:
 		v := scalarField(ec, c.Field)
 		if c.Operator == OpNotEqualTo {

@@ -41,3 +41,20 @@ func RuleOriginFromContext(ctx context.Context) RuleOrigin {
 	}
 	return OriginExternal
 }
+
+type ruleDepthKey struct{}
+
+// WithRuleDepth returns a context carrying the causal depth of the chain that is
+// producing events. The automation executor increments it per action; the
+// evaluator caps the chain length (defense-in-depth anti-loop layer 3).
+func WithRuleDepth(ctx context.Context, depth int) context.Context {
+	return context.WithValue(ctx, ruleDepthKey{}, depth)
+}
+
+// RuleDepthFromContext returns the context's causal depth (0 when unset).
+func RuleDepthFromContext(ctx context.Context) int {
+	if d, ok := ctx.Value(ruleDepthKey{}).(int); ok {
+		return d
+	}
+	return 0
+}

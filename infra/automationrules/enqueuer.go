@@ -44,6 +44,7 @@ func (e *Enqueuer) EmitRuleEvent(ctx context.Context, tenantID, event, conversat
 		Data:           data,
 		EventID:        shared.NewID(),
 		Origin:         string(shared.RuleOriginFromContext(ctx)),
+		Depth:          shared.RuleDepthFromContext(ctx),
 	})
 	if err != nil {
 		return

@@ -187,10 +187,15 @@ components:
                         - conversation_closed
                         - message_created
                     type: string
+                health:
+                    $ref: '#/components/schemas/AutomationRuleHealth'
                 id:
                     type: string
                 name:
                     type: string
+                priority:
+                    description: Firing order among rules on the same event (ascending; lower first). Ties break by created_at then id.
+                    type: integer
                 tenant_id:
                     type: string
                 updated_at:
@@ -199,13 +204,43 @@ components:
             type: object
         AutomationRuleAction:
             properties:
+                agent_id:
+                    description: 'assign_agent: the agent (user) id.'
+                    type: string
+                attachment_id:
+                    description: 'send_attachment: an uploaded, ready attachment id (same tenant).'
+                    type: string
+                priority:
+                    description: 'change_priority: one of low|normal|high|urgent.'
+                    type: string
+                sector_id:
+                    description: 'assign_team: the sector (team) id.'
+                    type: string
+                tag_id:
+                    description: 'add_tag/remove_tag: the tag id.'
+                    type: string
+                text:
+                    description: 'send_message: the message text (sent as System Automation).'
+                    type: string
                 type:
-                    description: Only send_webhook is supported; it delivers the event to webhook_id via the webhooks pipeline.
+                    description: Action kind. Each reads only its own param (below).
                     enum:
                         - send_webhook
+                        - send_message
+                        - send_attachment
+                        - assign_agent
+                        - assign_team
+                        - remove_assigned_agent
+                        - remove_assigned_team
+                        - add_tag
+                        - remove_tag
+                        - change_priority
+                        - resolve_conversation
+                        - open_conversation
+                        - mark_pending
                     type: string
                 webhook_id:
-                    description: Id of a registered webhook (/v1/webhooks). Must exist for the tenant.
+                    description: 'send_webhook: id of a registered webhook (/v1/webhooks).'
                     type: string
             required:
                 - type
@@ -222,9 +257,10 @@ components:
                         - priority
                         - tags
                         - contact_phone
+                        - message_content
                     type: string
                 operator:
-                    description: 'Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags → contains/does_not_contain; contact_phone → equal_to/contains.'
+                    description: 'Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags & message_content → contains/does_not_contain; contact_phone → equal_to/contains.'
                     enum:
                         - equal_to
                         - not_equal_to
@@ -232,12 +268,35 @@ components:
                         - does_not_contain
                     type: string
                 value:
-                    description: Comparison value; for tags it is a single tag id.
+                    description: Comparison value; for tags it is a single tag id; for message_content the substring to match (case-insensitive) against the triggering message text.
                     type: string
             required:
                 - field
                 - operator
                 - value
+            type: object
+        AutomationRuleHealth:
+            properties:
+                missing_refs:
+                    items:
+                        properties:
+                            action_index:
+                                type: integer
+                            id:
+                                type: string
+                            kind:
+                                enum:
+                                    - agent
+                                    - sector
+                                    - tag
+                                    - attachment
+                                    - webhook
+                                type: string
+                        type: object
+                    type: array
+                ok:
+                    description: False when an action references a deleted agent/tag/sector/webhook (the action is skipped at runtime — skipped_missing_ref).
+                    type: boolean
             type: object
         AvatarUploadTarget:
             properties:
@@ -985,6 +1044,9 @@ components:
                     type: string
                 name:
                     type: string
+                priority:
+                    description: Firing order among rules on the same event (ascending). Default 0.
+                    type: integer
             required:
                 - name
                 - event
@@ -2551,6 +2613,9 @@ components:
             type: object
         RuleEvaluationLog:
             properties:
+                action_type:
+                    description: The action this row is about (empty for rule-level skips).
+                    type: string
                 conversation_id:
                     type: string
                 created_at:
@@ -2572,10 +2637,14 @@ components:
                 rule_id:
                     type: string
                 status:
-                    description: Outcome of a rule firing. skipped_dedup is the anti-loop guard (same rule+conversation+event fired within a short window).
+                    description: Per-action outcome. skipped_automation = anti-loop origin suppression; skipped_stale = conditions no longer matched the live conversation; skipped_budget = per-conversation message fuse; skipped_missing_ref = referenced entity deleted.
                     enum:
                         - action_enqueued
                         - skipped_dedup
+                        - skipped_automation
+                        - skipped_stale
+                        - skipped_budget
+                        - skipped_missing_ref
                         - error
                     type: string
             type: object
@@ -2919,6 +2988,8 @@ components:
                     type: string
                 name:
                     type: string
+                priority:
+                    type: integer
             type: object
         UpdateCannedRequest:
             properties:

@@ -44,40 +44,79 @@ eventos). `conditions` vazio = **match-all** (dispara em toda ocorrência).
 | `priority` | conversa | `equal_to`, `not_equal_to` |
 | `tags` (`[]string`) | conversa | `contains`, `does_not_contain` (value = 1 tag id) |
 | `contact_phone` | contato | `equal_to`, `contains` |
+| `message_content` | **mensagem do evento** | `contains`, `does_not_contain` (substring, case-insensitive) |
 
-Condições do Chatwoot sem dado no nosso schema (idioma, e-mail, país, etc.) são
-**ignoradas** (não existem no enum).
+`message_content` é o **único** campo resolvido contra a **mensagem** (texto do
+`message_created`), não a conversa — para regras do tipo "se o cliente escrever
+'suporte'". Condições do Chatwoot sem dado no nosso schema (idioma, e-mail, país,
+custom attributes) são **ignoradas** (não existem no enum).
 
-## Ação: `send_webhook`
-Única ação implementada (campo `type` extensível). Referencia um **webhook já
-cadastrado** por `webhook_id` (validado: existe no tenant). Ao disparar, reusa o
-**pipeline de webhooks** via `Dispatcher.EmitTo` — que **ignora o `events[]` e os
-`scopes` (setores)** da subscription, porque **quem decide o disparo é a regra**
-(suas condições), não o webhook. Ganha de graça **HMAC, retry/backoff,
-dead-letter e rate-limit**. O envelope é o padrão `{id,event,created_at,data}`.
+## Catálogo de ações
+Executadas na **ordem do array**. Cada ação lê só o seu param.
 
-## Anti-loop (premissa documentada)
-Proteção: **dedup `(rule_id, conversation_id, event)`** numa janela de **10s**
-(Redis `SETNX`). Cobre o re-disparo imediato da mesma regra (rajadas, callbacks
-repetidos).
+| `type` | param | efeito |
+|---|---|---|
+| `send_webhook` | `webhook_id` | entrega o evento ao webhook via `Dispatcher.EmitTo` (ignora `events[]`/`scopes` — quem decide é a regra). HMAC, retry, dead-letter, rate-limit de graça. |
+| `send_message` | `text` | injeta mensagem **outgoing** `SenderType=automation` ("System Automation"), reusando o pipeline normal (`message_created` → webhooks → integrador entrega). |
+| `send_attachment` | `attachment_id` | idem, com anexo (ready, mesmo tenant). |
+| `assign_agent` | `agent_id` | atribui a conversa ao agente. |
+| `assign_team` | `sector_id` | põe a conversa no setor (Time = setor). |
+| `remove_assigned_agent` | — | limpa o agente. |
+| `remove_assigned_team` | — | limpa o setor. |
+| `add_tag` / `remove_tag` | `tag_id` | adiciona/remove tag. |
+| `change_priority` | `priority` | `low\|normal\|high\|urgent`. |
+| `resolve_conversation` | — | status → `resolved`. |
+| `open_conversation` | — | reabre uma conversa fechada. |
+| `mark_pending` | — | status → `queued` (volta para a fila, "pending" do Chatwoot — não há status `pending` próprio). |
 
-**Premissa:** como a **única ação é `send_webhook`** — que **sai do sistema** e
-**não muda estado interno** (não atribui, não taggeia, não altera status) — ela
-**não emite nenhum evento interno** e portanto **não realimenta** o motor. Não há
-laço interno entre regras. O único encadeamento possível é **externo-mediado** (um
-sistema lá fora reage ao webhook e chama nossa API), e cada salto é um evento
-legítimo, limitado pelo sistema externo. Logo o dedup de 10s **é suficiente**.
-⚠️ Esta premissa **vale enquanto a única ação não mutar estado interno**. Se uma
-ação interna (atribuir/taggear/resolver) for adicionada no futuro, o anti-loop
-precisa ser reavaliado (ex.: profundidade/origem do disparo).
+As ações de estado e de mensagem rodam **sob `origin=automation`** (ver anti-loop).
+`priority` (campo da regra, int) ordena regras no mesmo evento (asc; desempate
+`created_at`/`id`).
+
+## Anti-loop (3 camadas)
+Ações agora **mutam estado** e **criam mensagem**, então a premissa antiga (única
+ação saía do sistema) não vale mais. Proteção em camadas:
+
+1. **Origem (principal).** Todo evento de ciclo de vida produzido por uma ação de
+   automação é marcado `origin=automation` (carregado no `context`; para mensagens,
+   **derivado de `SenderType=automation`** no `persistMessage`, então vale mesmo se
+   um caminho de envio futuro esquecer de carimbar o contexto). O evaluator
+   **descarta** eventos `origin=automation` no topo → automação **não realimenta**
+   automação. Mata o laço interno na raiz (ex.: regra em `message_created` com
+   `send_message` não redispara a si mesma).
+2. **Fusível por conversa (rede de segurança).** Máx. **100 mensagens de automação
+   por conversa / 10 min** (Redis `INCR`+TTL). Não é controle de fluxo (funil
+   legítimo nunca chega lá) — é disjuntor para integrador bugado que ecoa infinito.
+   Estourou → ações de mensagem/anexo são **suprimidas** e logadas `skipped_budget`
+   (a regra **não** é desabilitada).
+3. **Teto de profundidade (defesa de borda).** A task carrega `depth`; ação emite
+   `depth+1`; acima de `maxDepth=3` o evaluator descarta. Barato; cobre um caminho
+   imprevisto que não tenha carimbado origem.
+
+**Dedup por `event_id`** (substitui a janela de 10s): a chave `(rule, event_id)` é
+**reivindicada ANTES** de executar as ações, então um **retry do Asynq** encontra a
+chave tomada e pula — sem reenviar `send_message` duplicado.
+
+## Ordem, concorrência, staleness e falha
+- Regras no mesmo evento rodam por **`priority` asc** (desempate `created_at`/`id`);
+  ações na **ordem do array**.
+- **Lock por conversa** (Redis) serializa a execução de ações na mesma conversa.
+- **Re-hidratação sob o lock**: uma regra que casou na emissão mas **não casa mais**
+  com a conversa viva é pulada (`skipped_stale`).
+- Falha de ação é **best-effort**: não aborta as outras, não faz a task reprocessar
+  (evita reenvio), e cada ação loga seu próprio resultado.
 
 ## Integridade referencial
-Deletar um webhook referenciado por uma regra é **bloqueado** com **409**
-("webhook em uso pela regra X") — nunca anula a regra silenciosamente. Espelha o
-bloqueio perfil-de-ISP↔assistente.
+- **Webhook**: deletar um referenciado é **bloqueado com 409** (como hoje).
+- **Agente / tag / setor / anexo**: integridade **soft** — o delete **não** é
+  bloqueado. Em runtime a ação falha graciosamente e loga `skipped_missing_ref`; a
+  regra exibe um **indicador de saúde** (`health.missing_refs`) na listagem/GET. Na
+  **criação/edição** da regra, cada ação valida seus params (existe agente/tag/
+  setor; `attachment` ready; `priority` válido; `webhook` existe) → 422 por campo.
 
 ## Log de execução
-Coleção `rule_evaluation_logs` (metadata only, sem payload): `rule_id`, `event`,
-`conversation_id`, `status` (`action_enqueued` | `skipped_dedup` | `error`),
-`error_summary`, `created_at`. Lido via `GET /v1/automation-rules/{id}/logs`
-(paginado por keyset).
+Coleção `rule_evaluation_logs` (metadata only): `rule_id`, `event`,
+`conversation_id`, `action_type`, `status` (`action_enqueued` | `skipped_dedup` |
+`skipped_automation` | `skipped_stale` | `skipped_budget` | `skipped_missing_ref` |
+`error`), `error_summary`, `created_at` — **uma linha por ação**. Lido via
+`GET /v1/automation-rules/{id}/logs` (keyset).

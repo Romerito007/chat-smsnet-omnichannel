@@ -21,6 +21,7 @@ type CreateRule struct {
 	Description string
 	Event       entity.RuleEvent
 	Enabled     *bool // nil → true
+	Priority    int
 	Conditions  []entity.Condition
 	Actions     []entity.Action
 }
@@ -31,16 +32,33 @@ type UpdateRule struct {
 	Description *string
 	Event       *entity.RuleEvent
 	Enabled     *bool
+	Priority    *int
 	Conditions  *[]entity.Condition
 	Actions     *[]entity.Action
 }
 
-// RuleService manages automation rules, validates referenced webhooks, and reads
+// RefChecker reports whether an action's referenced tenant entity exists/is usable
+// (kind ∈ agent|sector|tag|attachment). Used for create-time validation and the
+// rule health indicator. Optional: when unset, only structural validation runs.
+type RefChecker interface {
+	Exists(ctx context.Context, kind, id string) (bool, error)
+}
+
+// MissingRef is one action referencing a tenant entity that no longer exists (soft
+// referential integrity surfaced as a rule health indicator).
+type MissingRef struct {
+	ActionIndex int
+	Kind        string
+	ID          string
+}
+
+// RuleService manages automation rules, validates referenced entities, and reads
 // evaluation logs.
 type RuleService struct {
 	repo     repository.RuleRepository
 	webhooks whrepo.SubscriptionRepository
 	logs     repository.LogRepository
+	refs     RefChecker
 	clock    shared.Clock
 }
 
@@ -50,6 +68,55 @@ func NewRuleService(repo repository.RuleRepository, webhooks whrepo.Subscription
 		clock = shared.SystemClock{}
 	}
 	return &RuleService{repo: repo, webhooks: webhooks, logs: logs, clock: clock}
+}
+
+// SetRefChecker wires the referenced-entity existence checker (agent/sector/tag/
+// attachment). Optional: when unset, create-time validation is structural only and
+// the health indicator reports no missing refs.
+func (s *RuleService) SetRefChecker(r RefChecker) {
+	if r != nil {
+		s.refs = r
+	}
+}
+
+// MissingRefs returns the rule's actions whose referenced entity no longer exists.
+// Best-effort: a checker error is treated as "exists" so a transient outage never
+// flags a healthy rule. Empty result means the rule is healthy.
+func (s *RuleService) MissingRefs(ctx context.Context, r *entity.AutomationRule) []MissingRef {
+	var out []MissingRef
+	for i, a := range r.Actions {
+		key, kind, ok := a.Type.ParamKey()
+		if !ok {
+			continue
+		}
+		id := strings.TrimSpace(a.Param(key))
+		if id == "" {
+			continue
+		}
+		if !s.refExists(ctx, kind, id) {
+			out = append(out, MissingRef{ActionIndex: i, Kind: kind, ID: id})
+		}
+	}
+	return out
+}
+
+// refExists checks one referenced entity; webhooks go through the subscription
+// repo, the rest through the RefChecker. Errors fail "exists" (best-effort).
+func (s *RuleService) refExists(ctx context.Context, kind, id string) bool {
+	if kind == "webhook" {
+		if _, err := s.webhooks.FindByID(ctx, id); err != nil {
+			return apperror.From(err).Code != apperror.CodeNotFound
+		}
+		return true
+	}
+	if s.refs == nil {
+		return true
+	}
+	ok, err := s.refs.Exists(ctx, kind, id)
+	if err != nil {
+		return true
+	}
+	return ok
 }
 
 // Logs returns a rule's evaluation logs (GET /v1/automation-rules/{id}/logs),
@@ -99,6 +166,7 @@ func (s *RuleService) Create(ctx context.Context, cmd CreateRule) (*entity.Autom
 		Description: strings.TrimSpace(cmd.Description),
 		Event:       cmd.Event,
 		Enabled:     enabled,
+		Priority:    cmd.Priority,
 		Conditions:  cmd.Conditions,
 		Actions:     cmd.Actions,
 		CreatedAt:   now,
@@ -133,6 +201,9 @@ func (s *RuleService) Update(ctx context.Context, id string, cmd UpdateRule) (*e
 	}
 	if cmd.Enabled != nil {
 		r.Enabled = *cmd.Enabled
+	}
+	if cmd.Priority != nil {
+		r.Priority = *cmd.Priority
 	}
 	if cmd.Conditions != nil {
 		r.Conditions = *cmd.Conditions
@@ -219,6 +290,29 @@ func (s *RuleService) validate(ctx context.Context, r *entity.AutomationRule) er
 			if strings.TrimSpace(a.Param("text")) == "" {
 				v[fieldKey("actions", i, "text")] = "is required"
 			}
+		case entity.ActionSendAttachment:
+			if err := s.validateRef(ctx, v, i, "attachment_id", "attachment", a); err != nil {
+				return err
+			}
+		case entity.ActionAssignAgent:
+			if err := s.validateRef(ctx, v, i, "agent_id", "agent", a); err != nil {
+				return err
+			}
+		case entity.ActionAssignTeam:
+			if err := s.validateRef(ctx, v, i, "sector_id", "sector", a); err != nil {
+				return err
+			}
+		case entity.ActionAddTag, entity.ActionRemoveTag:
+			if err := s.validateRef(ctx, v, i, "tag_id", "tag", a); err != nil {
+				return err
+			}
+		case entity.ActionChangePriority:
+			if !validPriority(strings.TrimSpace(a.Param("priority"))) {
+				v[fieldKey("actions", i, "priority")] = "must be one of: low, normal, high, urgent"
+			}
+		case entity.ActionRemoveAssignedAgent, entity.ActionRemoveAssignedTeam,
+			entity.ActionResolveConversation, entity.ActionOpenConversation, entity.ActionMarkPending:
+			// no params
 		default:
 			v[fieldKey("actions", i, "type")] = "unsupported action type"
 		}
@@ -231,4 +325,35 @@ func (s *RuleService) validate(ctx context.Context, r *entity.AutomationRule) er
 
 func fieldKey(group string, i int, sub string) string {
 	return group + "[" + strconv.Itoa(i) + "]." + sub
+}
+
+// validateRef checks an action's required param is present and (when a RefChecker
+// is wired) references an existing tenant entity. A backend error is returned;
+// missing/unknown is recorded in v.
+func (s *RuleService) validateRef(ctx context.Context, v map[string]any, i int, paramKey, kind string, a entity.Action) error {
+	id := strings.TrimSpace(a.Param(paramKey))
+	if id == "" {
+		v[fieldKey("actions", i, paramKey)] = "is required"
+		return nil
+	}
+	if s.refs == nil {
+		return nil // structural validation only
+	}
+	ok, err := s.refs.Exists(ctx, kind, id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		v[fieldKey("actions", i, paramKey)] = "unknown " + paramKey
+	}
+	return nil
+}
+
+// validPriority reports whether p is a known conversation priority.
+func validPriority(p string) bool {
+	switch p {
+	case "low", "normal", "high", "urgent":
+		return true
+	}
+	return false
 }

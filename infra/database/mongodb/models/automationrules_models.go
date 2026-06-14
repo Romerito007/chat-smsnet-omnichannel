@@ -9,6 +9,7 @@ type AutomationRule struct {
 	Description string          `bson:"description,omitempty"`
 	Event       string          `bson:"event"`
 	Enabled     bool            `bson:"enabled"`
+	Priority    int             `bson:"priority,omitempty"`
 	Conditions  []RuleCondition `bson:"conditions,omitempty"`
 	Actions     []RuleAction    `bson:"actions,omitempty"`
 }
@@ -34,6 +35,7 @@ type RuleEvaluationLog struct {
 	RuleID         string    `bson:"rule_id"`
 	Event          string    `bson:"event"`
 	ConversationID string    `bson:"conversation_id,omitempty"`
+	ActionType     string    `bson:"action_type,omitempty"`
 	Status         string    `bson:"status"`
 	ErrorSummary   string    `bson:"error_summary,omitempty"`
 	CreatedAt      time.Time `bson:"created_at"`

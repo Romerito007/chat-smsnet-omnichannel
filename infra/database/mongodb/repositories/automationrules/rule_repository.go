@@ -47,6 +47,7 @@ func (r *RuleRepository) Update(ctx context.Context, rule *entity.AutomationRule
 			"description": m.Description,
 			"event":       m.Event,
 			"enabled":     m.Enabled,
+			"priority":    m.Priority,
 			"conditions":  m.Conditions,
 			"actions":     m.Actions,
 			"updated_at":  rule.UpdatedAt,
@@ -151,6 +152,7 @@ func toModel(r *entity.AutomationRule) models.AutomationRule {
 		Description: r.Description,
 		Event:       string(r.Event),
 		Enabled:     r.Enabled,
+		Priority:    r.Priority,
 		Conditions:  conds,
 		Actions:     acts,
 	}
@@ -177,6 +179,7 @@ func toEntity(m *models.AutomationRule) *entity.AutomationRule {
 		Description: m.Description,
 		Event:       entity.RuleEvent(m.Event),
 		Enabled:     m.Enabled,
+		Priority:    m.Priority,
 		Conditions:  conds,
 		Actions:     acts,
 		CreatedAt:   m.CreatedAt,

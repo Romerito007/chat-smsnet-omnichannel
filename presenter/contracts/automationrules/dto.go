@@ -17,11 +17,32 @@ type ConditionDTO struct {
 }
 
 // ActionDTO is one action. Each action reads only its own params: send_webhook →
-// webhook_id; send_message → text.
+// webhook_id; send_message → text; send_attachment → attachment_id; assign_agent →
+// agent_id; assign_team → sector_id; add_tag/remove_tag → tag_id; change_priority
+// → priority. remove_*/resolve/open/mark_pending take no params.
 type ActionDTO struct {
-	Type      string `json:"type"`
-	WebhookID string `json:"webhook_id,omitempty"`
-	Text      string `json:"text,omitempty"`
+	Type         string `json:"type"`
+	WebhookID    string `json:"webhook_id,omitempty"`
+	Text         string `json:"text,omitempty"`
+	AttachmentID string `json:"attachment_id,omitempty"`
+	AgentID      string `json:"agent_id,omitempty"`
+	SectorID     string `json:"sector_id,omitempty"`
+	TagID        string `json:"tag_id,omitempty"`
+	Priority     string `json:"priority,omitempty"`
+}
+
+// MissingRefDTO is one action whose referenced entity no longer exists.
+type MissingRefDTO struct {
+	ActionIndex int    `json:"action_index"`
+	Kind        string `json:"kind"`
+	ID          string `json:"id"`
+}
+
+// RuleHealthDTO surfaces referential health: ok=false lists the missing refs so the
+// UI can flag "references a deleted agent/tag/sector/webhook".
+type RuleHealthDTO struct {
+	OK          bool            `json:"ok"`
+	MissingRefs []MissingRefDTO `json:"missing_refs,omitempty"`
 }
 
 // RuleResponse is the public representation of an automation rule.
@@ -32,13 +53,15 @@ type RuleResponse struct {
 	Description string         `json:"description,omitempty"`
 	Event       string         `json:"event"`
 	Enabled     bool           `json:"enabled"`
+	Priority    int            `json:"priority"`
 	Conditions  []ConditionDTO `json:"conditions"`
 	Actions     []ActionDTO    `json:"actions"`
+	Health      *RuleHealthDTO `json:"health,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
-// NewRuleResponse maps a rule entity to the DTO.
+// NewRuleResponse maps a rule entity to the DTO (without the health indicator).
 func NewRuleResponse(r *entity.AutomationRule) RuleResponse {
 	conds := make([]ConditionDTO, 0, len(r.Conditions))
 	for _, c := range r.Conditions {
@@ -46,7 +69,16 @@ func NewRuleResponse(r *entity.AutomationRule) RuleResponse {
 	}
 	acts := make([]ActionDTO, 0, len(r.Actions))
 	for _, a := range r.Actions {
-		acts = append(acts, ActionDTO{Type: string(a.Type), WebhookID: a.Param("webhook_id"), Text: a.Param("text")})
+		acts = append(acts, ActionDTO{
+			Type:         string(a.Type),
+			WebhookID:    a.Param("webhook_id"),
+			Text:         a.Param("text"),
+			AttachmentID: a.Param("attachment_id"),
+			AgentID:      a.Param("agent_id"),
+			SectorID:     a.Param("sector_id"),
+			TagID:        a.Param("tag_id"),
+			Priority:     a.Param("priority"),
+		})
 	}
 	return RuleResponse{
 		ID:          r.ID,
@@ -55,11 +87,23 @@ func NewRuleResponse(r *entity.AutomationRule) RuleResponse {
 		Description: r.Description,
 		Event:       string(r.Event),
 		Enabled:     r.Enabled,
+		Priority:    r.Priority,
 		Conditions:  conds,
 		Actions:     acts,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}
+}
+
+// NewRuleResponseWithHealth maps a rule and attaches its referential health.
+func NewRuleResponseWithHealth(r *entity.AutomationRule, missing []arservice.MissingRef) RuleResponse {
+	resp := NewRuleResponse(r)
+	health := &RuleHealthDTO{OK: len(missing) == 0}
+	for _, m := range missing {
+		health.MissingRefs = append(health.MissingRefs, MissingRefDTO{ActionIndex: m.ActionIndex, Kind: m.Kind, ID: m.ID})
+	}
+	resp.Health = health
+	return resp
 }
 
 // NewRuleListResponse wraps rules in a { data: [...] } envelope.
@@ -71,12 +115,22 @@ func NewRuleListResponse(rs []*entity.AutomationRule) map[string]any {
 	return map[string]any{"data": out}
 }
 
+// NewRuleListResponseWithHealth wraps rules with a per-rule health indicator.
+func NewRuleListResponseWithHealth(rs []*entity.AutomationRule, healthFor func(*entity.AutomationRule) []arservice.MissingRef) map[string]any {
+	out := make([]RuleResponse, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, NewRuleResponseWithHealth(r, healthFor(r)))
+	}
+	return map[string]any{"data": out}
+}
+
 // CreateRuleRequest is the body of POST /v1/automation-rules.
 type CreateRuleRequest struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	Event       string         `json:"event"`
 	Enabled     *bool          `json:"enabled"`
+	Priority    int            `json:"priority"`
 	Conditions  []ConditionDTO `json:"conditions"`
 	Actions     []ActionDTO    `json:"actions"`
 }
@@ -88,6 +142,7 @@ func (r CreateRuleRequest) ToCommand() arservice.CreateRule {
 		Description: r.Description,
 		Event:       entity.RuleEvent(r.Event),
 		Enabled:     r.Enabled,
+		Priority:    r.Priority,
 		Conditions:  toConditions(r.Conditions),
 		Actions:     toActions(r.Actions),
 	}
@@ -99,13 +154,14 @@ type UpdateRuleRequest struct {
 	Description *string         `json:"description"`
 	Event       *string         `json:"event"`
 	Enabled     *bool           `json:"enabled"`
+	Priority    *int            `json:"priority"`
 	Conditions  *[]ConditionDTO `json:"conditions"`
 	Actions     *[]ActionDTO    `json:"actions"`
 }
 
 // ToCommand maps to the service command.
 func (r UpdateRuleRequest) ToCommand() arservice.UpdateRule {
-	cmd := arservice.UpdateRule{Name: r.Name, Description: r.Description, Enabled: r.Enabled}
+	cmd := arservice.UpdateRule{Name: r.Name, Description: r.Description, Enabled: r.Enabled, Priority: r.Priority}
 	if r.Event != nil {
 		e := entity.RuleEvent(*r.Event)
 		cmd.Event = &e
@@ -137,15 +193,22 @@ func toActions(in []ActionDTO) []entity.Action {
 	out := make([]entity.Action, 0, len(in))
 	for _, a := range in {
 		params := map[string]string{}
-		if a.WebhookID != "" {
-			params["webhook_id"] = a.WebhookID
-		}
-		if a.Text != "" {
-			params["text"] = a.Text
-		}
+		setParam(params, "webhook_id", a.WebhookID)
+		setParam(params, "text", a.Text)
+		setParam(params, "attachment_id", a.AttachmentID)
+		setParam(params, "agent_id", a.AgentID)
+		setParam(params, "sector_id", a.SectorID)
+		setParam(params, "tag_id", a.TagID)
+		setParam(params, "priority", a.Priority)
 		out = append(out, entity.Action{Type: entity.ActionType(a.Type), Params: params})
 	}
 	return out
+}
+
+func setParam(m map[string]string, key, val string) {
+	if val != "" {
+		m[key] = val
+	}
 }
 
 // EvaluationLogResponse is one rule-firing log entry.

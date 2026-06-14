@@ -270,39 +270,61 @@ func schemas() M {
 
 		// ── automation rules (Chatwoot-style trigger/conditions/actions engine) ──
 		// An AutomationRule reacts to a conversation/message lifecycle event, matches
-		// AND-conditions against the conversation/contact, and runs actions (only
-		// send_webhook for now, referencing a registered webhook by id).
+		// AND-conditions against the conversation/contact (or the message text), and
+		// runs an ordered list of actions. Anti-loop: actions run as origin=automation
+		// so the events they emit never re-trigger rules; message/attachment actions
+		// are also fused per conversation. Each action reads only its own param.
 		"AutomationRule": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "description": str(),
 			"event":      automationRuleEventEnum(),
 			"enabled":    boolean(),
+			"priority":   describedInt("Firing order among rules on the same event (ascending; lower first). Ties break by created_at then id."),
 			"conditions": arr(ref("AutomationRuleCondition")),
 			"actions":    arr(ref("AutomationRuleAction")),
+			"health":     ref("AutomationRuleHealth"),
 			"created_at": dateTime(), "updated_at": dateTime(),
 		}),
+		"AutomationRuleHealth": object(M{
+			"ok":           describedBool("False when an action references a deleted agent/tag/sector/webhook (the action is skipped at runtime — skipped_missing_ref)."),
+			"missing_refs": arr(object(M{"action_index": integer(), "kind": enum("agent", "sector", "tag", "attachment", "webhook"), "id": str()})),
+		}),
 		"AutomationRuleCondition": object(M{
-			"field":    enum("status", "channel", "assigned_agent_id", "sector_id", "queue_id", "priority", "tags", "contact_phone"),
-			"operator": withDesc(enum("equal_to", "not_equal_to", "contains", "does_not_contain"), "Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags → contains/does_not_contain; contact_phone → equal_to/contains."),
-			"value":    describedStr("Comparison value; for tags it is a single tag id."),
+			"field":    enum("status", "channel", "assigned_agent_id", "sector_id", "queue_id", "priority", "tags", "contact_phone", "message_content"),
+			"operator": withDesc(enum("equal_to", "not_equal_to", "contains", "does_not_contain"), "Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags & message_content → contains/does_not_contain; contact_phone → equal_to/contains."),
+			"value":    describedStr("Comparison value; for tags it is a single tag id; for message_content the substring to match (case-insensitive) against the triggering message text."),
 		}, "field", "operator", "value"),
 		"AutomationRuleAction": object(M{
-			"type":       withDesc(enum("send_webhook"), "Only send_webhook is supported; it delivers the event to webhook_id via the webhooks pipeline."),
-			"webhook_id": describedStr("Id of a registered webhook (/v1/webhooks). Must exist for the tenant."),
+			"type": withDesc(enum(
+				"send_webhook", "send_message", "send_attachment",
+				"assign_agent", "assign_team", "remove_assigned_agent", "remove_assigned_team",
+				"add_tag", "remove_tag", "change_priority",
+				"resolve_conversation", "open_conversation", "mark_pending",
+			), "Action kind. Each reads only its own param (below)."),
+			"webhook_id":    describedStr("send_webhook: id of a registered webhook (/v1/webhooks)."),
+			"text":          describedStr("send_message: the message text (sent as System Automation)."),
+			"attachment_id": describedStr("send_attachment: an uploaded, ready attachment id (same tenant)."),
+			"agent_id":      describedStr("assign_agent: the agent (user) id."),
+			"sector_id":     describedStr("assign_team: the sector (team) id."),
+			"tag_id":        describedStr("add_tag/remove_tag: the tag id."),
+			"priority":      describedStr("change_priority: one of low|normal|high|urgent."),
 		}, "type"),
 		"CreateAutomationRuleRequest": object(M{
 			"name": str(), "description": str(),
 			"event":      automationRuleEventEnum(),
 			"enabled":    describedBool("Defaults to true when omitted."),
+			"priority":   describedInt("Firing order among rules on the same event (ascending). Default 0."),
 			"conditions": withDesc(arr(ref("AutomationRuleCondition")), "AND-combined. Empty = match every occurrence of the event."),
 			"actions":    arr(ref("AutomationRuleAction")),
 		}, "name", "event", "actions"),
 		"UpdateAutomationRuleRequest": object(M{
 			"name": str(), "description": str(), "event": automationRuleEventEnum(), "enabled": boolean(),
+			"priority":   integer(),
 			"conditions": arr(ref("AutomationRuleCondition")), "actions": arr(ref("AutomationRuleAction")),
 		}),
 		"RuleEvaluationLog": object(M{
 			"id": str(), "rule_id": str(), "event": automationRuleEventEnum(), "conversation_id": str(),
-			"status":        withDesc(enum("action_enqueued", "skipped_dedup", "error"), "Outcome of a rule firing. skipped_dedup is the anti-loop guard (same rule+conversation+event fired within a short window)."),
+			"action_type":   describedStr("The action this row is about (empty for rule-level skips)."),
+			"status":        withDesc(enum("action_enqueued", "skipped_dedup", "skipped_automation", "skipped_stale", "skipped_budget", "skipped_missing_ref", "error"), "Per-action outcome. skipped_automation = anti-loop origin suppression; skipped_stale = conditions no longer matched the live conversation; skipped_budget = per-conversation message fuse; skipped_missing_ref = referenced entity deleted."),
 			"error_summary": str(), "created_at": dateTime(),
 		}),
 

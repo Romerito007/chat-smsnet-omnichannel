@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	arentity "github.com/romerito007/chat-smsnet-omnichannel/domain/automationrules/entity"
 	arservice "github.com/romerito007/chat-smsnet-omnichannel/domain/automationrules/service"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/automationrules"
@@ -29,7 +30,11 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, dto.NewRuleListResponse(rs))
+	ctx := r.Context()
+	resp := dto.NewRuleListResponseWithHealth(rs, func(rule *arentity.AutomationRule) []arservice.MissingRef {
+		return c.rules.MissingRefs(ctx, rule)
+	})
+	middleware.WriteJSON(w, http.StatusOK, resp)
 }
 
 // Create handles POST /v1/automation-rules.
@@ -54,7 +59,7 @@ func (c *Controller) Get(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	middleware.WriteJSON(w, http.StatusOK, dto.NewRuleResponse(rule))
+	middleware.WriteJSON(w, http.StatusOK, dto.NewRuleResponseWithHealth(rule, c.rules.MissingRefs(r.Context(), rule)))
 }
 
 // Update handles PATCH /v1/automation-rules/{id}.

@@ -19,4 +19,7 @@ type EvaluateTask struct {
 	// Origin is the anti-loop tag: "automation" events were produced by a rule
 	// action and the evaluator skips them entirely (default "external").
 	Origin string `json:"origin"`
+	// Depth is the causal chain depth (defense-in-depth anti-loop): events emitted
+	// by an action carry depth+1; the evaluator caps the chain.
+	Depth int `json:"depth"`
 }

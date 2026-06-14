@@ -59,8 +59,9 @@ func newEvaluator(conv *conventity.Conversation, contact *contactentity.Contact,
 		rules, logs,
 		&fakeConvRepo{conv: conv},
 		&fakeContactRepo{contact: contact},
-		NewExecutor(emitter, nil),
+		NewExecutor(emitter, nil, nil),
 		fakeDeduper{allow: allow},
+		shared.NoopLocker{},
 		fixedClock{t: time.Unix(1700000000, 0).UTC()},
 	)
 	return ev, logs
@@ -79,6 +80,7 @@ func ruleFor(event entity.RuleEvent, webhookID string, conds ...entity.Condition
 // what the conversations service would emit for an automation-authored message —
 // so a test can prove the loop terminates.
 type fakeMessenger struct {
+	noopConvOps
 	ev    *Evaluator
 	sends int
 }
@@ -219,8 +221,9 @@ func TestEvaluate_SendMessageDoesNotLoop(t *testing.T) {
 		repo, logs,
 		&fakeConvRepo{conv: conv},
 		&fakeContactRepo{contact: &contactentity.Contact{ID: "c1"}},
-		NewExecutor(&fakeEmitter{}, messenger),
+		NewExecutor(&fakeEmitter{}, messenger, nil),
 		fakeDeduper{allow: true},
+		shared.NoopLocker{},
 		fixedClock{t: time.Unix(1700000000, 0).UTC()},
 	)
 	messenger.ev = ev // close the loop: the automation message re-enters the evaluator

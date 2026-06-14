@@ -14,7 +14,16 @@ const (
 	// EvalSkippedAutomation: the event was produced by an automation action
 	// (origin=automation) and is suppressed so automation never feeds itself.
 	EvalSkippedAutomation EvalStatus = "skipped_automation"
-	// EvalError: an action failed to enqueue (e.g. webhook disabled/gone).
+	// EvalSkippedStale: the rule matched when emitted but no longer matches the
+	// live conversation by the time the action ran.
+	EvalSkippedStale EvalStatus = "skipped_stale"
+	// EvalSkippedBudget: a message/attachment action was suppressed because the
+	// per-conversation automation-message fuse was tripped (safety breaker).
+	EvalSkippedBudget EvalStatus = "skipped_budget"
+	// EvalSkippedMissingRef: the action referenced a tenant entity (agent/tag/
+	// sector/attachment) that no longer exists — soft referential integrity.
+	EvalSkippedMissingRef EvalStatus = "skipped_missing_ref"
+	// EvalError: an action failed (e.g. webhook disabled/gone).
 	EvalError EvalStatus = "error"
 )
 
@@ -26,7 +35,10 @@ type RuleEvaluationLog struct {
 	RuleID         string
 	Event          RuleEvent
 	ConversationID string
-	Status         EvalStatus
-	ErrorSummary   string
-	CreatedAt      time.Time
+	// ActionType is the action this log row is about, for per-action outcomes
+	// (empty for rule-level skips like dedup/stale).
+	ActionType   string
+	Status       EvalStatus
+	ErrorSummary string
+	CreatedAt    time.Time
 }

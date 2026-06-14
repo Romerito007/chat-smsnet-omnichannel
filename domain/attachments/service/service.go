@@ -83,6 +83,22 @@ func NewService(repo repository.Repository, storage contracts.Storage, conversat
 
 // ── integration rail: signed, JWT-less channel-media URL ───────────────────────
 
+// AttachmentReady reports whether the attachment exists in the tenant and is in
+// the ready state (used to validate automation send_attachment references).
+func (s *Service) AttachmentReady(ctx context.Context, attachmentID string) (bool, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return false, err
+	}
+	att, err := s.repo.FindByID(ctx, strings.TrimSpace(attachmentID))
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	return att.Status == entity.StatusReady, nil
+}
+
 // IntegrationMediaURL builds a signed, public channel-media URL for an attachment,
 // for delivery to an EXTERNAL system on the integration rail (the internal
 // download URL is JWT-gated and unusable by an integrator). The token encodes the

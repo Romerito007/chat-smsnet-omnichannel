@@ -65,6 +65,10 @@ const (
 	FieldPriority        ConditionField = "priority"
 	FieldTags            ConditionField = "tags"
 	FieldContactPhone    ConditionField = "contact_phone"
+	// FieldMessageContent tests the text of the message that triggered a
+	// message_created event (contains / does_not_contain). It is the only field
+	// resolved against the message itself, not the conversation.
+	FieldMessageContent ConditionField = "message_content"
 )
 
 // ConditionOperator is how a field is compared to the condition value.
@@ -89,6 +93,7 @@ var allowedOperators = map[ConditionField][]ConditionOperator{
 	FieldPriority:        {OpEqualTo, OpNotEqualTo},
 	FieldTags:            {OpContains, OpDoesNotContain},
 	FieldContactPhone:    {OpEqualTo, OpContains},
+	FieldMessageContent:  {OpContains, OpDoesNotContain},
 }
 
 // OperatorsFor returns the operators valid for a field (nil for unknown fields).
@@ -116,7 +121,43 @@ const (
 	// ActionSendMessage injects an outbound message authored by automation
 	// (SenderType=automation), reusing the normal send pipeline. Param: text.
 	ActionSendMessage ActionType = "send_message"
+	// ActionSendAttachment injects an outbound automation message carrying an
+	// attachment. Param: attachment_id (uploaded, ready, same tenant).
+	ActionSendAttachment ActionType = "send_attachment"
+
+	// State-mutating actions on the conversation. Each runs under origin=automation
+	// so the lifecycle event it emits never re-triggers rules.
+	ActionAssignAgent         ActionType = "assign_agent"          // param: agent_id
+	ActionAssignTeam          ActionType = "assign_team"           // param: sector_id (team = sector)
+	ActionRemoveAssignedAgent ActionType = "remove_assigned_agent" // no params
+	ActionRemoveAssignedTeam  ActionType = "remove_assigned_team"  // no params
+	ActionAddTag              ActionType = "add_tag"               // param: tag_id
+	ActionRemoveTag           ActionType = "remove_tag"            // param: tag_id
+	ActionChangePriority      ActionType = "change_priority"       // param: priority
+	ActionResolveConversation ActionType = "resolve_conversation"  // no params
+	ActionOpenConversation    ActionType = "open_conversation"     // no params
+	ActionMarkPending         ActionType = "mark_pending"          // no params (→ status queued)
 )
+
+// ParamKey returns the single referenced param key for an action type that
+// references a tenant entity (for validation + referential health), plus a kind
+// label; ok is false for actions that reference nothing.
+func (t ActionType) ParamKey() (key, kind string, ok bool) {
+	switch t {
+	case ActionSendWebhook:
+		return "webhook_id", "webhook", true
+	case ActionAssignAgent:
+		return "agent_id", "agent", true
+	case ActionAssignTeam:
+		return "sector_id", "sector", true
+	case ActionAddTag, ActionRemoveTag:
+		return "tag_id", "tag", true
+	case ActionSendAttachment:
+		return "attachment_id", "attachment", true
+	default:
+		return "", "", false
+	}
+}
 
 // Condition is one field/operator/value test. Value is a single string (a tag id
 // for the tags field); multiple conditions on a rule combine with AND.
@@ -150,10 +191,13 @@ type AutomationRule struct {
 	Description string
 	Event       RuleEvent
 	Enabled     bool
-	Conditions  []Condition // combined with AND; empty = match every occurrence
-	Actions     []Action
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// Priority orders rules firing on the same event (ascending; lower runs first).
+	// Ties break by created_at then id for a deterministic order.
+	Priority   int
+	Conditions []Condition // combined with AND; empty = match every occurrence
+	Actions    []Action
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // WebhookIDs returns the webhook ids referenced by the rule's send_webhook actions.
