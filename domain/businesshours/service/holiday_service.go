@@ -39,18 +39,18 @@ func (s *HolidayService) Create(ctx context.Context, cmd contracts.CreateHoliday
 	if strings.TrimSpace(cmd.Name) == "" {
 		return nil, apperror.Validation("name is required").WithDetails(map[string]any{"name": "is required"})
 	}
-	scope, sectorIDs := resolveScope(cmd.SectorIDs)
+	scope, channelIDs := resolveScope(cmd.ChannelIDs)
 	now := s.clock.Now()
 	h := &entity.Holiday{
-		ID:        shared.NewID(),
-		TenantID:  tenantID,
-		Date:      date,
-		Name:      strings.TrimSpace(cmd.Name),
-		Scope:     scope,
-		SectorIDs: sectorIDs,
-		Recurring: cmd.Recurring != nil && *cmd.Recurring,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         shared.NewID(),
+		TenantID:   tenantID,
+		Date:       date,
+		Name:       strings.TrimSpace(cmd.Name),
+		Scope:      scope,
+		ChannelIDs: channelIDs,
+		Recurring:  cmd.Recurring != nil && *cmd.Recurring,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := s.repo.Create(ctx, h); err != nil {
 		return nil, err
@@ -80,8 +80,8 @@ func (s *HolidayService) Update(ctx context.Context, id string, cmd contracts.Up
 		}
 		h.Name = strings.TrimSpace(*cmd.Name)
 	}
-	if cmd.SectorIDs != nil {
-		h.Scope, h.SectorIDs = resolveScope(*cmd.SectorIDs)
+	if cmd.ChannelIDs != nil {
+		h.Scope, h.ChannelIDs = resolveScope(*cmd.ChannelIDs)
 	}
 	if cmd.Recurring != nil {
 		h.Recurring = *cmd.Recurring
@@ -129,17 +129,17 @@ func normalizeDate(date string) (string, error) {
 	return t.Format("2006-01-02"), nil
 }
 
-// resolveScope derives the scope from the provided sector ids: empty → all
-// sectors, otherwise restricted to those sectors.
-func resolveScope(sectorIDs []string) (entity.HolidayScope, []string) {
-	cleaned := make([]string, 0, len(sectorIDs))
-	for _, id := range sectorIDs {
+// resolveScope derives the scope from the provided channel ids: empty → all
+// channels, otherwise restricted to those channels.
+func resolveScope(channelIDs []string) (entity.HolidayScope, []string) {
+	cleaned := make([]string, 0, len(channelIDs))
+	for _, id := range channelIDs {
 		if id = strings.TrimSpace(id); id != "" {
 			cleaned = append(cleaned, id)
 		}
 	}
 	if len(cleaned) == 0 {
-		return entity.ScopeAllSectors, nil
+		return entity.ScopeAllChannels, nil
 	}
-	return entity.ScopeSectors, cleaned
+	return entity.ScopeChannels, cleaned
 }

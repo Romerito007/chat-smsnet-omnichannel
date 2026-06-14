@@ -4,22 +4,22 @@ package contracts
 
 import "time"
 
-// CreateHoliday is the input to create a holiday. When SectorIDs is non-empty
-// the holiday is scoped to those sectors; otherwise it applies to all sectors.
+// CreateHoliday is the input to create a holiday. When ChannelIDs is non-empty
+// the holiday is scoped to those channels; otherwise it applies to all channels.
 type CreateHoliday struct {
-	Date      string
-	Name      string
-	SectorIDs []string
-	Recurring *bool
+	Date       string
+	Name       string
+	ChannelIDs []string
+	Recurring  *bool
 }
 
 // UpdateHoliday patches a holiday. Nil fields are left unchanged; a non-nil
-// SectorIDs replaces the scope (empty slice → all sectors).
+// ChannelIDs replaces the scope (empty slice → all channels).
 type UpdateHoliday struct {
-	Date      *string
-	Name      *string
-	SectorIDs *[]string
-	Recurring *bool
+	Date       *string
+	Name       *string
+	ChannelIDs *[]string
+	Recurring  *bool
 }
 
 // StatusReason explains a business-status result.

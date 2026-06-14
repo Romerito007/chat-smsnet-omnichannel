@@ -67,9 +67,8 @@ func (s *BusinessHoursService) Status(ctx context.Context, channelID string, at 
 		TodayIntervals: formatIntervals(sched.IntervalsOn(local.Weekday())),
 	}
 
-	// A holiday closes the whole day regardless of the weekly schedule. Phase 2
-	// honors global (all-channels) holidays; channel-scoped holidays arrive in
-	// Phase 3.
+	// A holiday closes the whole day regardless of the weekly schedule. It applies
+	// when its scope is all_channels or its channel list includes this channel.
 	holidays, err := s.holidays.ListAll(ctx)
 	if err != nil {
 		return contracts.BusinessStatus{}, err

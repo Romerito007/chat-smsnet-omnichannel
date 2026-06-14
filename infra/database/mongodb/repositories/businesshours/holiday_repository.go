@@ -42,12 +42,12 @@ func (r *HolidayRepository) Update(ctx context.Context, h *entity.Holiday) error
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": h.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
-			"date":       h.Date,
-			"name":       h.Name,
-			"scope":      string(h.Scope),
-			"sector_ids": h.SectorIDs,
-			"recurring":  h.Recurring,
-			"updated_at": h.UpdatedAt,
+			"date":        h.Date,
+			"name":        h.Name,
+			"scope":       string(h.Scope),
+			"channel_ids": h.ChannelIDs,
+			"recurring":   h.Recurring,
+			"updated_at":  h.UpdatedAt,
 		}},
 	)
 	if err != nil {
@@ -126,7 +126,7 @@ func (r *HolidayRepository) query(ctx context.Context, filter bson.M, opts *opti
 }
 
 func toModel(h *entity.Holiday) models.Holiday {
-	m := models.Holiday{Date: h.Date, Name: h.Name, Scope: string(h.Scope), SectorIDs: h.SectorIDs, Recurring: h.Recurring}
+	m := models.Holiday{Date: h.Date, Name: h.Name, Scope: string(h.Scope), ChannelIDs: h.ChannelIDs, Recurring: h.Recurring}
 	m.ID = h.ID
 	m.TenantID = h.TenantID
 	m.CreatedAt = h.CreatedAt
@@ -136,15 +136,15 @@ func toModel(h *entity.Holiday) models.Holiday {
 
 func toEntity(m *models.Holiday) *entity.Holiday {
 	return &entity.Holiday{
-		ID:        m.ID,
-		TenantID:  m.TenantID,
-		Date:      m.Date,
-		Name:      m.Name,
-		Scope:     entity.HolidayScope(m.Scope),
-		SectorIDs: m.SectorIDs,
-		Recurring: m.Recurring,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
+		ID:         m.ID,
+		TenantID:   m.TenantID,
+		Date:       m.Date,
+		Name:       m.Name,
+		Scope:      entity.HolidayScope(m.Scope),
+		ChannelIDs: m.ChannelIDs,
+		Recurring:  m.Recurring,
+		CreatedAt:  m.CreatedAt,
+		UpdatedAt:  m.UpdatedAt,
 	}
 }
 

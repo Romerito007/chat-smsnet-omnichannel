@@ -341,7 +341,7 @@ components:
         BusinessHoursInterval:
             properties:
                 end:
-                    description: Local closing time "HH:MM" (exclusive). Must be after start — overnight intervals are not supported; model an overnight shift as two separate days.
+                    description: 'Local closing time "HH:MM" (exclusive). Must be after start — intervals never cross midnight. For an overnight shift (e.g. 22:00–05:30) model it as two days: end the first day at "24:00" and start the next day at "00:00" for a contiguous span.'
                     type: string
                 start:
                     description: Local opening time "HH:MM" (inclusive).
@@ -1175,16 +1175,17 @@ components:
             type: object
         CreateHolidayRequest:
             properties:
+                channel_ids:
+                    description: Restrict the holiday to these channels; empty applies it to all channels.
+                    items:
+                        type: string
+                    type: array
                 date:
                     type: string
                 name:
                     type: string
                 recurring:
                     type: boolean
-                sector_ids:
-                    items:
-                        type: string
-                    type: array
             required:
                 - date
                 - name
@@ -1533,6 +1534,11 @@ components:
             type: object
         Holiday:
             properties:
+                channel_ids:
+                    description: Channel ids the holiday applies to when scope is "channels"; empty/absent for "all_channels".
+                    items:
+                        type: string
+                    type: array
                 created_at:
                     format: date-time
                     type: string
@@ -1545,11 +1551,10 @@ components:
                 recurring:
                     type: boolean
                 scope:
+                    enum:
+                        - all_channels
+                        - channels
                     type: string
-                sector_ids:
-                    items:
-                        type: string
-                    type: array
                 tenant_id:
                     type: string
                 updated_at:
@@ -2954,16 +2959,17 @@ components:
             type: object
         UpdateHolidayRequest:
             properties:
+                channel_ids:
+                    description: Replace the channel scope; empty applies the holiday to all channels.
+                    items:
+                        type: string
+                    type: array
                 date:
                     type: string
                 name:
                     type: string
                 recurring:
                     type: boolean
-                sector_ids:
-                    items:
-                        type: string
-                    type: array
             type: object
         UpdateISPProfileRequest:
             properties:

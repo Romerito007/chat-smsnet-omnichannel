@@ -381,7 +381,7 @@ func (d *demoSeeder) seedBusinessHours() error {
 	// One demo holiday.
 	h := &bhentity.Holiday{
 		ID: shared.NewID(), TenantID: d.tenantID, Date: d.now.AddDate(0, 1, 0).Format("2006-01-02"),
-		Name: "Feriado Demo", Scope: bhentity.ScopeAllSectors, Recurring: false,
+		Name: "Feriado Demo", Scope: bhentity.ScopeAllChannels, Recurring: false,
 		CreatedAt: d.now, UpdatedAt: d.now,
 	}
 	if err := bhrepo.NewHolidayRepository(d.db).Create(d.ctx, h); err != nil {

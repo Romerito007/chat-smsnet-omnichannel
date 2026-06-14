@@ -548,12 +548,19 @@ func schemas() M {
 		"UpdateCloseReasonRequest": object(M{"name": str(), "requires_note": boolean(), "enabled": boolean()}),
 
 		// ── businesshours ──────────────────────────────────────────────────────
-		"Holiday":              object(M{"id": str(), "tenant_id": str(), "date": str(), "name": str(), "scope": str(), "sector_ids": arr(str()), "recurring": boolean(), "created_at": dateTime(), "updated_at": dateTime()}),
-		"CreateHolidayRequest": object(M{"date": str(), "name": str(), "sector_ids": arr(str()), "recurring": boolean()}, "date", "name"),
-		"UpdateHolidayRequest": object(M{"date": str(), "name": str(), "sector_ids": arr(str()), "recurring": boolean()}),
+		"Holiday": object(M{"id": str(), "tenant_id": str(), "date": str(), "name": str(),
+			"scope":       enum("all_channels", "channels"),
+			"channel_ids": describedArr(str(), "Channel ids the holiday applies to when scope is \"channels\"; empty/absent for \"all_channels\"."),
+			"recurring":   boolean(), "created_at": dateTime(), "updated_at": dateTime()}),
+		"CreateHolidayRequest": object(M{"date": str(), "name": str(),
+			"channel_ids": describedArr(str(), "Restrict the holiday to these channels; empty applies it to all channels."),
+			"recurring":   boolean()}, "date", "name"),
+		"UpdateHolidayRequest": object(M{"date": str(), "name": str(),
+			"channel_ids": describedArr(str(), "Replace the channel scope; empty applies the holiday to all channels."),
+			"recurring":   boolean()}),
 		"BusinessHoursInterval": object(M{
 			"start": describedStr(`Local opening time "HH:MM" (inclusive).`),
-			"end":   describedStr(`Local closing time "HH:MM" (exclusive). Must be after start — overnight intervals are not supported; model an overnight shift as two separate days.`),
+			"end":   describedStr(`Local closing time "HH:MM" (exclusive). Must be after start — intervals never cross midnight. For an overnight shift (e.g. 22:00–05:30) model it as two days: end the first day at "24:00" and start the next day at "00:00" for a contiguous span.`),
 		}, "start", "end"),
 		"BusinessHoursDay": object(M{
 			"day":       describedInt("Weekday, 0=Sunday..6=Saturday. A day absent (or with no intervals) is closed."),

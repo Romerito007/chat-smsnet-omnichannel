@@ -200,7 +200,10 @@ api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
   Vários intervalos no mesmo dia modelam o almoço; `end > start` (sem cruzar
   meia-noite). Documento vazio/ausente = aberto 24/7. Avaliado na timezone do
   channel.
-- `holidays`: `tenant_id`🔑, `date`, `name`, `recurring` bool, escopo.
+- `holidays`: `tenant_id`🔑, `date`, `name`, `recurring` bool, `scope`
+  (`all_channels` | `channels`) e `channel_ids[]` (escopo por **channel**, não
+  por setor). Um feriado fecha o dia quando seu escopo é `all_channels` ou sua
+  lista inclui o `channel_id` da conversa.
 
 ---
 

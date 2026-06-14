@@ -2,38 +2,40 @@ package entity
 
 import "time"
 
-// HolidayScope describes which sectors a holiday applies to.
+// HolidayScope describes which channels a holiday applies to.
 type HolidayScope string
 
 const (
-	// ScopeAllSectors applies the holiday to every sector in the tenant.
-	ScopeAllSectors HolidayScope = "all_sectors"
-	// ScopeSectors applies the holiday only to the listed sectors.
-	ScopeSectors HolidayScope = "sectors"
+	// ScopeAllChannels applies the holiday to every channel in the tenant.
+	ScopeAllChannels HolidayScope = "all_channels"
+	// ScopeChannels applies the holiday only to the listed channels.
+	ScopeChannels HolidayScope = "channels"
 )
 
 // Holiday is a tenant day-off that closes business hours for the day. Date is a
 // civil date "YYYY-MM-DD"; when Recurring is true only the month and day matter
-// (the holiday repeats every year).
+// (the holiday repeats every year). A holiday is scoped to specific channels (the
+// ChannelConnection that carries the conversation's business hours), or to all of
+// them.
 type Holiday struct {
-	ID        string
-	TenantID  string
-	Date      string
-	Name      string
-	Scope     HolidayScope
-	SectorIDs []string
-	Recurring bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         string
+	TenantID   string
+	Date       string
+	Name       string
+	Scope      HolidayScope
+	ChannelIDs []string
+	Recurring  bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
-// AppliesTo reports whether the holiday governs the given sector.
-func (h *Holiday) AppliesTo(sectorID string) bool {
-	if h.Scope == ScopeAllSectors {
+// AppliesTo reports whether the holiday governs the given channel.
+func (h *Holiday) AppliesTo(channelID string) bool {
+	if h.Scope == ScopeAllChannels {
 		return true
 	}
-	for _, id := range h.SectorIDs {
-		if id == sectorID {
+	for _, id := range h.ChannelIDs {
+		if id == channelID {
 			return true
 		}
 	}

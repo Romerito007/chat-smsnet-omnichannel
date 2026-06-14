@@ -186,7 +186,7 @@ func TestStatus_TimezoneRespected(t *testing.T) {
 func TestStatus_HolidayBlocksDay(t *testing.T) {
 	holiday := &entity.Holiday{
 		ID: "h1", TenantID: "t1", Date: "2025-01-06", Name: "Company Day",
-		Scope: entity.ScopeAllSectors,
+		Scope: entity.ScopeAllChannels,
 	}
 	svc := newSvc(weekdaysDoc("UTC"), holiday)
 	// Monday 13:00 would normally be open, but it is a holiday.
@@ -203,7 +203,7 @@ func TestStatus_RecurringHoliday(t *testing.T) {
 	// Christmas, recurring, defined in 2020 but applies every year.
 	xmas := &entity.Holiday{
 		ID: "h2", TenantID: "t1", Date: "2020-12-25", Name: "Christmas",
-		Scope: entity.ScopeAllSectors, Recurring: true,
+		Scope: entity.ScopeAllChannels, Recurring: true,
 	}
 	svc := newSvc(weekdaysDoc("UTC"), xmas)
 	// 2025-12-25 is a Thursday (normally open) → blocked by recurring holiday.
@@ -213,11 +213,28 @@ func TestStatus_RecurringHoliday(t *testing.T) {
 	}
 	// A non-recurring holiday on the same month/day but a different year must NOT
 	// match other years.
-	oneOff := &entity.Holiday{ID: "h3", TenantID: "t1", Date: "2020-12-25", Name: "One-off", Scope: entity.ScopeAllSectors}
+	oneOff := &entity.Holiday{ID: "h3", TenantID: "t1", Date: "2020-12-25", Name: "One-off", Scope: entity.ScopeAllChannels}
 	svc2 := newSvc(weekdaysDoc("UTC"), oneOff)
 	st, _ = svc2.Status(ctxT(), "s1", mustUTC(t, "2025-12-25T13:00:00Z"))
 	if !st.Open {
 		t.Errorf("expected one-off 2020 holiday NOT to affect 2025")
+	}
+}
+
+func TestStatus_ChannelScopedHoliday(t *testing.T) {
+	// Holiday scoped only to channel s2 must not close s1, but must close s2.
+	holiday := &entity.Holiday{
+		ID: "h4", TenantID: "t1", Date: "2025-01-06", Name: "S2 only",
+		Scope: entity.ScopeChannels, ChannelIDs: []string{"s2"},
+	}
+	svc := newSvc(weekdaysDoc("UTC"), holiday)
+	st, _ := svc.Status(ctxT(), "s1", mustUTC(t, "2025-01-06T13:00:00Z"))
+	if !st.Open {
+		t.Errorf("channel-scoped holiday for s2 must not close s1")
+	}
+	st, _ = svc.Status(ctxT(), "s2", mustUTC(t, "2025-01-06T13:00:00Z"))
+	if st.Open || st.Reason != contracts.ReasonHoliday {
+		t.Errorf("expected s2 closed by its scoped holiday, got open=%v", st.Open)
 	}
 }
 
