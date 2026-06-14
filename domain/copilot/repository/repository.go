@@ -29,9 +29,9 @@ type AssistantRepository interface {
 	Delete(ctx context.Context, id string) error
 	FindByID(ctx context.Context, id string) (*entity.Assistant, error)
 	List(ctx context.Context) ([]*entity.Assistant, error)
-	// FindByChannelType returns an enabled assistant serving the channel type, or a
-	// not_found error.
-	FindByChannelType(ctx context.Context, channelType string) (*entity.Assistant, error)
+	// FindByChannelID returns an enabled assistant serving the channel connection
+	// id, or a not_found error.
+	FindByChannelID(ctx context.Context, channelID string) (*entity.Assistant, error)
 	// CountByISPProfile counts assistants referencing the given ISP profile id
 	// (used to block deleting a profile in use).
 	CountByISPProfile(ctx context.Context, ispProfileID string) (int, error)

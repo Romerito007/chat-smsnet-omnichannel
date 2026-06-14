@@ -6,6 +6,7 @@ import (
 	cservice "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/service"
 	infracopilot "github.com/romerito007/chat-smsnet-omnichannel/infra/copilot"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/copilot/provider"
+	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/channels"
 	contactrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/contacts"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	copilotrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/copilot"
@@ -19,6 +20,7 @@ func CopilotAssistantService(c *container.Container) *cservice.AssistantService 
 	return cservice.NewAssistantService(
 		copilotrepo.NewAssistantRepository(c.Mongo.DB),
 		providerhubrepo.NewProfileRepository(c.Mongo.DB, c.Cipher),
+		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
 		clock,
 	)
 }

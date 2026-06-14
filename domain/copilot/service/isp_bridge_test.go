@@ -39,9 +39,9 @@ func (r *fakeAssistantRepo) List(context.Context) ([]*centity.Assistant, error) 
 	}
 	return out, nil
 }
-func (r *fakeAssistantRepo) FindByChannelType(_ context.Context, ct string) (*centity.Assistant, error) {
+func (r *fakeAssistantRepo) FindByChannelID(_ context.Context, ct string) (*centity.Assistant, error) {
 	for _, a := range r.byID {
-		if a.Enabled && a.ServesChannel(ct) {
+		if a.Enabled && a.ServesChannelID(ct) {
 			return a, nil
 		}
 	}
@@ -96,12 +96,12 @@ func TestBridge_DecorateInjectsConfigAndOverwritesModelConfig(t *testing.T) {
 		ID: "p1", TenantID: "t1", ISPType: "ixcsoft", Enabled: true,
 		Credentials: map[string]string{"ixcsoft_host": "h", "ixcsoft_token": "real-token"},
 	}
-	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelTypes: []string{"whatsapp"}, ISPProfileID: "p1", Enabled: true}
+	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelIDs: []string{"ch1"}, ISPProfileID: "p1", Enabled: true}
 	b := newBridge(asst, prof)
 
 	// The "model" tries to smuggle its own config/credentials — must be overwritten.
 	args, err := b.Decorate(bridgeCtx(), mcpcontracts.DecorateInput{
-		ChannelType: "whatsapp", ServerName: "SMSNET_CONSULTAS", Write: false,
+		ChannelID: "ch1", ServerName: "SMSNET_CONSULTAS", Write: false,
 		Args: map[string]any{"cpfcnpj": "123", "config": map[string]any{"type": "evil", "ixcsoft_token": "attacker"}},
 	})
 	if err != nil {
@@ -122,9 +122,28 @@ func TestBridge_DecorateInjectsConfigAndOverwritesModelConfig(t *testing.T) {
 	}
 }
 
+func TestBridge_EmptyChannelIDResolvesNoAssistant(t *testing.T) {
+	// A conversation with no channel_id (e.g. manual create) must resolve to NO
+	// assistant — no fallback by type, no error, no injection, no SMSNET tools.
+	prof := &phentity.ISPProfile{ID: "p1", TenantID: "t1", ISPType: "ixcsoft", Enabled: true}
+	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelIDs: []string{"ch1"}, ISPProfileID: "p1", Enabled: true}
+	b := newBridge(asst, prof)
+
+	args, err := b.Decorate(bridgeCtx(), mcpcontracts.DecorateInput{ChannelID: "", Args: map[string]any{}})
+	if err != nil {
+		t.Fatalf("decorate: %v", err)
+	}
+	if _, ok := args["config"]; ok {
+		t.Errorf("empty channel_id → must not inject a config")
+	}
+	if ok, _ := b.AllowServer(bridgeCtx(), "", "SMSNET_CONSULTAS", false); ok {
+		t.Errorf("empty channel_id → SMSNET tools must be hidden (no assistant)")
+	}
+}
+
 func TestBridge_NoAssistantNoInjection(t *testing.T) {
 	b := newBridge(nil, nil)
-	args, err := b.Decorate(bridgeCtx(), mcpcontracts.DecorateInput{ChannelType: "whatsapp", Args: map[string]any{"x": 1}})
+	args, err := b.Decorate(bridgeCtx(), mcpcontracts.DecorateInput{ChannelID: "ch1", Args: map[string]any{"x": 1}})
 	if err != nil {
 		t.Fatalf("decorate: %v", err)
 	}
@@ -135,10 +154,10 @@ func TestBridge_NoAssistantNoInjection(t *testing.T) {
 
 func TestBridge_WriteAddsIdempotencyKey(t *testing.T) {
 	prof := &phentity.ISPProfile{ID: "p1", TenantID: "t1", ISPType: "ixcsoft", Enabled: true, Credentials: map[string]string{"ixcsoft_host": "h"}}
-	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelTypes: []string{"whatsapp"}, ISPProfileID: "p1", Enabled: true}
+	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelIDs: []string{"ch1"}, ISPProfileID: "p1", Enabled: true}
 	b := newBridge(asst, prof)
 	args, err := b.Decorate(bridgeCtx(), mcpcontracts.DecorateInput{
-		ChannelType: "whatsapp", Write: true, IdempotencyKey: "appr-1", Args: map[string]any{},
+		ChannelID: "ch1", Write: true, IdempotencyKey: "appr-1", Args: map[string]any{},
 	})
 	if err != nil {
 		t.Fatalf("decorate: %v", err)
@@ -150,19 +169,19 @@ func TestBridge_WriteAddsIdempotencyKey(t *testing.T) {
 
 func TestBridge_AllowServer(t *testing.T) {
 	prof := &phentity.ISPProfile{ID: "p1", TenantID: "t1", ISPType: "ixcsoft", Enabled: true}
-	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelTypes: []string{"whatsapp"}, ISPProfileID: "p1", Enabled: true}
+	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelIDs: []string{"ch1"}, ISPProfileID: "p1", Enabled: true}
 	b := newBridge(asst, prof)
 
 	// Read always allowed when a profile is pinned.
-	if ok, _ := b.AllowServer(bridgeCtx(), "whatsapp", "SMSNET_CONSULTAS", false); !ok {
+	if ok, _ := b.AllowServer(bridgeCtx(), "ch1", "SMSNET_CONSULTAS", false); !ok {
 		t.Errorf("read server should be allowed with a pinned profile")
 	}
 	// Write allowed because ixcsoft supports liberacao/chamado.
-	if ok, _ := b.AllowServer(bridgeCtx(), "whatsapp", "SMSNET_OPERACOES", true); !ok {
+	if ok, _ := b.AllowServer(bridgeCtx(), "ch1", "SMSNET_OPERACOES", true); !ok {
 		t.Errorf("write server should be allowed for an ISP with write actions")
 	}
 	// No assistant for this channel → nothing allowed.
-	if ok, _ := b.AllowServer(bridgeCtx(), "telegram", "SMSNET_CONSULTAS", false); ok {
+	if ok, _ := b.AllowServer(bridgeCtx(), "ch2", "SMSNET_CONSULTAS", false); ok {
 		t.Errorf("no assistant for channel → SMSNET tools must be hidden")
 	}
 }
@@ -171,9 +190,9 @@ func TestBridge_WriteGatedWhenNoWriteAction(t *testing.T) {
 	// A profile whose isp_type has no catalog descriptor (legacy) has no actions →
 	// write server must be gated out.
 	prof := &phentity.ISPProfile{ID: "p1", TenantID: "t1", ISPType: phentity.ISPVoalle, Enabled: true}
-	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelTypes: []string{"whatsapp"}, ISPProfileID: "p1", Enabled: true}
+	asst := &centity.Assistant{ID: "a1", TenantID: "t1", ChannelIDs: []string{"ch1"}, ISPProfileID: "p1", Enabled: true}
 	b := newBridge(asst, prof)
-	if ok, _ := b.AllowServer(bridgeCtx(), "whatsapp", "SMSNET_OPERACOES", true); ok {
+	if ok, _ := b.AllowServer(bridgeCtx(), "ch1", "SMSNET_OPERACOES", true); ok {
 		t.Errorf("write server must be gated when the profile supports no write action")
 	}
 }

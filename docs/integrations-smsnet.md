@@ -72,15 +72,17 @@ ISP nunca passam por camada de decisão de IA — o config é montado na borda.
 ### CopilotAssistant (transporte MCP)
 
 `CopilotAssistant` (coleção `copilot_assistants`, vários por tenant) reusa o
-`AIConfig` do tenant (provider/key/políticas) e adiciona roteamento: `ChannelTypes[]`
-(casados com `conv.Channel`), `ISPProfileID` **opcional** e `Enabled`. CRUD em
-`/v1/copilot/assistants` (`copilot.configure`). **Sem** ISP → não expõe tools de
+`AIConfig` do tenant (provider/key/políticas) e adiciona roteamento: `ChannelIDs[]`
+(ids de ChannelConnection específicas, casados com `conv.channel_id`), `ISPProfileID`
+**opcional** e `Enabled`. CRUD em `/v1/copilot/assistants` (`copilot.configure`),
+validando que os `channel_ids` existem no tenant. **Sem** ISP → não expõe tools de
 ISP. **Com** ISP → o backend expõe as tools SMSNET ao modelo e **injeta o
-`config{type+creds}` server-side**.
+`config{type+creds}` server-side**. Conversa com `channel_id` vazio → nenhum
+assistente resolve (sem fallback por tipo).
 
 **Ponto único de injeção:** `mcp/service.ToolService.invoke` — o único lugar que
 despacha `client.CallTool`. Toda a credencial entra ali, **depois** que a IA decidiu
-chamar a tool, via `ISPToolBridge` (resolve `conv.Channel → assistente → perfil`):
+chamar a tool, via `ISPToolBridge` (resolve `conv.channel_id → assistente → perfil`):
 `args["config"]` é **sobrescrito** (o modelo nunca fornece nem vê credencial). Em
 write, `args["idempotency_key"]` recebe o `approval.ID`. Filtragem (coarse, por
 servidor) no `OpenToolSession`: sem perfil → nenhuma tool SMSNET; servidor de escrita

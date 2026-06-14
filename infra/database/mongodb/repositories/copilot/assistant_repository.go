@@ -42,7 +42,7 @@ func (r *AssistantRepository) Update(ctx context.Context, a *entity.Assistant) e
 		bson.M{"_id": a.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
 			"name":           m.Name,
-			"channel_types":  m.ChannelTypes,
+			"channel_ids":    m.ChannelIDs,
 			"isp_profile_id": m.ISPProfileID,
 			"enabled":        m.Enabled,
 			"updated_at":     a.UpdatedAt,
@@ -105,13 +105,13 @@ func (r *AssistantRepository) List(ctx context.Context) ([]*entity.Assistant, er
 	return out, mongodb.MapError(cur.Err())
 }
 
-func (r *AssistantRepository) FindByChannelType(ctx context.Context, channelType string) (*entity.Assistant, error) {
+func (r *AssistantRepository) FindByChannelID(ctx context.Context, channelID string) (*entity.Assistant, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var m models.Assistant
-	err = r.coll.FindOne(ctx, bson.M{"tenant_id": tenantID, "enabled": true, "channel_types": channelType}).Decode(&m)
+	err = r.coll.FindOne(ctx, bson.M{"tenant_id": tenantID, "enabled": true, "channel_ids": channelID}).Decode(&m)
 	if err != nil {
 		return nil, mongodb.MapError(err)
 	}
@@ -133,7 +133,7 @@ func (r *AssistantRepository) CountByISPProfile(ctx context.Context, ispProfileI
 func toAssistantModel(a *entity.Assistant) models.Assistant {
 	m := models.Assistant{
 		Name:         a.Name,
-		ChannelTypes: a.ChannelTypes,
+		ChannelIDs:   a.ChannelIDs,
 		ISPProfileID: a.ISPProfileID,
 		Enabled:      a.Enabled,
 	}
@@ -149,7 +149,7 @@ func toAssistantEntity(m *models.Assistant) *entity.Assistant {
 		ID:           m.ID,
 		TenantID:     m.TenantID,
 		Name:         m.Name,
-		ChannelTypes: m.ChannelTypes,
+		ChannelIDs:   m.ChannelIDs,
 		ISPProfileID: m.ISPProfileID,
 		Enabled:      m.Enabled,
 		CreatedAt:    m.CreatedAt,

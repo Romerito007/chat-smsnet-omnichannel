@@ -22,7 +22,7 @@ type AIConfig struct {
 type Assistant struct {
 	Base         `bson:",inline"`
 	Name         string   `bson:"name"`
-	ChannelTypes []string `bson:"channel_types,omitempty"`
+	ChannelIDs   []string `bson:"channel_ids,omitempty"`
 	ISPProfileID string   `bson:"isp_profile_id,omitempty"`
 	Enabled      bool     `bson:"enabled"`
 }

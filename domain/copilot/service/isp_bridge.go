@@ -28,8 +28,8 @@ func NewISPToolBridge(assistants repository.AssistantRepository, profiles phrepo
 // AllowServer gates a SMSNET server for the conversation's channel: no
 // assistant/profile → false; read → true; write → only when the profile supports
 // liberacao or chamado.
-func (b *ISPToolBridge) AllowServer(ctx context.Context, channelType, _ string, write bool) (bool, error) {
-	profile, ok, err := b.resolveProfile(ctx, channelType)
+func (b *ISPToolBridge) AllowServer(ctx context.Context, channelID, _ string, write bool) (bool, error) {
+	profile, ok, err := b.resolveProfile(ctx, channelID)
 	if err != nil {
 		return false, err
 	}
@@ -49,7 +49,7 @@ func (b *ISPToolBridge) Decorate(ctx context.Context, in mcpcontracts.DecorateIn
 	if args == nil {
 		args = map[string]any{}
 	}
-	profile, ok, err := b.resolveProfile(ctx, in.ChannelType)
+	profile, ok, err := b.resolveProfile(ctx, in.ChannelID)
 	if err != nil {
 		return args, err
 	}
@@ -73,11 +73,16 @@ func (b *ISPToolBridge) Decorate(ctx context.Context, in mcpcontracts.DecorateIn
 	return args, nil
 }
 
-// resolveProfile finds the enabled assistant serving the channel type and its
-// enabled pinned ISP profile. ok is false (no error) when there is no assistant,
-// no pinned profile, or the profile is missing/disabled.
-func (b *ISPToolBridge) resolveProfile(ctx context.Context, channelType string) (*phentity.ISPProfile, bool, error) {
-	assistant, err := b.assistants.FindByChannelType(ctx, channelType)
+// resolveProfile finds the enabled assistant serving the channel connection id
+// and its enabled pinned ISP profile. ok is false (no error) when the channel id
+// is empty, there is no assistant, no pinned profile, or the profile is
+// missing/disabled. An empty channel id (e.g. a manually-created conversation)
+// resolves to no assistant — there is NO fallback by channel type.
+func (b *ISPToolBridge) resolveProfile(ctx context.Context, channelID string) (*phentity.ISPProfile, bool, error) {
+	if channelID == "" {
+		return nil, false, nil
+	}
+	assistant, err := b.assistants.FindByChannelID(ctx, channelID)
 	if err != nil {
 		if apperror.From(err).Code == apperror.CodeNotFound {
 			return nil, false, nil

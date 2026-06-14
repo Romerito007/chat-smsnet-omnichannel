@@ -850,8 +850,8 @@ components:
             type: object
         CopilotAssistant:
             properties:
-                channel_types:
-                    description: Conversation channel types this assistant serves (e.g. whatsapp).
+                channel_ids:
+                    description: Ids of the specific ChannelConnections this assistant serves (not types).
                     items:
                         type: string
                     type: array
@@ -1099,7 +1099,8 @@ components:
             type: object
         CreateCopilotAssistantRequest:
             properties:
-                channel_types:
+                channel_ids:
+                    description: Ids of ChannelConnections to serve; each must exist for the tenant.
                     items:
                         type: string
                     type: array
@@ -2886,7 +2887,7 @@ components:
             type: object
         UpdateCopilotAssistantRequest:
             properties:
-                channel_types:
+                channel_ids:
                     items:
                         type: string
                     type: array

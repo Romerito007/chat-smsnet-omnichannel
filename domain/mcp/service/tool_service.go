@@ -244,7 +244,7 @@ func (s *ToolService) OpenToolSession(ctx context.Context, conversationID string
 		// them when no profile is pinned, and hide the write (OPERACOES) tools when
 		// the profile supports neither liberacao nor chamado.
 		if s.ispBridge != nil && entity.IsSMSNETServer(ref.Name) {
-			allowed, aerr := s.ispBridge.AllowServer(ctx, conv.Channel, ref.Name, t.Write)
+			allowed, aerr := s.ispBridge.AllowServer(ctx, conv.ChannelID, ref.Name, t.Write)
 			if aerr != nil || !allowed {
 				continue
 			}
@@ -314,7 +314,7 @@ func (t *toolSession) ProposeWrite(ctx context.Context, name, argsJSON string) (
 func (s *ToolService) invoke(ctx context.Context, conv *convEntityRef, conn *entity.ServerConnection, tool string, args map[string]any, userID, idempotencyKey string) (string, error) {
 	if s.ispBridge != nil && entity.IsSMSNETServer(conn.Name) {
 		decorated, derr := s.ispBridge.Decorate(ctx, contracts.DecorateInput{
-			ChannelType:    conv.Channel,
+			ChannelID:      conv.ChannelID,
 			ServerName:     conn.Name,
 			Write:          conn.Kind == entity.KindWrite,
 			IdempotencyKey: idempotencyKey,
@@ -382,7 +382,8 @@ func (s *ToolService) publishApproval(ctx context.Context, tenantID string, a *e
 type convEntityRef struct {
 	ID         string
 	TenantID   string
-	Channel    string // channel type, for resolving the conversation's assistant/ISP profile
+	Channel    string // channel type
+	ChannelID  string // specific connection id, for resolving the assistant/ISP profile
 	SectorID   string
 	AssignedTo string
 }
@@ -401,7 +402,7 @@ func (s *ToolService) loadVisible(ctx context.Context, id string) (*convEntityRe
 	if err != nil {
 		return nil, err
 	}
-	ref := &convEntityRef{ID: conv.ID, TenantID: conv.TenantID, Channel: conv.Channel, SectorID: conv.SectorID, AssignedTo: conv.AssignedTo}
+	ref := &convEntityRef{ID: conv.ID, TenantID: conv.TenantID, Channel: conv.Channel, ChannelID: conv.ChannelID, SectorID: conv.SectorID, AssignedTo: conv.AssignedTo}
 	if ac.SectorScope == authz.ScopeAll {
 		return ref, nil
 	}

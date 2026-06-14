@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
+	chrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/repository"
 	phrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/repository"
@@ -14,7 +15,7 @@ import (
 // CreateAssistant is the input to AssistantService.Create.
 type CreateAssistant struct {
 	Name         string
-	ChannelTypes []string
+	ChannelIDs   []string
 	ISPProfileID string
 	Enabled      *bool // nil → true
 }
@@ -22,26 +23,27 @@ type CreateAssistant struct {
 // UpdateAssistant carries optional fields; nil pointers mean "leave unchanged".
 type UpdateAssistant struct {
 	Name         *string
-	ChannelTypes *[]string
+	ChannelIDs   *[]string
 	ISPProfileID *string
 	Enabled      *bool
 }
 
 // AssistantService manages copilot assistants (many per tenant). It validates that
-// a pinned ISP profile exists, and answers whether a profile is in use (so
-// providerhub can block deleting a referenced profile).
+// the pinned ISP profile and the served channels exist, and answers whether a
+// profile is in use (so providerhub can block deleting a referenced profile).
 type AssistantService struct {
 	repo     repository.AssistantRepository
 	profiles phrepo.ProfileRepository
+	channels chrepo.ConnectionRepository
 	clock    shared.Clock
 }
 
 // NewAssistantService builds the service.
-func NewAssistantService(repo repository.AssistantRepository, profiles phrepo.ProfileRepository, clock shared.Clock) *AssistantService {
+func NewAssistantService(repo repository.AssistantRepository, profiles phrepo.ProfileRepository, channels chrepo.ConnectionRepository, clock shared.Clock) *AssistantService {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &AssistantService{repo: repo, profiles: profiles, clock: clock}
+	return &AssistantService{repo: repo, profiles: profiles, channels: channels, clock: clock}
 }
 
 // List returns the tenant's assistants.
@@ -74,6 +76,9 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 	if err := s.validateProfile(ctx, ispProfileID); err != nil {
 		return nil, err
 	}
+	if err := s.validateChannels(ctx, cmd.ChannelIDs); err != nil {
+		return nil, err
+	}
 	enabled := true
 	if cmd.Enabled != nil {
 		enabled = *cmd.Enabled
@@ -83,7 +88,7 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 		ID:           shared.NewID(),
 		TenantID:     tenantID,
 		Name:         name,
-		ChannelTypes: cmd.ChannelTypes,
+		ChannelIDs:   cmd.ChannelIDs,
 		ISPProfileID: ispProfileID,
 		Enabled:      enabled,
 		CreatedAt:    now,
@@ -110,8 +115,11 @@ func (s *AssistantService) Update(ctx context.Context, id string, cmd UpdateAssi
 			return nil, apperror.Validation("name is required")
 		}
 	}
-	if cmd.ChannelTypes != nil {
-		a.ChannelTypes = *cmd.ChannelTypes
+	if cmd.ChannelIDs != nil {
+		if err := s.validateChannels(ctx, *cmd.ChannelIDs); err != nil {
+			return nil, err
+		}
+		a.ChannelIDs = *cmd.ChannelIDs
 	}
 	if cmd.ISPProfileID != nil {
 		a.ISPProfileID = strings.TrimSpace(*cmd.ISPProfileID)
@@ -167,6 +175,23 @@ func (s *AssistantService) validateProfile(ctx context.Context, ispProfileID str
 			return apperror.Validation("unknown isp_profile_id")
 		}
 		return err
+	}
+	return nil
+}
+
+// validateChannels ensures every served channel id is an existing connection of
+// the tenant.
+func (s *AssistantService) validateChannels(ctx context.Context, channelIDs []string) error {
+	for _, id := range channelIDs {
+		if strings.TrimSpace(id) == "" {
+			return apperror.Validation("channel_ids must not contain empty ids")
+		}
+		if _, err := s.channels.FindByID(ctx, id); err != nil {
+			if apperror.From(err).Code == apperror.CodeNotFound {
+				return apperror.Validation("unknown channel id: " + id)
+			}
+			return err
+		}
 	}
 	return nil
 }

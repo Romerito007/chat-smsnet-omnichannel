@@ -479,18 +479,18 @@ func schemas() M {
 		// ISP config server-side; without one, no ISP tools are offered.
 		"CopilotAssistant": object(M{
 			"id": str(), "tenant_id": str(), "name": str(),
-			"channel_types":  describedArr(str(), "Conversation channel types this assistant serves (e.g. whatsapp)."),
+			"channel_ids":    describedArr(str(), "Ids of the specific ChannelConnections this assistant serves (not types)."),
 			"isp_profile_id": describedStr("Pinned providerhub ISP profile id, or empty for no ISP tools."),
 			"enabled":        boolean(),
 			"created_at":     dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateCopilotAssistantRequest": object(M{
-			"name": str(), "channel_types": arr(str()),
+			"name": str(), "channel_ids": withDesc(arr(str()), "Ids of ChannelConnections to serve; each must exist for the tenant."),
 			"isp_profile_id": describedStr("Optional providerhub ISP profile id to pin; must exist."),
 			"enabled":        describedBool("Defaults to true when omitted."),
 		}, "name"),
 		"UpdateCopilotAssistantRequest": object(M{
-			"name": str(), "channel_types": arr(str()), "isp_profile_id": str(), "enabled": boolean(),
+			"name": str(), "channel_ids": arr(str()), "isp_profile_id": str(), "enabled": boolean(),
 		}),
 		"SuggestReplyRequest": object(M{"conversation_id": str(), "instruction": str()}, "conversation_id"),
 		"SummarizeRequest":    object(M{"conversation_id": str()}, "conversation_id"),

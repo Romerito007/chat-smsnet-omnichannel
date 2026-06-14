@@ -12,7 +12,7 @@ type AssistantResponse struct {
 	ID           string    `json:"id"`
 	TenantID     string    `json:"tenant_id"`
 	Name         string    `json:"name"`
-	ChannelTypes []string  `json:"channel_types"`
+	ChannelIDs   []string  `json:"channel_ids"`
 	ISPProfileID string    `json:"isp_profile_id,omitempty"`
 	Enabled      bool      `json:"enabled"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -21,7 +21,7 @@ type AssistantResponse struct {
 
 // NewAssistantResponse maps an assistant entity to the DTO.
 func NewAssistantResponse(a *centity.Assistant) AssistantResponse {
-	channels := a.ChannelTypes
+	channels := a.ChannelIDs
 	if channels == nil {
 		channels = []string{}
 	}
@@ -29,7 +29,7 @@ func NewAssistantResponse(a *centity.Assistant) AssistantResponse {
 		ID:           a.ID,
 		TenantID:     a.TenantID,
 		Name:         a.Name,
-		ChannelTypes: channels,
+		ChannelIDs:   channels,
 		ISPProfileID: a.ISPProfileID,
 		Enabled:      a.Enabled,
 		CreatedAt:    a.CreatedAt,
@@ -49,7 +49,7 @@ func NewAssistantListResponse(as []*centity.Assistant) map[string]any {
 // CreateAssistantRequest is the body of POST /v1/copilot/assistants.
 type CreateAssistantRequest struct {
 	Name         string   `json:"name"`
-	ChannelTypes []string `json:"channel_types"`
+	ChannelIDs   []string `json:"channel_ids"`
 	ISPProfileID string   `json:"isp_profile_id"`
 	Enabled      *bool    `json:"enabled"`
 }
@@ -58,7 +58,7 @@ type CreateAssistantRequest struct {
 func (r CreateAssistantRequest) ToCommand() cservice.CreateAssistant {
 	return cservice.CreateAssistant{
 		Name:         r.Name,
-		ChannelTypes: r.ChannelTypes,
+		ChannelIDs:   r.ChannelIDs,
 		ISPProfileID: r.ISPProfileID,
 		Enabled:      r.Enabled,
 	}
@@ -67,7 +67,7 @@ func (r CreateAssistantRequest) ToCommand() cservice.CreateAssistant {
 // UpdateAssistantRequest is the body of PATCH /v1/copilot/assistants/{id}.
 type UpdateAssistantRequest struct {
 	Name         *string   `json:"name"`
-	ChannelTypes *[]string `json:"channel_types"`
+	ChannelIDs   *[]string `json:"channel_ids"`
 	ISPProfileID *string   `json:"isp_profile_id"`
 	Enabled      *bool     `json:"enabled"`
 }
@@ -76,7 +76,7 @@ type UpdateAssistantRequest struct {
 func (r UpdateAssistantRequest) ToCommand() cservice.UpdateAssistant {
 	return cservice.UpdateAssistant{
 		Name:         r.Name,
-		ChannelTypes: r.ChannelTypes,
+		ChannelIDs:   r.ChannelIDs,
 		ISPProfileID: r.ISPProfileID,
 		Enabled:      r.Enabled,
 	}
