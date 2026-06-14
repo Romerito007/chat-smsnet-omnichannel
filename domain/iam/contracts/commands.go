@@ -29,6 +29,10 @@ type UpdateUser struct {
 type UpdateProfile struct {
 	Name               *string
 	AvatarAttachmentID *string
+	// Preferences, when non-nil, FULL-REPLACES the user's stored UI preferences
+	// (theme, audio alerts, browser push, …). Free/nested object; the service
+	// validates only the enum-constrained fields. Nil = leave unchanged.
+	Preferences *map[string]any
 }
 
 // CreateRole is the input to create a role.

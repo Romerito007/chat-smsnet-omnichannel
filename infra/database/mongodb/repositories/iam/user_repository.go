@@ -47,6 +47,7 @@ func (r *UserRepository) Update(ctx context.Context, u *entity.User) error {
 			"sector_ids":           entity.NormalizeSectorIDs(u.SectorIDs),
 			"max_concurrent_chats": u.MaxConcurrentChats,
 			"avatar_attachment_id": u.AvatarAttachmentID,
+			"preferences":          u.Preferences,
 			"updated_at":           u.UpdatedAt,
 		}},
 	)
@@ -197,6 +198,7 @@ func userToModel(u *entity.User) models.User {
 		SectorIDs:          entity.NormalizeSectorIDs(u.SectorIDs),
 		MaxConcurrentChats: u.MaxConcurrentChats,
 		AvatarAttachmentID: u.AvatarAttachmentID,
+		Preferences:        u.Preferences,
 	}
 	m.ID = u.ID
 	m.TenantID = u.TenantID
@@ -217,6 +219,7 @@ func userToEntity(m *models.User) *entity.User {
 		SectorIDs:          entity.NormalizeSectorIDs(m.SectorIDs),
 		MaxConcurrentChats: m.MaxConcurrentChats,
 		AvatarAttachmentID: m.AvatarAttachmentID,
+		Preferences:        m.Preferences,
 		CreatedAt:          m.CreatedAt,
 		UpdatedAt:          m.UpdatedAt,
 	}

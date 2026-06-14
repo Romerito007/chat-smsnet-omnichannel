@@ -146,6 +146,7 @@ func (c *AccountController) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	user, err := c.users.UpdateProfile(r.Context(), ac.UserID, iamcontracts.UpdateProfile{
 		Name:               req.Name,
 		AvatarAttachmentID: req.AvatarAttachmentID,
+		Preferences:        req.Preferences,
 	})
 	if err != nil {
 		middleware.WriteError(w, r, err)

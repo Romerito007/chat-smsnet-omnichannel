@@ -70,6 +70,10 @@ func (r InviteUserRequest) ToCommand() authcontracts.InviteCommand {
 type UpdateProfileRequest struct {
 	Name               *string `json:"name"`
 	AvatarAttachmentID *string `json:"avatar_attachment_id"`
+	// Preferences, when present, full-replaces the user's stored UI preferences
+	// (theme, audio_alerts, browser_push, …). Free/nested object; omit to leave
+	// unchanged. Only theme and audio_alerts.play_for are validated server-side.
+	Preferences *map[string]any `json:"preferences"`
 }
 
 // ChangePasswordRequest is the body of POST /v1/me/change-password.

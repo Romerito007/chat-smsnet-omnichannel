@@ -26,12 +26,13 @@ type Role struct {
 // projected to clients (mapping to DTOs drops it).
 type User struct {
 	Base               `bson:",inline"`
-	Name               string   `bson:"name"`
-	Email              string   `bson:"email"`
-	PasswordHash       string   `bson:"password_hash"`
-	Status             string   `bson:"status"`
-	RoleIDs            []string `bson:"role_ids"`
-	SectorIDs          []string `bson:"sector_ids"`
-	MaxConcurrentChats int      `bson:"max_concurrent_chats"`
-	AvatarAttachmentID string   `bson:"avatar_attachment_id,omitempty"`
+	Name               string         `bson:"name"`
+	Email              string         `bson:"email"`
+	PasswordHash       string         `bson:"password_hash"`
+	Status             string         `bson:"status"`
+	RoleIDs            []string       `bson:"role_ids"`
+	SectorIDs          []string       `bson:"sector_ids"`
+	MaxConcurrentChats int            `bson:"max_concurrent_chats"`
+	AvatarAttachmentID string         `bson:"avatar_attachment_id,omitempty"`
+	Preferences        map[string]any `bson:"preferences,omitempty"`
 }

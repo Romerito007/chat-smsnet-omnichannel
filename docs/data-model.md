@@ -41,6 +41,8 @@ Notação: 🔑 = índice; ⭐ = único.
 | `roles` | []string | nomes de papéis |
 | `sectors` | []string | setores do usuário |
 | `status` | string | active/disabled |
+| `avatar_attachment_id` | string | avatar (fluxo signed-URL) |
+| `preferences` | object | guarda-chuva das preferências de UI do usuário (tema, alertas de áudio, browser push, …); objeto livre/aninhado, segue o usuário entre dispositivos. Lido/gravado via GET/PATCH `/v1/me` (full-replace). O backend só guarda e devolve; valida apenas `theme` (light/dark/system) e `audio_alerts.play_for` (mine/unassigned/others). Preferências de e-mail ficam à parte em `notification_preferences`. |
 | `last_seen_at` | date | |
 
 Índices: ⭐`(tenant_id,email)`, 🔑`(tenant_id,created_at desc,_id desc)`.

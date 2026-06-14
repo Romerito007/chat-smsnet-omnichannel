@@ -70,9 +70,13 @@ type UserResponse struct {
 	AvatarAttachmentID string   `json:"avatar_attachment_id,omitempty"`
 	// AvatarURL is a short-lived signed URL the browser loads directly (no JWT).
 	// Read-only/derived; present only when the avatar exists and is ready.
-	AvatarURL string    `json:"avatar_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	// Preferences is the user's UI preferences umbrella (theme, audio_alerts,
+	// browser_push, …), echoed back as stored. Omitted when the user has none yet
+	// (the front then applies its defaults).
+	Preferences map[string]any `json:"preferences,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 // NewUserResponse maps a user entity to its DTO.
@@ -87,6 +91,7 @@ func NewUserResponse(u *entity.User) UserResponse {
 		SectorIDs:          u.SectorIDs,
 		MaxConcurrentChats: u.MaxConcurrentChats,
 		AvatarAttachmentID: u.AvatarAttachmentID,
+		Preferences:        u.Preferences,
 		CreatedAt:          u.CreatedAt,
 		UpdatedAt:          u.UpdatedAt,
 	}

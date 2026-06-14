@@ -31,8 +31,15 @@ type User struct {
 	// AvatarAttachmentID is the attachment (uploaded via the signed-URL flow) used
 	// as the user's avatar. Optional.
 	AvatarAttachmentID string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// Preferences is the umbrella object for ALL of the user's UI preferences
+	// (theme, audio alerts, browser push, …), so they follow the user across
+	// devices instead of living in the browser's localStorage. Free/nested by
+	// design: the backend only stores and returns it, validating just the few
+	// enum-constrained fields (theme, audio_alerts.play_for). Read/written through
+	// GET/PATCH /v1/me. Email-server preferences stay in the notifications domain.
+	Preferences map[string]any
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // IsActive reports whether the user may authenticate.

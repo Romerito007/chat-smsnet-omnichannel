@@ -47,7 +47,7 @@ func schemas() M {
 		"AcceptInviteRequest":   object(M{"token": str(), "name": str(), "password": str()}, "token", "name", "password"),
 		"InviteUserRequest":     object(M{"email": str(), "role_ids": arr(str()), "sector_ids": arr(str())}, "email"),
 		"InviteResponse":        object(M{"id": str(), "email": str()}),
-		"UpdateProfileRequest":  object(M{"name": str(), "avatar_attachment_id": str()}),
+		"UpdateProfileRequest":  object(M{"name": str(), "avatar_attachment_id": str(), "preferences": userPreferencesSchema()}),
 		"ChangePasswordRequest": object(M{"current_password": str(), "new_password": str()}, "current_password", "new_password"),
 		"TokenResponse": object(M{
 			"access_token": str(), "token_type": str(), "access_expires_at": dateTime(),
@@ -64,6 +64,7 @@ func schemas() M {
 			"role_ids": arr(str()), "sector_ids": arr(str()), "max_concurrent_chats": integer(),
 			"avatar_attachment_id": str(),
 			"avatar_url":           describedStr("Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term."),
+			"preferences":          userPreferencesSchema(),
 			"created_at":           dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateUserRequest": object(M{

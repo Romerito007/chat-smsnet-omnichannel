@@ -3136,6 +3136,53 @@ components:
                     type: string
                 name:
                     type: string
+                preferences:
+                    additionalProperties: true
+                    description: User UI preferences (theme, audio alerts, browser push, …) stored per user and returned as-is. Extensible; only theme and audio_alerts.play_for are validated. PATCH /v1/me replaces the whole object.
+                    properties:
+                        audio_alerts:
+                            properties:
+                                enabled:
+                                    type: boolean
+                                only_when_window_inactive:
+                                    type: boolean
+                                play_for:
+                                    description: Which conversations trigger the alert sound.
+                                    enum:
+                                        - mine
+                                        - unassigned
+                                        - others
+                                    type: string
+                                repeat_every_30s:
+                                    type: boolean
+                                sound:
+                                    type: string
+                            type: object
+                        browser_push:
+                            properties:
+                                conversation_assigned:
+                                    type: boolean
+                                conversation_new:
+                                    type: boolean
+                                mention:
+                                    type: boolean
+                                message_assigned:
+                                    type: boolean
+                                message_participating:
+                                    type: boolean
+                                sla_first_response:
+                                    type: boolean
+                                sla_resolution:
+                                    type: boolean
+                            type: object
+                        theme:
+                            description: UI color theme.
+                            enum:
+                                - light
+                                - dark
+                                - system
+                            type: string
+                    type: object
             type: object
         UpdateQueueRequest:
             properties:
@@ -3329,6 +3376,53 @@ components:
                     type: integer
                 name:
                     type: string
+                preferences:
+                    additionalProperties: true
+                    description: User UI preferences (theme, audio alerts, browser push, …) stored per user and returned as-is. Extensible; only theme and audio_alerts.play_for are validated. PATCH /v1/me replaces the whole object.
+                    properties:
+                        audio_alerts:
+                            properties:
+                                enabled:
+                                    type: boolean
+                                only_when_window_inactive:
+                                    type: boolean
+                                play_for:
+                                    description: Which conversations trigger the alert sound.
+                                    enum:
+                                        - mine
+                                        - unassigned
+                                        - others
+                                    type: string
+                                repeat_every_30s:
+                                    type: boolean
+                                sound:
+                                    type: string
+                            type: object
+                        browser_push:
+                            properties:
+                                conversation_assigned:
+                                    type: boolean
+                                conversation_new:
+                                    type: boolean
+                                mention:
+                                    type: boolean
+                                message_assigned:
+                                    type: boolean
+                                message_participating:
+                                    type: boolean
+                                sla_first_response:
+                                    type: boolean
+                                sla_resolution:
+                                    type: boolean
+                            type: object
+                        theme:
+                            description: UI color theme.
+                            enum:
+                                - light
+                                - dark
+                                - system
+                            type: string
+                    type: object
                 role_ids:
                     items:
                         type: string

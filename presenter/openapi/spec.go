@@ -46,6 +46,38 @@ func customAttributesObject() M {
 	return withDesc(freeObject(), "Tenant-defined custom attribute values (key→value), validated against the custom_attribute_definitions for this entity (contact/conversation). On PATCH it replaces the whole map; omit a key to remove it.")
 }
 
+// userPreferencesSchema documents the user's UI-preferences umbrella, stored and
+// returned as-is via GET/PATCH /v1/me so it follows the user across devices. It
+// is intentionally extensible (additionalProperties:true): the backend only
+// stores/returns it and validates just the enum-constrained fields (theme,
+// audio_alerts.play_for). All fields are optional — an absent field means the
+// front applies its own default. On PATCH /v1/me the whole object is replaced.
+// Email-server preferences live separately under /v1/notifications/preferences.
+func userPreferencesSchema() M {
+	s := object(M{
+		"theme": withDesc(enum("light", "dark", "system"), "UI color theme."),
+		"audio_alerts": object(M{
+			"enabled":                   boolean(),
+			"sound":                     str(),
+			"play_for":                  withDesc(enum("mine", "unassigned", "others"), "Which conversations trigger the alert sound."),
+			"only_when_window_inactive": boolean(),
+			"repeat_every_30s":          boolean(),
+		}),
+		"browser_push": object(M{
+			"conversation_new":      boolean(),
+			"conversation_assigned": boolean(),
+			"mention":               boolean(),
+			"message_assigned":      boolean(),
+			"message_participating": boolean(),
+			"sla_first_response":    boolean(),
+			"sla_resolution":        boolean(),
+		}),
+	})
+	s["additionalProperties"] = true
+	s["description"] = "User UI preferences (theme, audio alerts, browser push, …) stored per user and returned as-is. Extensible; only theme and audio_alerts.play_for are validated. PATCH /v1/me replaces the whole object."
+	return s
+}
+
 // describedBool / describedInt / describedArr are the boolean/integer/array
 // counterparts of describedStr, for fields that carry a per-field description
 // (e.g. the ProviderHubConfig source mapping).

@@ -228,11 +228,45 @@ func (s *UserService) UpdateProfile(ctx context.Context, id string, cmd contract
 	if cmd.AvatarAttachmentID != nil {
 		user.AvatarAttachmentID = strings.TrimSpace(*cmd.AvatarAttachmentID)
 	}
+	if cmd.Preferences != nil {
+		if err := validatePreferences(*cmd.Preferences); err != nil {
+			return nil, err
+		}
+		// Full-replace: the client sends the whole preferences object it wants
+		// stored. The backend only persists and returns it (no reaction to flags).
+		user.Preferences = *cmd.Preferences
+	}
 	user.UpdatedAt = s.clock.Now()
 	if err := s.users.Update(ctx, user); err != nil {
 		return nil, err
 	}
 	return user, nil
+}
+
+// validatePreferences checks only the enum-constrained fields of the free/nested
+// preferences object: theme and audio_alerts.play_for. Everything else passes
+// through untouched so future UI preferences need no schema change. Absent fields
+// are fine (the front applies its own defaults).
+func validatePreferences(prefs map[string]any) error {
+	v := map[string]any{}
+	if raw, ok := prefs["theme"]; ok {
+		if theme, ok := raw.(string); !ok || (theme != "light" && theme != "dark" && theme != "system") {
+			v["theme"] = "must be one of: light, dark, system"
+		}
+	}
+	if raw, ok := prefs["audio_alerts"]; ok {
+		if audio, ok := raw.(map[string]any); ok {
+			if pf, ok := audio["play_for"]; ok {
+				if playFor, ok := pf.(string); !ok || (playFor != "mine" && playFor != "unassigned" && playFor != "others") {
+					v["audio_alerts.play_for"] = "must be one of: mine, unassigned, others"
+				}
+			}
+		}
+	}
+	if len(v) > 0 {
+		return apperror.Validation("invalid preferences").WithDetails(v)
+	}
+	return nil
 }
 
 // ChangePassword verifies the user's current password and sets a new one. The id
