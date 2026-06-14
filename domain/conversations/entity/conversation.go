@@ -66,6 +66,10 @@ type Conversation struct {
 	Status     Status
 	AssignedTo string
 	Priority   Priority
+	// Protocol is the per-tenant, per-year protocol number ("2026-000123") assigned
+	// when the conversation is opened on a channel with UsesProtocol=true. Empty for
+	// conversations on channels without protocol numbering.
+	Protocol string
 	// Tags always stores canonical tag IDs (never names). The service resolves any
 	// name supplied on write to its ID, so the array stays ID-only — keeping the
 	// front render and tag removal (which match by ID) consistent.

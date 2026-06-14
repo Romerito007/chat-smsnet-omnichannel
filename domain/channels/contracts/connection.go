@@ -11,6 +11,7 @@ type CreateConnection struct {
 	Secret          string
 	DefaultSectorID string
 	BusinessHours   map[string]any
+	UsesProtocol    bool
 }
 
 // UpdateConnection carries optional fields; nil pointers mean "leave unchanged".
@@ -23,6 +24,7 @@ type UpdateConnection struct {
 	DefaultSectorID *string
 	BusinessHours   *map[string]any
 	Enabled         *bool
+	UsesProtocol    *bool
 }
 
 // TestResult is the outcome of POST /v1/channels/{id}/test.

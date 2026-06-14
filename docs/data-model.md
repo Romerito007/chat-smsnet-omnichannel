@@ -98,6 +98,7 @@ text `(name)`, 🔑 keyset.
 | `assignee_id` | string | 🔑 agente atual |
 | `status` | string | open/assigned/pending/resolved/closed |
 | `priority` | string | |
+| `protocol` | string | 🔑 número de protocolo `AAAA-NNNNNN` (ex. `2026-000123`), atribuído quando a conversa abre num channel com `uses_protocol=true`; vazio caso contrário. Índice parcial `(tenant_id, protocol)` para busca por número. |
 | `subject` | string | |
 | `tags` | []string | |
 | `reason_id` | string | motivo de fechamento |
@@ -154,7 +155,15 @@ text `(name)`, 🔑 keyset.
 api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
 **nunca** em claro nem retornado após criação), `webhook_verify_token` (=
 `inbound_token`, exibido uma vez), `default_sector_id`, `business_hours`,
-`enabled`.
+`enabled`, `uses_protocol` bool (liga numeração de protocolo por conversa neste
+channel; default false — ver `conversations.protocol`).
+
+### `protocol_counters`
+Contador atômico de protocolo. Um doc por `(tenant, ano)`: `_id` =
+`"<tenant_id>:<ano>"`, `tenant_id`, `year`, `seq`. O próximo número sai de um
+`findAndModify` com `$inc` (upsert) — sem race de "contar + 1". Formatado como
+`{ano}-{seq zero-padded 6}` na conversa. Reinicia a cada ano (novo ano → novo
+doc começando em 1).
 
 ### `automation_rules` / `rule_evaluation_logs`
 - `automation_rules`: `tenant_id`🔑, `name`, `event` (gatilho de ciclo de vida),

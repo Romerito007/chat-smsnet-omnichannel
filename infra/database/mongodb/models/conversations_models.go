@@ -13,6 +13,7 @@ type Conversation struct {
 	Status        string     `bson:"status"`
 	AssignedTo    string     `bson:"assigned_to,omitempty"`
 	Priority      string     `bson:"priority"`
+	Protocol      string     `bson:"protocol,omitempty"`
 	Tags          []string   `bson:"tags,omitempty"`
 	LastMessageAt time.Time  `bson:"last_message_at"`
 	UnreadCount   int        `bson:"unread_count,omitempty"`

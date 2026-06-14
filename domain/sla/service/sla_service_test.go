@@ -110,6 +110,9 @@ func (r *fakeConvRepo) FindByIDs(_ context.Context, ids []string) ([]*conventity
 	}
 	return out, nil
 }
+func (r *fakeConvRepo) FindLastByContactChannelID(context.Context, string, string) (*conventity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
 func (r *fakeConvRepo) FindOpenByContactChannelID(context.Context, string, string) (*conventity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
 }

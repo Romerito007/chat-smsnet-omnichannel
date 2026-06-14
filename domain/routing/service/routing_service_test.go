@@ -62,6 +62,9 @@ func (r *fakeConvRepo) FindByID(ctx context.Context, id string) (*conventity.Con
 func (r *fakeConvRepo) FindByIDs(context.Context, []string) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
+func (r *fakeConvRepo) FindLastByContactChannelID(context.Context, string, string) (*conventity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
 func (r *fakeConvRepo) FindOpenByContactChannelID(ctx context.Context, contactID, channel string) (*conventity.Conversation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -26,6 +26,7 @@ type CreateConnectionRequest struct {
 	OutboundSecret  string         `json:"outbound_secret"`
 	DefaultSectorID string         `json:"default_sector_id"`
 	BusinessHours   map[string]any `json:"business_hours"`
+	UsesProtocol    bool           `json:"uses_protocol"`
 }
 
 // ToCommand maps to the service command, preferring the API-channel field names
@@ -47,6 +48,7 @@ func (r CreateConnectionRequest) ToCommand() chcontracts.CreateConnection {
 		Secret:          secret,
 		DefaultSectorID: r.DefaultSectorID,
 		BusinessHours:   r.BusinessHours,
+		UsesProtocol:    r.UsesProtocol,
 	}
 }
 
@@ -62,6 +64,7 @@ type UpdateConnectionRequest struct {
 	DefaultSectorID *string         `json:"default_sector_id"`
 	BusinessHours   *map[string]any `json:"business_hours"`
 	Enabled         *bool           `json:"enabled"`
+	UsesProtocol    *bool           `json:"uses_protocol"`
 }
 
 // ToCommand maps to the service command, accepting the API-channel field names
@@ -82,6 +85,7 @@ func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
 		DefaultSectorID: r.DefaultSectorID,
 		BusinessHours:   r.BusinessHours,
 		Enabled:         r.Enabled,
+		UsesProtocol:    r.UsesProtocol,
 	}
 	if r.Status != nil {
 		st := chentity.Status(*r.Status)
@@ -110,6 +114,7 @@ type ConnectionResponse struct {
 	DefaultSectorID string         `json:"default_sector_id,omitempty"`
 	BusinessHours   map[string]any `json:"business_hours,omitempty"`
 	Enabled         bool           `json:"enabled"`
+	UsesProtocol    bool           `json:"uses_protocol"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 }
@@ -129,6 +134,7 @@ func NewConnectionResponse(c *chentity.ChannelConnection) ConnectionResponse {
 		DefaultSectorID: c.DefaultSectorID,
 		BusinessHours:   c.BusinessHours,
 		Enabled:         c.Enabled,
+		UsesProtocol:    c.UsesProtocol,
 		CreatedAt:       c.CreatedAt,
 		UpdatedAt:       c.UpdatedAt,
 	}

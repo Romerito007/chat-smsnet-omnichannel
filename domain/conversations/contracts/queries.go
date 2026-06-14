@@ -8,6 +8,7 @@ type ListFilter struct {
 	QueueID    string
 	AssignedTo string
 	ContactID  string
+	Protocol   string
 	Tag        string
 }
 

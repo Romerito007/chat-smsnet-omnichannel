@@ -77,7 +77,8 @@ func registerConversations(p *paths) {
 		params: append(paginationParams(),
 			M{"name": "status", "in": "query", "required": false, "description": "Filter by status (exact match; same vocabulary as the PATCH body).", "schema": conversationStatusEnum()},
 			queryParam("assigned_to", "Filter by agent"), queryParam("sector_id", "Filter by sector"),
-			queryParam("contact_id", "Filter by contact (the contact's conversation history; paginated, last_message embedded)")),
+			queryParam("contact_id", "Filter by contact (the contact's conversation history; paginated, last_message embedded)"),
+			queryParam("protocol", "Filter by exact protocol number (\"2026-000123\") to locate a conversation by its number")),
 		responses: M{"200": jsonResp("Conversation page", pageOf(ref("Conversation")))}}))
 	p.add("POST", "/v1/conversations", op(opConfig{tag: "conversations", summary: "Create a conversation",
 		reqBody: body(ref("CreateConversationRequest")), responses: M{"201": jsonResp("Created", ref("Conversation"))}}))

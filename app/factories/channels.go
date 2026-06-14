@@ -48,6 +48,7 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		convrepo.NewMessageRepository(c.Mongo.DB),
 		convrepo.NewEventRepository(c.Mongo.DB),
+		convrepo.NewProtocolCounterRepository(c.Mongo.DB),
 		channelrepo.NewInboundRepository(c.Mongo.DB),
 		c.Locker,
 		c.Events,
@@ -55,6 +56,9 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 	)
 	// Raw (multipart) inbound attachments are persisted via the attachments service.
 	svc.SetAttachmentStore(AttachmentService(c))
+	// Inbound lifecycle (conversation created/reopened) feeds the automation-rules
+	// engine.
+	svc.SetRuleSink(AutomationRuleSink(c))
 	return svc
 }
 

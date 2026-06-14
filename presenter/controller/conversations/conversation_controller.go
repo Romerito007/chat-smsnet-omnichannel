@@ -34,6 +34,7 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		QueueID:    q.Get("queue_id"),
 		AssignedTo: q.Get("assigned_to"),
 		ContactID:  q.Get("contact_id"),
+		Protocol:   q.Get("protocol"),
 		Tag:        q.Get("tag"),
 	}
 	page := middleware.PageFromRequest(r)

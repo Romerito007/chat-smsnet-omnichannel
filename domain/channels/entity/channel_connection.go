@@ -74,6 +74,11 @@ type ChannelConnection struct {
 	// by businesshours/entity.ParseSchedule). Empty/absent = 24/7.
 	BusinessHours map[string]any
 	Enabled       bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// UsesProtocol turns on per-conversation protocol numbering for this channel.
+	// When true, a new inbound conversation (no open one) gets a fresh protocol and
+	// a closed last conversation is NOT reopened (a new one is created). When false
+	// (default), a closed last conversation is reopened and no protocol is assigned.
+	UsesProtocol bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

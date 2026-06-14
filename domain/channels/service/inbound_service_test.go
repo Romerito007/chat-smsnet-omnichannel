@@ -99,6 +99,23 @@ func (r *fakeConvRepo) FindOpenByContactChannelID(_ context.Context, contactID, 
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeConvRepo) FindLastByContactChannelID(_ context.Context, contactID, channelID string) (*conventity.Conversation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var last *conventity.Conversation
+	for _, c := range r.items {
+		if c.ContactID == contactID && c.ChannelID == channelID {
+			if last == nil || c.UpdatedAt.After(last.UpdatedAt) {
+				last = c
+			}
+		}
+	}
+	if last == nil {
+		return nil, apperror.NotFound("nf")
+	}
+	cp := *last
+	return &cp, nil
+}
 func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
@@ -225,20 +242,61 @@ func (p *fakePublisher) has(event string) bool {
 // ── inbound fixture/tests ────────────────────────────────────────────────────
 
 type inboundFixture struct {
-	svc   *InboundService
-	convs *fakeConvRepo
-	msgs  *fakeMsgRepo
-	pub   *fakePublisher
+	svc    *InboundService
+	convs  *fakeConvRepo
+	msgs   *fakeMsgRepo
+	events *fakeEventRepo
+	rules  *fakeRuleSink
+	pub    *fakePublisher
+}
+
+// fakeProtocolCounter hands out 1,2,3,... per call (year ignored — the test only
+// checks the format and monotonicity).
+type fakeProtocolCounter struct {
+	mu  sync.Mutex
+	seq int64
+}
+
+func (c *fakeProtocolCounter) NextSequence(context.Context, string, int) (int64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.seq++
+	return c.seq, nil
+}
+
+// fakeRuleSink records emitted automation-rule events.
+type fakeRuleSink struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (s *fakeRuleSink) EmitRuleEvent(_ context.Context, _, event, _ string, _ any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, event)
+}
+func (s *fakeRuleSink) has(event string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.events {
+		if e == event {
+			return true
+		}
+	}
+	return false
 }
 
 func newInboundFixture() inboundFixture {
 	cr := newFakeConvRepo()
 	mr := newFakeMsgRepo()
+	er := &fakeEventRepo{}
+	rules := &fakeRuleSink{}
 	pub := &fakePublisher{}
 	contacts := contactservice.New(newFakeContactRepo(), clockNow())
-	svc := NewInboundService(contacts, cr, mr, &fakeEventRepo{}, newFakeInbound(),
+	svc := NewInboundService(contacts, cr, mr, er, &fakeProtocolCounter{}, newFakeInbound(),
 		shared.NoopLocker{}, pub, clockNow())
-	return inboundFixture{svc: svc, convs: cr, msgs: mr, pub: pub}
+	svc.SetRuleSink(rules)
+	return inboundFixture{svc: svc, convs: cr, msgs: mr, events: er, rules: rules, pub: pub}
 }
 
 func conn(sector string) *chentity.ChannelConnection {
@@ -306,5 +364,93 @@ func TestInbound_ReusesOpenConversation(t *testing.T) {
 	}
 	if fx.msgs.count() != 2 {
 		t.Errorf("expected 2 messages, got %d", fx.msgs.count())
+	}
+}
+
+// protocolConn is a channel connection with protocol numbering enabled.
+func protocolConn(sector string) *chentity.ChannelConnection {
+	c := conn(sector)
+	c.UsesProtocol = true
+	return c
+}
+
+// closeConv marks a stored conversation closed (as a human/job would).
+func (fx inboundFixture) closeConv(id string) {
+	c := fx.convs.items[id]
+	c.Status = conventity.StatusClosed
+	now := c.UpdatedAt.Add(time.Minute)
+	c.ClosedAt = &now
+}
+
+// SINGLE MODE: a closed last conversation is REOPENED (same conversation), not a
+// new one — and no protocol is assigned. This is the new behavior.
+func TestInbound_SingleMode_ReopensClosedConversation(t *testing.T) {
+	fx := newInboundFixture()
+	ctx := tenantCtx()
+
+	first, err := fx.svc.Handle(ctx, conn("s"), inMsg("m1"))
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	fx.closeConv(first.ConversationID)
+
+	second, err := fx.svc.Handle(ctx, conn("s"), inMsg("m2"))
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if second.ConversationID != first.ConversationID {
+		t.Errorf("single mode must REOPEN the same conversation, got new %s", second.ConversationID)
+	}
+	if len(fx.convs.items) != 1 {
+		t.Errorf("single mode must not create a second conversation, have %d", len(fx.convs.items))
+	}
+	reopened := fx.convs.items[first.ConversationID]
+	if reopened.Status.IsClosed() || reopened.ClosedAt != nil {
+		t.Errorf("reopened conversation must be open with closed_at cleared, got status=%s", reopened.Status)
+	}
+	if reopened.Protocol != "" {
+		t.Errorf("single mode must not assign a protocol, got %q", reopened.Protocol)
+	}
+	if !fx.rules.has(string(conventity.EventConversationReopened)) {
+		t.Errorf("reopen must emit the conversation.reopened rule event")
+	}
+}
+
+// PROTOCOL MODE: a closed last conversation yields a NEW conversation with a NEW
+// protocol; an OPEN one is reused (keeps its protocol).
+func TestInbound_ProtocolMode_NewProtocolWhenClosed(t *testing.T) {
+	fx := newInboundFixture()
+	ctx := tenantCtx()
+
+	first, err := fx.svc.Handle(ctx, protocolConn("s"), inMsg("m1"))
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	p1 := fx.convs.items[first.ConversationID].Protocol
+	if p1 == "" {
+		t.Fatalf("protocol mode must assign a protocol on the first conversation")
+	}
+
+	// Same OPEN conversation is reused, keeping its protocol.
+	reuse, _ := fx.svc.Handle(ctx, protocolConn("s"), inMsg("m2"))
+	if reuse.ConversationID != first.ConversationID {
+		t.Errorf("open conversation must be reused in protocol mode too")
+	}
+	if fx.convs.items[reuse.ConversationID].Protocol != p1 {
+		t.Errorf("reused conversation must keep its protocol")
+	}
+
+	// Close it; the next inbound creates a NEW conversation with a NEW protocol.
+	fx.closeConv(first.ConversationID)
+	third, _ := fx.svc.Handle(ctx, protocolConn("s"), inMsg("m3"))
+	if third.ConversationID == first.ConversationID {
+		t.Errorf("protocol mode must create a NEW conversation after close, not reopen")
+	}
+	p2 := fx.convs.items[third.ConversationID].Protocol
+	if p2 == "" || p2 == p1 {
+		t.Errorf("new conversation must get a fresh distinct protocol, got %q (first %q)", p2, p1)
+	}
+	if len(fx.convs.items) != 2 {
+		t.Errorf("expected 2 conversations (closed + new), have %d", len(fx.convs.items))
 	}
 }

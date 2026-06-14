@@ -165,7 +165,7 @@ GET    /queues/{id}/stats          # agregado (também via WS)
 
 ### conversations / messages
 ```
-GET    /conversations                      # inbox (filtros: status, assignee, queue, tag)
+GET    /conversations                      # inbox (filtros: status, assignee, queue, tag, protocol)
 POST   /conversations                      # iniciar (outbound)
 GET    /conversations/{id}
 PATCH  /conversations/{id}                  # status, priority, tags, subject
@@ -184,6 +184,15 @@ POST   /conversations/{id}/internal-notes    # nota interna
 **Não-lido:** `Conversation` expõe `unread_count` (incrementado por mensagem
 inbound do cliente) e `last_read_at` (gravado no `POST /read`); ambos refletem em
 `conversation.updated`.
+
+**Protocolo + reabertura (por channel, opt-in `uses_protocol` no channel):** ao
+chegar inbound de um contato, se há conversa ABERTA naquele channel ela é reusada
+em ambos os modos. Sem conversa aberta: com `uses_protocol=false` (padrão) a
+ÚLTIMA conversa (mesmo fechada) é **reaberta** (status volta a open/assigned/queued,
+`closed_at` limpo, **mantém** agente/setor/fila/tags; emite `conversation.reopened`
+→ regra `conversation_opened`), sem protocolo; com `uses_protocol=true` é criada
+uma conversa NOVA com um NOVO `protocol` (`AAAA-NNNNNN`, contador atômico por
+tenant/ano). Busque pelo número com `GET /conversations?protocol=2026-000123`.
 
 **Timeline vs mensagens (decisão):** eventos estruturados de ciclo de
 vida/automação/conexão são persistidos como `ConversationEvent` na coleção

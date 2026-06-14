@@ -25,6 +25,11 @@ type ConversationRepository interface {
 	// AppError. Keyed by the connection id so two connections of the same type stay
 	// distinct conversations.
 	FindOpenByContactChannelID(ctx context.Context, contactID, channelID string) (*entity.Conversation, error)
+	// FindLastByContactChannelID returns the most recent conversation for a contact
+	// on a specific channel CONNECTION (by id) REGARDLESS of status (open or
+	// closed), or a not_found AppError. Used by single-mode inbound to reopen the
+	// last conversation instead of creating a new one.
+	FindLastByContactChannelID(ctx context.Context, contactID, channelID string) (*entity.Conversation, error)
 	// List returns conversations matching the filter and visibility, ordered by
 	// updated_at desc (keyset). Over-fetches by one for has_more detection.
 	List(ctx context.Context, filter contracts.ListFilter, vis contracts.Visibility, page shared.PageRequest) ([]*entity.Conversation, error)
@@ -54,4 +59,12 @@ type MessageRepository interface {
 type EventRepository interface {
 	Create(ctx context.Context, e *entity.ConversationEvent) error
 	ListByConversation(ctx context.Context, conversationID string, page shared.PageRequest) ([]*entity.ConversationEvent, error)
+}
+
+// ProtocolCounterRepository hands out the next protocol sequence per (tenant,
+// year) atomically (no count-and-add race).
+type ProtocolCounterRepository interface {
+	// NextSequence atomically increments and returns the next sequence for the
+	// tenant + year (starting at 1 for a year not yet seen).
+	NextSequence(ctx context.Context, tenantID string, year int) (int64, error)
 }

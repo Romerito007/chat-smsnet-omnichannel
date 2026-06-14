@@ -127,6 +127,27 @@ func (r *ConversationRepository) FindOpenByContactChannelID(ctx context.Context,
 	return convToEntity(&m), nil
 }
 
+// FindLastByContactChannelID returns the most recent conversation for a contact
+// on a specific channel connection REGARDLESS of status (open or closed), or a
+// not_found AppError. Used by single-mode inbound to reopen the last conversation.
+func (r *ConversationRepository) FindLastByContactChannelID(ctx context.Context, contactID, channelID string) (*entity.Conversation, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	filter := bson.M{
+		"tenant_id":  tenantID,
+		"contact_id": contactID,
+		"channel_id": channelID,
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})
+	var m models.Conversation
+	if err := r.coll.FindOne(ctx, filter, opts).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return convToEntity(&m), nil
+}
+
 func (r *ConversationRepository) ListInactiveOpen(ctx context.Context, idleBefore time.Time, limit int) ([]*entity.Conversation, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
@@ -183,6 +204,9 @@ func (r *ConversationRepository) List(ctx context.Context, filter contracts.List
 	if filter.ContactID != "" {
 		base["contact_id"] = filter.ContactID
 	}
+	if filter.Protocol != "" {
+		base["protocol"] = filter.Protocol
+	}
 	if filter.Tag != "" {
 		base["tags"] = filter.Tag
 	}
@@ -231,6 +255,7 @@ func convToModel(c *entity.Conversation) models.Conversation {
 		Status:        string(c.Status),
 		AssignedTo:    c.AssignedTo,
 		Priority:      string(c.Priority),
+		Protocol:      c.Protocol,
 		Tags:          c.Tags,
 		LastMessageAt: c.LastMessageAt,
 		UnreadCount:   c.UnreadCount,
@@ -256,6 +281,7 @@ func convToEntity(m *models.Conversation) *entity.Conversation {
 		Status:        entity.Status(m.Status),
 		AssignedTo:    m.AssignedTo,
 		Priority:      entity.Priority(m.Priority),
+		Protocol:      m.Protocol,
 		Tags:          m.Tags,
 		LastMessageAt: m.LastMessageAt,
 		UnreadCount:   m.UnreadCount,

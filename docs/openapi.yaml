@@ -438,6 +438,9 @@ components:
                 updated_at:
                     format: date-time
                     type: string
+                uses_protocol:
+                    description: When true, inbound opens a NEW conversation with a NEW protocol number for this channel; a closed last conversation is NOT reopened. When false (default), a closed last conversation is reopened and no protocol is assigned.
+                    type: boolean
             type: object
         ChannelCreated:
             properties:
@@ -475,6 +478,8 @@ components:
                 updated_at:
                     format: date-time
                     type: string
+                uses_protocol:
+                    type: boolean
             type: object
         ChannelOutboundMessage:
             properties:
@@ -764,6 +769,9 @@ components:
                     type: string
                 priority:
                     type: string
+                protocol:
+                    description: Per-tenant/year protocol number ("2026-000123") assigned when the conversation is opened on a channel with uses_protocol=true; empty otherwise. Searchable via GET /v1/conversations?protocol=.
+                    type: string
                 queue_id:
                     type: string
                 sector_id:
@@ -1007,6 +1015,8 @@ components:
                     type: string
                 type:
                     type: string
+                uses_protocol:
+                    type: boolean
             required:
                 - type
             type: object
@@ -2819,6 +2829,8 @@ components:
                     type: string
                 status:
                     type: string
+                uses_protocol:
+                    type: boolean
             type: object
         UpdateCloseReasonRequest:
             properties:
@@ -4977,6 +4989,12 @@ paths:
                 - description: Filter by contact (the contact's conversation history; paginated, last_message embedded)
                   in: query
                   name: contact_id
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by exact protocol number ("2026-000123") to locate a conversation by its number
+                  in: query
+                  name: protocol
                   required: false
                   schema:
                     type: string

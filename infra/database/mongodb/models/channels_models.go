@@ -17,6 +17,7 @@ type ChannelConnection struct {
 	DefaultSectorID  string         `bson:"default_sector_id,omitempty"`
 	BusinessHours    map[string]any `bson:"business_hours,omitempty"`
 	Enabled          bool           `bson:"enabled"`
+	UsesProtocol     bool           `bson:"uses_protocol,omitempty"`
 }
 
 // OutboundDelivery is the BSON document for an outbound delivery record.

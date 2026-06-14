@@ -128,6 +128,7 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 		DefaultSectorID:  cmd.DefaultSectorID,
 		BusinessHours:    cmd.BusinessHours,
 		Enabled:          true,
+		UsesProtocol:     cmd.UsesProtocol,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -202,6 +203,9 @@ func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts
 	}
 	if cmd.Enabled != nil {
 		conn.Enabled = *cmd.Enabled
+	}
+	if cmd.UsesProtocol != nil {
+		conn.UsesProtocol = *cmd.UsesProtocol
 	}
 	conn.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, conn); err != nil {

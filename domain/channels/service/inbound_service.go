@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -29,11 +30,13 @@ type InboundService struct {
 	conversations convrepo.ConversationRepository
 	messages      convrepo.MessageRepository
 	events        convrepo.EventRepository
+	protocols     convrepo.ProtocolCounterRepository
 	inbound       chrepo.InboundRepository
 	locker        shared.Locker
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	attachments   chcontracts.InboundAttachmentStore
+	ruleSink      shared.RuleEventSink
 }
 
 // SetAttachmentStore wires the persister for raw (multipart) inbound attachments.
@@ -44,12 +47,21 @@ func (s *InboundService) SetAttachmentStore(a chcontracts.InboundAttachmentStore
 	}
 }
 
+// SetRuleSink wires the automation-rules event sink. Optional: when unset, inbound
+// lifecycle transitions (conversation created/reopened) emit no rule events.
+func (s *InboundService) SetRuleSink(sink shared.RuleEventSink) {
+	if sink != nil {
+		s.ruleSink = sink
+	}
+}
+
 // NewInboundService builds the orchestrator.
 func NewInboundService(
 	contacts *contactservice.Service,
 	conversations convrepo.ConversationRepository,
 	messages convrepo.MessageRepository,
 	events convrepo.EventRepository,
+	protocols convrepo.ProtocolCounterRepository,
 	inbound chrepo.InboundRepository,
 	locker shared.Locker,
 	publisher shared.EventPublisher,
@@ -66,7 +78,7 @@ func NewInboundService(
 	}
 	return &InboundService{
 		contacts: contacts, conversations: conversations, messages: messages,
-		events: events, inbound: inbound,
+		events: events, protocols: protocols, inbound: inbound,
 		locker: locker, publisher: publisher, clock: clock,
 	}
 }
@@ -127,7 +139,7 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		return chcontracts.InboundResult{}, err
 	}
 
-	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel, conn.ID)
+	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel, conn.ID, conn.UsesProtocol)
 	if err != nil {
 		return chcontracts.InboundResult{}, err
 	}
@@ -180,7 +192,20 @@ func (s *InboundService) idempotentResult(ctx context.Context, rec *chentity.Inb
 	}
 }
 
-func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID, contactID, channel, channelID string) (*conventity.Conversation, bool, error) {
+// findOrCreateConversation resolves the conversation an inbound message belongs
+// to. The "open conversation exists" case is identical in both modes (reuse it,
+// keeping its protocol if any). The modes differ only when there is NO open
+// conversation:
+//
+//   - single mode (usesProtocol=false): REOPEN the contact's last conversation on
+//     this channel (any status) if one exists; otherwise create the first one. No
+//     protocol is assigned.
+//   - protocol mode (usesProtocol=true): always create a NEW conversation with a
+//     NEW protocol number (a closed last one is not reopened).
+//
+// The bool return is true only when a brand-new conversation was created (so the
+// caller routes it); a reused or reopened conversation returns false.
+func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID, contactID, channel, channelID string, usesProtocol bool) (*conventity.Conversation, bool, error) {
 	// Reuse an open conversation for this contact on the SAME channel connection
 	// (not just the same type) — two connections of the same type are distinct.
 	conv, err := s.conversations.FindOpenByContactChannelID(ctx, contactID, channelID)
@@ -192,6 +217,34 @@ func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID,
 	}
 
 	now := s.clock.Now()
+
+	// Single mode: reopen the contact's last conversation on this channel (closed,
+	// since no open one was found) instead of creating a new one.
+	if !usesProtocol {
+		last, lerr := s.conversations.FindLastByContactChannelID(ctx, contactID, channelID)
+		if lerr == nil {
+			if err := s.reopen(ctx, last, now); err != nil {
+				return nil, false, err
+			}
+			return last, false, nil
+		}
+		if apperror.From(lerr).Code != apperror.CodeNotFound {
+			return nil, false, lerr
+		}
+		// Never had a conversation here → fall through to create the first one.
+	}
+
+	// Protocol mode assigns a fresh per-tenant/year protocol number; single mode
+	// leaves it empty.
+	protocol := ""
+	if usesProtocol {
+		p, perr := s.nextProtocol(ctx, tenantID, now)
+		if perr != nil {
+			return nil, false, perr
+		}
+		protocol = p
+	}
+
 	conv = &conventity.Conversation{
 		ID:            shared.NewID(),
 		TenantID:      tenantID,
@@ -200,6 +253,7 @@ func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID,
 		ChannelID:     channelID,
 		Status:        conventity.StatusNew,
 		Priority:      conventity.PriorityNormal,
+		Protocol:      protocol,
 		LastMessageAt: now,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -208,7 +262,54 @@ func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID,
 		return nil, false, err
 	}
 	s.recordEvent(ctx, conv, conventity.EventConversationCreated, nil)
+	s.emitRule(ctx, conv, conventity.EventConversationCreated)
 	return conv, true, nil
+}
+
+// reopen revives a closed conversation in place: status returns to new (or
+// assigned/queued if it still has an agent/queue), closed_at is cleared. The
+// assignee, sector, queue, tags and protocol are KEPT — the same agent picks it
+// back up. Records the reopened timeline event and emits the rule event
+// (conversation.reopened → automation-rules conversation_opened). Realtime publish
+// happens on the inbound message append that follows.
+func (s *InboundService) reopen(ctx context.Context, conv *conventity.Conversation, now time.Time) error {
+	if !conv.Status.IsClosed() {
+		return nil // defensive: an open one would have been returned by the reuse path
+	}
+	conv.Status = conventity.StatusNew
+	if conv.AssignedTo != "" {
+		conv.Status = conventity.StatusAssigned
+	} else if conv.QueueID != "" {
+		conv.Status = conventity.StatusQueued
+	}
+	conv.ClosedAt = nil
+	conv.UpdatedAt = now
+	if err := s.conversations.Update(ctx, conv); err != nil {
+		return err
+	}
+	s.recordEvent(ctx, conv, conventity.EventConversationReopened, nil)
+	s.emitRule(ctx, conv, conventity.EventConversationReopened)
+	return nil
+}
+
+// nextProtocol formats the next per-tenant/year protocol number as "2026-000123".
+// The sequence comes from an atomic counter (no count-and-add race). The year is
+// taken in UTC.
+func (s *InboundService) nextProtocol(ctx context.Context, tenantID string, now time.Time) (string, error) {
+	year := now.UTC().Year()
+	seq, err := s.protocols.NextSequence(ctx, tenantID, year)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%d-%06d", year, seq), nil
+}
+
+// emitRule forwards an inbound lifecycle event to the automation-rules sink (best
+// effort; no-op when the sink is unset).
+func (s *InboundService) emitRule(ctx context.Context, conv *conventity.Conversation, event string) {
+	if s.ruleSink != nil {
+		s.ruleSink.EmitRuleEvent(ctx, conv.TenantID, event, conv.ID, convcontracts.NewConversationPayload(conv))
+	}
 }
 
 func (s *InboundService) appendInboundMessage(ctx context.Context, conv *conventity.Conversation, contactID string, in chcontracts.InboundMessage) (*conventity.Message, error) {

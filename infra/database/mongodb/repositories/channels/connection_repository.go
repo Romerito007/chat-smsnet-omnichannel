@@ -62,6 +62,7 @@ func (r *ConnectionRepository) Update(ctx context.Context, c *entity.ChannelConn
 			"inbound_token_hash": c.InboundTokenHash,
 			"default_sector_id":  c.DefaultSectorID,
 			"enabled":            c.Enabled,
+			"uses_protocol":      c.UsesProtocol,
 			"updated_at":         c.UpdatedAt,
 		}},
 	)
@@ -158,6 +159,7 @@ func (r *ConnectionRepository) toModel(c *entity.ChannelConnection) (models.Chan
 		DefaultSectorID:  c.DefaultSectorID,
 		BusinessHours:    c.BusinessHours,
 		Enabled:          c.Enabled,
+		UsesProtocol:     c.UsesProtocol,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -184,6 +186,7 @@ func (r *ConnectionRepository) toEntity(m *models.ChannelConnection) (*entity.Ch
 		DefaultSectorID:  m.DefaultSectorID,
 		BusinessHours:    m.BusinessHours,
 		Enabled:          m.Enabled,
+		UsesProtocol:     m.UsesProtocol,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}, nil

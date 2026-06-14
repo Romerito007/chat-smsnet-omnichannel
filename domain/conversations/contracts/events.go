@@ -61,6 +61,7 @@ type ConversationPayload struct {
 	Status        string     `json:"status"`
 	AssignedTo    string     `json:"assigned_to,omitempty"`
 	Priority      string     `json:"priority"`
+	Protocol      string     `json:"protocol,omitempty"`
 	Tags          []string   `json:"tags,omitempty"`
 	LastMessageAt time.Time  `json:"last_message_at"`
 	UnreadCount   int        `json:"unread_count"`
@@ -81,6 +82,7 @@ func NewConversationPayload(c *entity.Conversation) ConversationPayload {
 		Status:        string(c.Status),
 		AssignedTo:    c.AssignedTo,
 		Priority:      string(c.Priority),
+		Protocol:      c.Protocol,
 		Tags:          c.Tags,
 		LastMessageAt: c.LastMessageAt,
 		UnreadCount:   c.UnreadCount,
