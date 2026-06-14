@@ -111,9 +111,10 @@ Publicados nos tópicos `conversation:{id}` **e** `inbox:{sectorId}`.
 | `conversation.transferred` | transferência (routing) | `ConversationPayload` |
 | `conversation.tagged` | aplicação de tags | `{ conversation_id, tags }` |
 
-`ConversationPayload` = `{ id, tenant_id, contact_id, channel, sector_id, queue_id,
+`ConversationPayload` = `{ id, tenant_id, contact_id, channel, channel_id, sector_id, queue_id,
 status, assigned_to, priority, tags, last_message_at, unread_count, last_read_at,
-updated_at }`.
+updated_at }`. `channel_id` é o id da `ChannelConnection` específica à qual a
+conversa pertence (vazio só em conversas criadas sem uma).
 
 **Não-lido por conversa:** `unread_count` é incrementado a cada mensagem
 **inbound** (cliente) e **zerado** em `POST /v1/conversations/{id}/read` (que

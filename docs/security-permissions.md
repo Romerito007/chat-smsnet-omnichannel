@@ -87,7 +87,7 @@ audit.view          privacy.manage
 | Faturas no Customer-360 | `contact.view_financial` |
 | Canais (`/channels`) | `channel.manage` |
 | Webhooks (`/webhooks`) | `webhook.manage` |
-| Automation (`/automation/*`) | `automation.manage` |
+| Regras de automação (`/automation-rules/*`) | `automation.manage` |
 | Copilot usar / configurar (`/copilot/*`) | `copilot.use` / `copilot.configure` |
 | MCP servers / tools / aprovar ação (`/mcp/*`) | `integration.configure` / `integration.read` / `integration.execute_action` |
 | Providerhub & ações externas (`/providerhub/*`, `/conversations/{id}/external/*`) | ler=`integration.read`, ações=`integration.execute_action` |
@@ -131,7 +131,6 @@ Além da permissão, há **escopo de dados** (`SectorScope` no papel):
 | Endpoint | Verificação |
 |---|---|
 | Inbound de canal (`/inbound/channel/{channel}/messages`, `.../delivery-receipts`) | **inbound_token do canal** (`X-Inbound-Token`/corpo, hash em tempo constante) + HMAC do corpo opcional |
-| Callback de `automation` | HMAC com segredo do binding |
 | Coleta de CSAT (link público) | token assinado de vida curta |
 | Webhook **outbound** (nosso) | assinamos com HMAC; subscriber valida |
 
@@ -161,7 +160,7 @@ borda pública de canal (inbound/receipts).
 
 ## 5. Segredos (`infra/secrets`)
 
-- Credenciais de canal, segredos de webhook/automation e chaves de provider são
+- Credenciais de canal, segredos de webhook e chaves de provider são
   **cifrados em repouso** (envelope encryption; KMS/chave mestra via env).
 - O **plaintext** nunca sai do boundary de `secrets`; documentos guardam apenas
   `*_ref`/ciphertext.
@@ -177,7 +176,7 @@ borda pública de canal (inbound/receipts).
 ## 7. Auditoria (`audit`)
 
 - Ações sensíveis (login, mudança de papel, exclusão, transferência, alteração
-  de canal/automation) geram `audit_log` imutável (`actor`, `action`, `entity`,
+  de canal) geram `audit_log` imutável (`actor`, `action`, `entity`,
   `before/after`, `request_id`).
 - Retenção/compactação via `audit.compact` (scheduler).
 

@@ -30,7 +30,7 @@ copiloto de IA, webhooks e auditoria.
                         │            │           │          │           │
                         │        MongoDB       Redis     Asynq(Redis)   │
                         └───────────────────────────────────────────────┘
-   Integração sob demanda: providerhub (smsnet-integrations)  │  Flow externo: automation
+   Integração sob demanda: providerhub (smsnet-integrations)
 ```
 
 ### Princípios
@@ -45,8 +45,8 @@ copiloto de IA, webhooks e auditoria.
    relatórios e rotinas periódicas rodam no Asynq.
 5. **Integração externa sob demanda.** `providerhub` consulta a API
    **smsnet-integrations** — *consulta/ação sob demanda*, sem sync, sem ingestão
-   em tempo real, sem persistir payload externo. `automation` apenas integra com
-   o flow externo já existente (chamadas + callbacks + logs).
+   em tempo real, sem persistir payload externo. A automação in-app é o motor de
+   regras `automationrules` (gatilho/condições/ações, estilo Chatwoot).
 6. **Idempotência e observabilidade** por padrão (request_id, Idempotency-Key,
    migrations/seeds idempotentes, jobs idempotentes).
 

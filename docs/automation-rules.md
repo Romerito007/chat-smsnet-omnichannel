@@ -2,10 +2,9 @@
 
 Motor de **regras** = **gatilho (evento) + condições (AND) + ações**. Quando um
 evento de ciclo de vida ocorre, a regra avalia as condições contra a
-conversa/contato; se casarem, executa as ações. Domínio **novo** (`automationrules`,
-coleção `automation_rules`), **distinto** do domínio `automation` (que orquestra um
-flow externo). Permissão: `automation.manage`. Rotas: `/v1/automation-rules` (CRUD)
-+ `GET /v1/automation-rules/{id}/logs`.
+conversa/contato; se casarem, executa as ações. Domínio `automationrules`
+(coleção `automation_rules`). Permissão: `automation.manage`. Rotas:
+`/v1/automation-rules` (CRUD) + `GET /v1/automation-rules/{id}/logs`.
 
 ## Avaliação assíncrona
 A emissão do evento **não bloqueia** o caminho quente: o conversation Service

@@ -21,8 +21,6 @@ mapeia ponto→underscore na borda — `domain/webhooks/entity`.)
 | `conversation_transferred` | transferida de setor/fila | objeto **conversa** | sim |
 | `message_created` | nova mensagem (não notas internas) | objeto **mensagem** | sim |
 | `sla_breached` | SLA estourado | `{ conversation_id, policy_id, leg, sector_id, ...due_at, breached }` | sim |
-| `automation_completed` | run de automação concluída | objeto **run** | não |
-| `automation_failed` | run de automação falhou | objeto **run** | não |
 
 ### Equivalência Chatwoot ↔ nosso (guia de migração)
 | Chatwoot | Nosso | Igual (forma)? |
@@ -31,7 +29,7 @@ mapeia ponto→underscore na borda — `domain/webhooks/entity`.)
 | `conversation_status_changed` | `conversation_status_changed` | **igual** |
 | `message_created` | `message_created` | **igual** |
 | `conversation_updated` (assign/transfer) | `conversation_assigned` / `conversation_transferred` | **diferente** (somos mais específicos; mesma convenção) |
-| — | `sla_breached`, `automation_completed`, `automation_failed` | **nossos** (extensões, mesma convenção) |
+| — | `sla_breached` | **nosso** (extensão, mesma convenção) |
 | — (Chatwoot tem mais: contact_*, webwidget_*) | — | **não emitimos** (ainda) |
 
 ## Envelope entregue (nosso contrato, estável)

@@ -1,5 +1,12 @@
 # Auditoria de backend — chat-smsnet-omnichannel
 
+> **HISTÓRICO (2026-06-12).** Este relatório reflete o estado do código naquela
+> data. Vários achados já foram resolvidos desde então (ex.: env órfã
+> `MONITORING_RATE_PER_MINUTE` removida; horário/feriado movidos para o channel;
+> flow externo `automation` e config singleton do providerhub removidos). Para a
+> auditoria de legado mais recente e seu status, ver `docs/legacy-audit.md`.
+> Mantido apenas como registro.
+
 > Auditoria recurso-por-recurso contra `/docs` e contra o código real.
 > Metodologia: leitura/grep do código-fonte (a documentação **não** foi tomada
 > como verdade — onde diverge, o código prevalece e a divergência virou achado).

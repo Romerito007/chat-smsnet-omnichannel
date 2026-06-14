@@ -54,7 +54,7 @@ chat-backend/
 │   ├── redis/                          # client, locks, cache, presença
 │   ├── realtime/                       # manager, hub, pub/sub transport
 │   ├── channels/                       # adapters: api (genérico), whatsapp, webchat + sign/
-│   ├── automation/                     # client do flow externo (chamadas + callbacks)
+│   ├── automationrules/                # enqueuer + deduper das regras de automação
 │   ├── providerhub/                    # HTTP client da API smsnet-integrations (sob demanda)
 │   ├── copilot/provider/               # adapters de IA REAIS: openai/mistral/deepseek/perplexity, anthropic, gemini (echo só em testes)
 │   ├── mcp/                            # cliente MCP Streamable HTTP (JSON-RPC: list_tools / call_tool)

@@ -153,22 +153,22 @@ text `(name)`, 🔑 keyset.
 `status` (connected/disconnected/error), `base_url` (= `outbound_url` no canal
 api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
 **nunca** em claro nem retornado após criação), `webhook_verify_token` (=
-`inbound_token`, exibido uma vez), `default_sector_id`, `enabled`,
-`automation_enabled`.
+`inbound_token`, exibido uma vez), `default_sector_id`, `business_hours`,
+`enabled`.
 
-### `automation_bindings` / `automation_executions` / `automation_logs`
-- `automation_bindings`: `tenant_id`🔑, `trigger`, `flow_ref` (id no flow
-  externo), `enabled`.
-- `automation_executions`: `tenant_id`🔑, `conversation_id`🔑,
-  `external_execution_id`, `status` (invoked/callback_received/failed),
-  `started_at`, `finished_at`.
-- `automation_logs`: `tenant_id`🔑, `execution_id`🔑, `level`, `message`, `at`.
+### `automation_rules` / `rule_evaluation_logs`
+- `automation_rules`: `tenant_id`🔑, `name`, `event` (gatilho de ciclo de vida),
+  `conditions` (AND contra conversa/contato), `actions` (ex.: `send_webhook`),
+  `enabled`.
+- `rule_evaluation_logs`: `tenant_id`🔑, `rule_id`🔑, `conversation_id`,
+  `matched` bool, `at` — histórico de avaliações (keyset).
 
-> **providerhub**: persiste apenas a config (`providerhub_configs`:
-> `smsnet_base_url`, `encrypted_api_key`, `isp_type`, `encrypted_credentials`,
-> `bot_id`, `options`, `enabled`, `timeout_ms`) e o log técnico mínimo
-> (`provider_query_logs`, **sem** `response_body`). As consultas são sob demanda
-> à API smsnet-integrations; o payload externo **não** é persistido.
+> **providerhub**: persiste os **perfis ISP** (`isp_profiles`: `label`,
+> `isp_type`, `encrypted_credentials`, `is_default`, `options`, `enabled`,
+> `timeout_ms`) e o log técnico mínimo (`provider_query_logs`, **sem**
+> `response_body`). O host/chave do gateway SMSNET são **infra/env**, não
+> persistidos. As consultas são sob demanda à API smsnet-integrations; o payload
+> externo **não** é persistido.
 
 ### `copilot_runs`
 `tenant_id`🔑, `conversation_id`🔑, `kind` (suggest/summarize/classify),

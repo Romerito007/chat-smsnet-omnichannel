@@ -231,22 +231,23 @@ front↔back; o `inbound_token` vale **só** para as rotas públicas de canal.
   `Signature` (HMAC-SHA256 do corpo com `outbound_secret`) e `Delivery-Id`. O
   sistema externo devolve recibos em `.../delivery-receipts`.
 
-### automation (integra flow externo)
+### automation-rules (motor de regras estilo Chatwoot — permissão `automation.manage`)
 ```
-GET/POST/PATCH/DELETE  /automation/bindings[/{id}]
-POST   /automation/executions       # disparar flow externo
-GET    /automation/executions/{id}
-POST   /automation/callbacks         # callback do flow externo (assinado)
-GET    /automation/executions/{id}/logs
+GET/POST/PATCH/DELETE  /automation-rules[/{id}]
+GET    /automation-rules/{id}/logs   # histórico de avaliações (keyset)
 ```
+Uma regra reage a um evento de ciclo de vida (conversa/mensagem), casa condições
+AND contra conversa/contato e dispara ações (ex.: `send_webhook`). A avaliação roda
+fora do hot path, no job `automationrule.evaluate`.
 
 ### providerhub (smsnet-integrations, consulta sob demanda)
 ```
-# Config (integration.read / integration.configure)
-GET    /providerhub/config
-POST   /providerhub/config
-PATCH  /providerhub/config
-POST   /providerhub/config/test
+# Perfis ISP (integration.read / integration.configure)
+GET    /providerhub/config                    # status do gateway (env) — somente leitura
+GET    /providerhub/catalog                   # catálogo de ISPs suportados
+GET/POST/PATCH/DELETE  /providerhub/profiles[/{id}]
+POST   /providerhub/profiles/{id}/default     # marca o perfil padrão
+POST   /providerhub/profiles/{id}/test        # testa conectividade do perfil
 
 # Sob a conversa — não persiste payload externo
 GET    /conversations/{id}/external/cliente   # ?cpfcnpj|phone|email&id_cliente=  (integration.read; faturas omitidas sem contact.view_financial)
@@ -326,8 +327,8 @@ GET    /attachments/{id}/url        # URL assinada
 
 - **Endpoints públicos sem JWT:** o inbound de canal autentica pelo
   `inbound_token` do canal (header `X-Inbound-Token`/corpo, hash em tempo
-  constante) com assinatura HMAC opcional; callback de automation e coleta de
-  CSAT usam assinatura/token assinado. Nenhum aceita o Bearer do front.
+  constante) com assinatura HMAC opcional; a coleta de CSAT usa token assinado.
+  Nenhum aceita o Bearer do front.
 - **Bulk/admin:** operações em lote ficam fora do MVP, exceto onde citado.
 - **Rate limit:** aplicado por tenant+ator; limites finos por rota podem ser
   adicionados via `policy`.

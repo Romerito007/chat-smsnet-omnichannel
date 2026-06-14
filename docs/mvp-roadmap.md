@@ -56,8 +56,8 @@ padrões transversais, Asynq/Redis/Mongo bootstrap, health) já está implementa
 - **Entregável:** SLA monitorado; satisfação coletada.
 
 ## Fase 6 — Integrações externas
-**Domínios:** `automation`, `providerhub`, `copilot`.
-- `automation`: invoke + callbacks + logs do **flow externo**.
+**Domínios:** `automationrules`, `providerhub`, `copilot`.
+- `automationrules`: motor de regras in-app (gatilho/condições/ações), job `automationrule.evaluate`.
 - `providerhub`: consulta/ação sob demanda à API **smsnet-integrations**
   (consultar cliente, planos, empresa; liberar acesso; abrir chamado) —
   sem persistir payload. `monitoring` foi removido.
@@ -97,9 +97,9 @@ correspondente:
 1. **Canais prioritários e provedores.** Qual canal real primeiro (WhatsApp via
    qual BSP/Cloud API? Telegram? webchat próprio?). Define o contrato do
    `channels` adapter, webhooks inbound e modelo de mídia/templates.
-2. **Contrato do flow externo (`automation`).** Endpoints, autenticação,
-   formato de invoke, **callbacks** (URLs, assinatura HMAC, payload) e o que
-   exatamente logar. Sem isso o `automation` não fecha.
+2. **Conjunto de ações do `automationrules`.** Hoje há `send_webhook`; definir
+   quais ações adicionais o motor de regras suporta (atribuir, etiquetar,
+   enviar resposta pronta, etc.) e os limites de cada uma.
 3. **Contrato do `providerhub` (API smsnet-integrations).** Resolvido: corpo
    `{ botId, <campos>, config: { type, <isp_credentials> } }` + `x-api-key`;
    envelope `success|not_found|needs_input|fallback`.

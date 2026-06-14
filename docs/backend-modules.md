@@ -139,15 +139,15 @@ expõe (REST / WS / jobs).
 - **Adapters:** `infra/channels/{api,whatsapp,webchat}` (HMAC compartilhado em
   `infra/channels/sign`). Sem adapter mock em produção.
 
-### `automation`
-- **Responsabilidade:** **integração com o sistema de flow externo já
-  existente** (não há flow builder nem chatbot aqui). Dispara execuções no flow,
-  recebe **callbacks**, registra **logs/execuções**, correlaciona com a conversa.
-- **Entidades:** `AutomationBinding`, `AutomationExecution`, `AutomationLog`.
-- **Depende de:** `conversations`, `infra/automation` (HTTP client + callbacks).
-- **Expõe:** REST (config de bindings + endpoint de callback); jobs
-  (`automation.invoke`, `automation.callback`).
-- **Nota:** o flow é externo; aqui só orquestramos chamadas, callbacks e logs.
+### `automationrules`
+- **Responsabilidade:** motor de **regras de automação** in-app (estilo
+  Chatwoot). Uma regra reage a um evento de ciclo de vida (conversa/mensagem),
+  casa **condições** AND contra conversa/contato e executa **ações** (ex.:
+  `send_webhook`). Avaliação fora do hot path do serviço emissor.
+- **Entidades:** `AutomationRule`, `RuleEvaluationLog`.
+- **Depende de:** `conversations`, `infra/automationrules` (enqueuer + deduper).
+- **Expõe:** REST (`/v1/automation-rules` CRUD + `/{id}/logs`, permissão
+  `automation.manage`); job `automationrule.evaluate`.
 
 ### `providerhub`
 - **Responsabilidade:** cliente da **API smsnet-integrations** (a API
@@ -336,7 +336,7 @@ tenant ◄── iam ◄── auth
    ▲         ▲
    │         ├── sectors ◄── queues ◄── routing ◄── conversations ──► channels ──► providerhub
    │         │                              ▲            │   ▲             │
-   │         │        presence ─────────────┘            │   │             └── automation (flow externo)
+   │         │        presence ─────────────┘            │   │             └── automationrules (regras in-app)
    │         │        businesshours ──► sla ◄────────────┘   │
    │         │        conversationtools ──────────────────────┤
    │         │        attachments ───────────────────────────►│

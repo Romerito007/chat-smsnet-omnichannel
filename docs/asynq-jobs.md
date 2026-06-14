@@ -51,8 +51,7 @@ Configurável por env (`ASYNQ_QUEUE_*`, `ASYNQ_CONCURRENCY`).
 | `csat.send` | `default` | csat | dispara pesquisa ao contato |
 | `csat.expire` | `default` | csat | expira pesquisa não respondida |
 | `attachment.process` | `default` | attachments | validação/AV/thumbnail |
-| `automation.invoke` | `critical` | automation | chama o flow externo |
-| `automation.callback` | `critical` | automation | processa callback do flow |
+| `automationrule.evaluate` | `default` | automationrules | avalia as regras do tenant para um evento de conversa/mensagem e dispara ações |
 | `routing.assign` | `critical` | routing | resolve fila/agente e atribui |
 
 > `ai.*` são assíncronos quando a latência permite; sugestão interativa curta
