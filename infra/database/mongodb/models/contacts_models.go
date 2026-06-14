@@ -19,4 +19,5 @@ type Contact struct {
 	Tags               []string          `bson:"tags,omitempty"`
 	Notes              string            `bson:"notes,omitempty"`
 	AvatarAttachmentID string            `bson:"avatar_attachment_id,omitempty"`
+	CustomAttributes   map[string]any    `bson:"custom_attributes,omitempty"`
 }

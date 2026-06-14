@@ -4,21 +4,22 @@ import "time"
 
 // Conversation is the BSON document for a conversation.
 type Conversation struct {
-	Base          `bson:",inline"`
-	ContactID     string     `bson:"contact_id"`
-	Channel       string     `bson:"channel"`
-	ChannelID     string     `bson:"channel_id,omitempty"`
-	SectorID      string     `bson:"sector_id,omitempty"`
-	QueueID       string     `bson:"queue_id,omitempty"`
-	Status        string     `bson:"status"`
-	AssignedTo    string     `bson:"assigned_to,omitempty"`
-	Priority      string     `bson:"priority"`
-	Protocol      string     `bson:"protocol,omitempty"`
-	Tags          []string   `bson:"tags,omitempty"`
-	LastMessageAt time.Time  `bson:"last_message_at"`
-	UnreadCount   int        `bson:"unread_count,omitempty"`
-	LastReadAt    *time.Time `bson:"last_read_at,omitempty"`
-	ClosedAt      *time.Time `bson:"closed_at,omitempty"`
+	Base             `bson:",inline"`
+	ContactID        string         `bson:"contact_id"`
+	Channel          string         `bson:"channel"`
+	ChannelID        string         `bson:"channel_id,omitempty"`
+	SectorID         string         `bson:"sector_id,omitempty"`
+	QueueID          string         `bson:"queue_id,omitempty"`
+	Status           string         `bson:"status"`
+	AssignedTo       string         `bson:"assigned_to,omitempty"`
+	Priority         string         `bson:"priority"`
+	Protocol         string         `bson:"protocol,omitempty"`
+	Tags             []string       `bson:"tags,omitempty"`
+	CustomAttributes map[string]any `bson:"custom_attributes,omitempty"`
+	LastMessageAt    time.Time      `bson:"last_message_at"`
+	UnreadCount      int            `bson:"unread_count,omitempty"`
+	LastReadAt       *time.Time     `bson:"last_read_at,omitempty"`
+	ClosedAt         *time.Time     `bson:"closed_at,omitempty"`
 }
 
 // Attachment is the BSON sub-document for a message attachment.

@@ -70,6 +70,20 @@ func registerOrg(p *paths) {
 		params:    []M{pathParam("id", "channel connection id"), queryParam("at", "Optional RFC3339 instant to evaluate instead of now (preview/testing).")},
 		responses: M{"200": jsonResp("Business status", ref("BusinessStatus"))}}))
 	p.crud("/v1/holidays", "businesshours", "holiday", ref("Holiday"), ref("CreateHolidayRequest"), ref("UpdateHolidayRequest"))
+
+	// Custom attribute definitions (read: any authenticated; write: customattribute.manage).
+	p.add("GET", "/v1/custom-attributes", op(opConfig{tag: "customattributes", summary: "List custom attribute definitions",
+		params:    append([]M{queryParam("applies_to", "Filter by scope: contact | conversation")}, paginationParams()...),
+		responses: M{"200": jsonResp("Definition page", pageOf(ref("CustomAttributeDefinition")))}}))
+	p.add("POST", "/v1/custom-attributes", op(opConfig{tag: "customattributes", summary: "Create a custom attribute definition",
+		reqBody: body(ref("CreateCustomAttributeRequest")), responses: M{"201": jsonResp("Created", ref("CustomAttributeDefinition"))}}))
+	caIDP := []M{pathParam("id", "definition id")}
+	p.add("GET", "/v1/custom-attributes/{id}", op(opConfig{tag: "customattributes", summary: "Get a custom attribute definition",
+		params: caIDP, responses: M{"200": jsonResp("Definition", ref("CustomAttributeDefinition")), "404": respRef("Error404")}}))
+	p.add("PATCH", "/v1/custom-attributes/{id}", op(opConfig{tag: "customattributes", summary: "Update a custom attribute definition (key/type/applies_to immutable)",
+		params: caIDP, reqBody: body(ref("UpdateCustomAttributeRequest")), responses: M{"200": jsonResp("Updated", ref("CustomAttributeDefinition"))}}))
+	p.add("DELETE", "/v1/custom-attributes/{id}", op(opConfig{tag: "customattributes", summary: "Delete a custom attribute definition (values become orphaned, ignored)",
+		params: caIDP, responses: M{"204": emptyResp("Deleted")}}))
 }
 
 func registerConversations(p *paths) {

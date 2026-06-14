@@ -59,6 +59,9 @@ type UpdateContact struct {
 	Notes              *string
 	ExternalIDs        *[]ExternalIdentity
 	AvatarAttachmentID *string
+	// CustomAttributes, when non-nil, replaces the whole custom-attributes map
+	// (omit a key to remove it). Validated against applies_to=contact definitions.
+	CustomAttributes *map[string]any
 }
 
 // AvatarValidator validates that an attachment id may be used as a contact

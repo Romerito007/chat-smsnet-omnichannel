@@ -54,6 +54,7 @@ func (r *Repository) Update(ctx context.Context, c *entity.Contact) error {
 			"tags":                 c.Tags,
 			"notes":                c.Notes,
 			"avatar_attachment_id": c.AvatarAttachmentID,
+			"custom_attributes":    c.CustomAttributes,
 			"updated_at":           c.UpdatedAt,
 		}},
 	)
@@ -212,6 +213,7 @@ func toModel(c *entity.Contact) models.Contact {
 		Tags:               c.Tags,
 		Notes:              c.Notes,
 		AvatarAttachmentID: c.AvatarAttachmentID,
+		CustomAttributes:   c.CustomAttributes,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -237,6 +239,7 @@ func toEntity(m *models.Contact) *entity.Contact {
 		Tags:               m.Tags,
 		Notes:              m.Notes,
 		AvatarAttachmentID: m.AvatarAttachmentID,
+		CustomAttributes:   m.CustomAttributes,
 		CreatedAt:          m.CreatedAt,
 		UpdatedAt:          m.UpdatedAt,
 	}

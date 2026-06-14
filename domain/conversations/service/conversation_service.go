@@ -40,6 +40,15 @@ type Service struct {
 	attachments   contracts.AttachmentResolver
 	contacts      contracts.ContactDirectory
 	agents        contracts.AgentDirectory
+	customAttr    shared.CustomAttributeValidator
+}
+
+// SetCustomAttributeValidator wires the validator for custom_attributes (against
+// applies_to=conversation definitions). Optional: when unset, values pass through.
+func (s *Service) SetCustomAttributeValidator(v shared.CustomAttributeValidator) {
+	if v != nil {
+		s.customAttr = v
+	}
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, conversation closes are
@@ -224,6 +233,7 @@ func New(
 		csat:          contracts.NoopCSATTrigger{},
 		auditor:       shared.NoopAuditor{},
 		queueStats:    shared.NoopQueueStatsNotifier{},
+		customAttr:    shared.NoopCustomAttributeValidator{},
 	}
 }
 
@@ -379,6 +389,13 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 	}
 	if cmd.Tags != nil {
 		conv.Tags = *cmd.Tags
+	}
+	if cmd.CustomAttributes != nil {
+		attrs := *cmd.CustomAttributes
+		if err := s.customAttr.ValidateCustomAttributes(ctx, "conversation", attrs); err != nil {
+			return nil, err
+		}
+		conv.CustomAttributes = attrs
 	}
 	conv.UpdatedAt = s.clock.Now()
 	if err := s.conversations.Update(ctx, conv); err != nil {

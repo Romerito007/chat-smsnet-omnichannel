@@ -656,6 +656,10 @@ components:
                 created_at:
                     format: date-time
                     type: string
+                custom_attributes:
+                    additionalProperties: true
+                    description: Tenant-defined custom attribute values (key→value), validated against the custom_attribute_definitions for this entity (contact/conversation). On PATCH it replaces the whole map; omit a key to remove it.
+                    type: object
                 document:
                     type: string
                 email:
@@ -757,6 +761,10 @@ components:
                 created_at:
                     format: date-time
                     type: string
+                custom_attributes:
+                    additionalProperties: true
+                    description: Tenant-defined custom attribute values (key→value), validated against the custom_attribute_definitions for this entity (contact/conversation). On PATCH it replaces the whole map; omit a key to remove it.
+                    type: object
                 id:
                     type: string
                 last_message:
@@ -1105,6 +1113,42 @@ components:
             required:
                 - name
             type: object
+        CreateCustomAttributeRequest:
+            properties:
+                applies_to:
+                    enum:
+                        - contact
+                        - conversation
+                    type: string
+                description:
+                    type: string
+                key:
+                    description: Unique key within (tenant, applies_to); immutable after creation.
+                    type: string
+                label:
+                    type: string
+                options:
+                    description: Required (non-empty) when type=list; rejected otherwise.
+                    items:
+                        type: string
+                    type: array
+                regex:
+                    description: Optional validation pattern; only valid when type=text.
+                    type: string
+                type:
+                    enum:
+                        - text
+                        - number
+                        - boolean
+                        - date
+                        - list
+                    type: string
+            required:
+                - key
+                - label
+                - type
+                - applies_to
+            type: object
         CreateHolidayRequest:
             properties:
                 channel_ids:
@@ -1367,6 +1411,44 @@ components:
             required:
                 - url
                 - events
+            type: object
+        CustomAttributeDefinition:
+            properties:
+                applies_to:
+                    enum:
+                        - contact
+                        - conversation
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                description:
+                    type: string
+                id:
+                    type: string
+                key:
+                    type: string
+                label:
+                    type: string
+                options:
+                    items:
+                        type: string
+                    type: array
+                regex:
+                    type: string
+                tenant_id:
+                    type: string
+                type:
+                    enum:
+                        - text
+                        - number
+                        - boolean
+                        - date
+                        - list
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
             type: object
         DateCount:
             properties:
@@ -2844,6 +2926,10 @@ components:
                 avatar_attachment_id:
                     description: Attachment id (image, status=ready, same tenant) to use as avatar; empty string clears it. Invalid -> 400 validation_error.
                     type: string
+                custom_attributes:
+                    additionalProperties: true
+                    description: Tenant-defined custom attribute values (key→value), validated against the custom_attribute_definitions for this entity (contact/conversation). On PATCH it replaces the whole map; omit a key to remove it.
+                    type: object
                 document:
                     description: CPF (11 digits) or CNPJ (14 digits); validated by check digits and stored digits-only (no mask).
                     type: string
@@ -2873,6 +2959,10 @@ components:
             properties:
                 assigned_to:
                     type: string
+                custom_attributes:
+                    additionalProperties: true
+                    description: Tenant-defined custom attribute values (key→value), validated against the custom_attribute_definitions for this entity (contact/conversation). On PATCH it replaces the whole map; omit a key to remove it.
+                    type: object
                 priority:
                     type: string
                 queue_id:
@@ -2908,6 +2998,19 @@ components:
                 isp_profile_id:
                     type: string
                 name:
+                    type: string
+            type: object
+        UpdateCustomAttributeRequest:
+            properties:
+                description:
+                    type: string
+                label:
+                    type: string
+                options:
+                    items:
+                        type: string
+                    type: array
+                regex:
                     type: string
             type: object
         UpdateHolidayRequest:
@@ -6662,6 +6765,177 @@ paths:
             summary: Update CSAT survey
             tags:
                 - csat
+    /v1/custom-attributes:
+        get:
+            operationId: getCustomAttributes
+            parameters:
+                - description: 'Filter by scope: contact | conversation'
+                  in: query
+                  name: applies_to
+                  required: false
+                  schema:
+                    type: string
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/CustomAttributeDefinition'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Definition page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List custom attribute definitions
+            tags:
+                - customattributes
+        post:
+            operationId: postCustomAttributes
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateCustomAttributeRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomAttributeDefinition'
+                    description: Created
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Create a custom attribute definition
+            tags:
+                - customattributes
+    /v1/custom-attributes/{id}:
+        delete:
+            operationId: deleteCustomAttributesById
+            parameters:
+                - description: definition id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: Deleted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Delete a custom attribute definition (values become orphaned, ignored)
+            tags:
+                - customattributes
+        get:
+            operationId: getCustomAttributesById
+            parameters:
+                - description: definition id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomAttributeDefinition'
+                    description: Definition
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get a custom attribute definition
+            tags:
+                - customattributes
+        patch:
+            operationId: patchCustomAttributesById
+            parameters:
+                - description: definition id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateCustomAttributeRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomAttributeDefinition'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Update a custom attribute definition (key/type/applies_to immutable)
+            tags:
+                - customattributes
     /v1/holidays:
         get:
             operationId: getHolidays
@@ -9847,6 +10121,8 @@ tags:
       name: conversationtools
     - description: Holidays and channel business status.
       name: businesshours
+    - description: Custom attribute definitions (per tenant; applied to contacts/conversations).
+      name: customattributes
     - description: SLA policies and tracking.
       name: sla
     - description: Operator notifications and preferences.

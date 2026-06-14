@@ -69,6 +69,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerMCPRoutes(v1, c)
 		registerConversationToolsRoutes(v1, c)
 		registerBusinessHoursRoutes(v1, c)
+		registerCustomAttributeRoutes(v1, c)
 		registerSLARoutes(v1, c)
 		registerNotificationRoutes(v1, c)
 		registerCSATRoutes(v1, c)

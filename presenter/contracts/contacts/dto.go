@@ -45,14 +45,15 @@ func (r CreateContactRequest) ToCommand() ccontracts.CreateContact {
 // UpdateContactRequest is the body of PATCH /v1/contacts/{id}. Nil fields are
 // left unchanged.
 type UpdateContactRequest struct {
-	Name               *string       `json:"name"`
-	Phones             *[]string     `json:"phones"`
-	Document           *string       `json:"document"`
-	Email              *string       `json:"email"`
-	Tags               *[]string     `json:"tags"`
-	Notes              *string       `json:"notes"`
-	ExternalIDs        *[]ExternalID `json:"external_ids"`
-	AvatarAttachmentID *string       `json:"avatar_attachment_id"`
+	Name               *string         `json:"name"`
+	Phones             *[]string       `json:"phones"`
+	Document           *string         `json:"document"`
+	Email              *string         `json:"email"`
+	Tags               *[]string       `json:"tags"`
+	Notes              *string         `json:"notes"`
+	ExternalIDs        *[]ExternalID   `json:"external_ids"`
+	AvatarAttachmentID *string         `json:"avatar_attachment_id"`
+	CustomAttributes   *map[string]any `json:"custom_attributes"`
 }
 
 // ToCommand maps the request to the service command.
@@ -65,6 +66,7 @@ func (r UpdateContactRequest) ToCommand() ccontracts.UpdateContact {
 		Tags:               r.Tags,
 		Notes:              r.Notes,
 		AvatarAttachmentID: r.AvatarAttachmentID,
+		CustomAttributes:   r.CustomAttributes,
 	}
 	if r.ExternalIDs != nil {
 		ids := toExternalIdentities(*r.ExternalIDs)
@@ -98,9 +100,10 @@ type ContactResponse struct {
 	AvatarAttachmentID string       `json:"avatar_attachment_id,omitempty"`
 	// AvatarURL is a short-lived signed URL the browser loads directly (no JWT).
 	// Read-only/derived; present only when the avatar exists and is ready.
-	AvatarURL string    `json:"avatar_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	AvatarURL        string         `json:"avatar_url,omitempty"`
+	CustomAttributes map[string]any `json:"custom_attributes,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 // NewContactResponse maps a contact entity to its DTO. Phones falls back to the
@@ -132,6 +135,7 @@ func NewContactResponse(c *entity.Contact) ContactResponse {
 		Tags:               tags,
 		Notes:              c.Notes,
 		AvatarAttachmentID: c.AvatarAttachmentID,
+		CustomAttributes:   c.CustomAttributes,
 		CreatedAt:          c.CreatedAt,
 		UpdatedAt:          c.UpdatedAt,
 	}

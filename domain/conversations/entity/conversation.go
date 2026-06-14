@@ -73,8 +73,11 @@ type Conversation struct {
 	// Tags always stores canonical tag IDs (never names). The service resolves any
 	// name supplied on write to its ID, so the array stays ID-only — keeping the
 	// front render and tag removal (which match by ID) consistent.
-	Tags          []string
-	LastMessageAt time.Time
+	Tags []string
+	// CustomAttributes holds tenant-defined custom attribute values (key→value),
+	// validated against definitions with applies_to=conversation.
+	CustomAttributes map[string]any
+	LastMessageAt    time.Time
 	// UnreadCount is the number of inbound (customer) messages since an agent last
 	// read the conversation. Bumped on each inbound message; zeroed by MarkRead
 	// (POST /read).

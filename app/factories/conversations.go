@@ -38,6 +38,8 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 	// Resolve the contact + assignee display cards per inbox row (batch).
 	svc.SetContactDirectory(ContactService(c))
 	svc.SetAgentDirectory(UserService(c))
+	// Validate custom_attributes against applies_to=conversation definitions.
+	svc.SetCustomAttributeValidator(CustomAttributeService(c))
 	return svc
 }
 

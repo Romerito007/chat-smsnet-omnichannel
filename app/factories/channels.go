@@ -25,6 +25,8 @@ func ContactService(c *container.Container) *contactservice.Service {
 	svc.SetAvatarValidator(AttachmentService(c))
 	// Resolve contact avatars to short-lived signed URLs in the response payloads.
 	svc.SetAvatarURLResolver(AttachmentService(c))
+	// Validate custom_attributes against applies_to=contact definitions.
+	svc.SetCustomAttributeValidator(CustomAttributeService(c))
 	return svc
 }
 

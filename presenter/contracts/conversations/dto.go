@@ -40,21 +40,23 @@ func (r CreateConversationRequest) ToCommand() contracts.CreateConversation {
 
 // UpdateConversationRequest is the body of PATCH /v1/conversations/{id}.
 type UpdateConversationRequest struct {
-	SectorID   *string   `json:"sector_id"`
-	QueueID    *string   `json:"queue_id"`
-	Status     *string   `json:"status"`
-	AssignedTo *string   `json:"assigned_to"`
-	Priority   *string   `json:"priority"`
-	Tags       *[]string `json:"tags"`
+	SectorID         *string         `json:"sector_id"`
+	QueueID          *string         `json:"queue_id"`
+	Status           *string         `json:"status"`
+	AssignedTo       *string         `json:"assigned_to"`
+	Priority         *string         `json:"priority"`
+	Tags             *[]string       `json:"tags"`
+	CustomAttributes *map[string]any `json:"custom_attributes"`
 }
 
 // ToCommand maps the request to the service command.
 func (r UpdateConversationRequest) ToCommand() contracts.UpdateConversation {
 	cmd := contracts.UpdateConversation{
-		SectorID:   r.SectorID,
-		QueueID:    r.QueueID,
-		AssignedTo: r.AssignedTo,
-		Tags:       r.Tags,
+		SectorID:         r.SectorID,
+		QueueID:          r.QueueID,
+		AssignedTo:       r.AssignedTo,
+		Tags:             r.Tags,
+		CustomAttributes: r.CustomAttributes,
 	}
 	if r.Status != nil {
 		st := entity.Status(*r.Status)
@@ -124,25 +126,26 @@ type CloseRequest struct {
 
 // ConversationResponse is the public representation of a conversation.
 type ConversationResponse struct {
-	ID            string       `json:"id"`
-	TenantID      string       `json:"tenant_id"`
-	ContactID     string       `json:"contact_id"`
-	Channel       string       `json:"channel"`
-	ChannelID     string       `json:"channel_id,omitempty"`
-	SectorID      string       `json:"sector_id,omitempty"`
-	QueueID       string       `json:"queue_id,omitempty"`
-	Status        string       `json:"status"`
-	AssignedTo    string       `json:"assigned_to,omitempty"`
-	Priority      string       `json:"priority"`
-	Protocol      string       `json:"protocol,omitempty"`
-	Tags          []string     `json:"tags,omitempty"`
-	LastMessageAt time.Time    `json:"last_message_at"`
-	UnreadCount   int          `json:"unread_count"`
-	LastReadAt    *time.Time   `json:"last_read_at,omitempty"`
-	CreatedAt     time.Time    `json:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at"`
-	ClosedAt      *time.Time   `json:"closed_at,omitempty"`
-	LastMessage   *LastMessage `json:"last_message,omitempty"`
+	ID               string         `json:"id"`
+	TenantID         string         `json:"tenant_id"`
+	ContactID        string         `json:"contact_id"`
+	Channel          string         `json:"channel"`
+	ChannelID        string         `json:"channel_id,omitempty"`
+	SectorID         string         `json:"sector_id,omitempty"`
+	QueueID          string         `json:"queue_id,omitempty"`
+	Status           string         `json:"status"`
+	AssignedTo       string         `json:"assigned_to,omitempty"`
+	Priority         string         `json:"priority"`
+	Protocol         string         `json:"protocol,omitempty"`
+	Tags             []string       `json:"tags,omitempty"`
+	CustomAttributes map[string]any `json:"custom_attributes,omitempty"`
+	LastMessageAt    time.Time      `json:"last_message_at"`
+	UnreadCount      int            `json:"unread_count"`
+	LastReadAt       *time.Time     `json:"last_read_at,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	ClosedAt         *time.Time     `json:"closed_at,omitempty"`
+	LastMessage      *LastMessage   `json:"last_message,omitempty"`
 	// ContactName / ContactAvatarURL / AgentName / AgentAvatarURL are read-only,
 	// derived display fields, resolved in batch so the inbox renders each row
 	// (contact + assignee) without a per-row fetch. Avatar URLs are short-lived
@@ -218,24 +221,25 @@ func applyCards(r *ConversationResponse, c *entity.Conversation, contactCards, a
 // NewConversationResponse maps a conversation entity to its DTO.
 func NewConversationResponse(c *entity.Conversation) ConversationResponse {
 	return ConversationResponse{
-		ID:            c.ID,
-		TenantID:      c.TenantID,
-		ContactID:     c.ContactID,
-		Channel:       c.Channel,
-		ChannelID:     c.ChannelID,
-		SectorID:      c.SectorID,
-		QueueID:       c.QueueID,
-		Status:        string(c.Status),
-		AssignedTo:    c.AssignedTo,
-		Priority:      string(c.Priority),
-		Protocol:      c.Protocol,
-		Tags:          c.Tags,
-		LastMessageAt: c.LastMessageAt,
-		UnreadCount:   c.UnreadCount,
-		LastReadAt:    c.LastReadAt,
-		CreatedAt:     c.CreatedAt,
-		UpdatedAt:     c.UpdatedAt,
-		ClosedAt:      c.ClosedAt,
+		ID:               c.ID,
+		TenantID:         c.TenantID,
+		ContactID:        c.ContactID,
+		Channel:          c.Channel,
+		ChannelID:        c.ChannelID,
+		SectorID:         c.SectorID,
+		QueueID:          c.QueueID,
+		Status:           string(c.Status),
+		AssignedTo:       c.AssignedTo,
+		Priority:         string(c.Priority),
+		Protocol:         c.Protocol,
+		Tags:             c.Tags,
+		CustomAttributes: c.CustomAttributes,
+		LastMessageAt:    c.LastMessageAt,
+		UnreadCount:      c.UnreadCount,
+		LastReadAt:       c.LastReadAt,
+		CreatedAt:        c.CreatedAt,
+		UpdatedAt:        c.UpdatedAt,
+		ClosedAt:         c.ClosedAt,
 	}
 }
 

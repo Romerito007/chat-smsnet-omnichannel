@@ -37,6 +37,7 @@ func DefaultRoles() []DefaultRoleDefinition {
 				AutomationManage, CopilotUse, CopilotConfigure,
 				IntegrationRead, IntegrationConfigure,
 				ChannelManage, WebhookManage,
+				CustomAttributeManage,
 				ReportView, ReportExport, AuditView,
 			},
 			SectorScope: ScopeAll,

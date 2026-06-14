@@ -25,6 +25,9 @@ type UpdateConversation struct {
 	AssignedTo *string
 	Priority   *entity.Priority
 	Tags       *[]string
+	// CustomAttributes, when non-nil, replaces the whole custom-attributes map
+	// (omit a key to remove it). Validated against applies_to=conversation defs.
+	CustomAttributes *map[string]any
 }
 
 // SendMessage is the input to post an outbound message from an agent.

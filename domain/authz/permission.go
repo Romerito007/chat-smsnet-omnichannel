@@ -42,6 +42,8 @@ const (
 
 	AuditView     Permission = "audit.view"
 	PrivacyManage Permission = "privacy.manage"
+
+	CustomAttributeManage Permission = "customattribute.manage"
 )
 
 // AllPermissions is the ordered catalog of every known permission. Used by the
@@ -58,6 +60,7 @@ func AllPermissions() []Permission {
 		ChannelManage, WebhookManage,
 		ReportView, ReportExport,
 		AuditView, PrivacyManage,
+		CustomAttributeManage,
 	}
 }
 

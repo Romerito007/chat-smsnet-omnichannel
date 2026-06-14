@@ -57,8 +57,11 @@ type Contact struct {
 	// flow) used as the contact's avatar, mirroring User.AvatarAttachmentID.
 	// Optional.
 	AvatarAttachmentID string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// CustomAttributes holds tenant-defined custom attribute values (key→value),
+	// validated against definitions with applies_to=contact.
+	CustomAttributes map[string]any
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // SetPhones replaces the phone list (already normalized by the caller) and keeps

@@ -108,10 +108,12 @@ func schemas() M {
 			"id": str(), "tenant_id": str(), "contact_id": str(), "channel": str(),
 			"channel_id": describedStr("Id of the specific ChannelConnection this conversation belongs to (e.g. which of several same-type WhatsApp numbers). Empty only for conversations created without one."),
 			"sector_id":  str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
-			"priority": str(),
-			"protocol": describedStr("Per-tenant/year protocol number (\"2026-000123\") assigned when the conversation is opened on a channel with uses_protocol=true; empty otherwise. Searchable via GET /v1/conversations?protocol=."),
-			"tags":     tagIDArray(), "last_message_at": dateTime(),
-			"unread_count": integer(), "last_read_at": dateTime(),
+			"priority":          str(),
+			"protocol":          describedStr("Per-tenant/year protocol number (\"2026-000123\") assigned when the conversation is opened on a channel with uses_protocol=true; empty otherwise. Searchable via GET /v1/conversations?protocol=."),
+			"tags":              tagIDArray(),
+			"custom_attributes": customAttributesObject(),
+			"last_message_at":   dateTime(),
+			"unread_count":      integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
 			"last_message":       ref("LastMessage"),
 			"contact_name":       describedStr("Read-only, derived: the conversation contact's display name, resolved in batch so the inbox renders the row without a per-contact fetch. Empty when the contact is absent."),
@@ -146,6 +148,7 @@ func schemas() M {
 		"UpdateConversationRequest": object(M{
 			"sector_id": str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
 			"priority": str(), "tags": tagIDArray(),
+			"custom_attributes": customAttributesObject(),
 		}),
 		"Attachment": object(M{"id": str(), "url": str(), "content_type": str(), "filename": str(), "size": integer()}),
 		"Message": object(M{
@@ -413,6 +416,7 @@ func schemas() M {
 			"tags": tagIDArray(), "notes": str(),
 			"avatar_attachment_id": describedStr("Attachment id of the contact's avatar (write it via PATCH)."),
 			"avatar_url":           describedStr("Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term."),
+			"custom_attributes":    customAttributesObject(),
 			"created_at":           dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateContactRequest": object(M{
@@ -432,6 +436,7 @@ func schemas() M {
 			"email":        describedStr("Email address; format-validated and stored lowercased."),
 			"external_ids": arr(ref("ContactExternalID")), "tags": tagIDArray(), "notes": str(),
 			"avatar_attachment_id": describedStr("Attachment id (image, status=ready, same tenant) to use as avatar; empty string clears it. Invalid -> 400 validation_error."),
+			"custom_attributes":    customAttributesObject(),
 		}),
 
 		// ── webhooks ───────────────────────────────────────────────────────────
@@ -576,6 +581,27 @@ func schemas() M {
 			"timezone": describedStr(`IANA timezone the schedule is evaluated in (e.g. "America/Sao_Paulo"). Defaults to UTC. "Open now?" is resolved in this timezone, not the server's.`),
 			"weekly":   describedArr(ref("BusinessHoursDay"), "Per-weekday open intervals. An empty/absent document means always open (24/7)."),
 		}), "A channel's weekly business hours. Lives on the ChannelConnection (each connection of the same type can have its own). An empty object means the channel is always open."),
+		// ── custom attributes ──────────────────────────────────────────────────
+		"CustomAttributeDefinition": object(M{
+			"id": str(), "tenant_id": str(), "key": str(), "label": str(), "description": str(),
+			"type":       enum("text", "number", "boolean", "date", "list"),
+			"applies_to": enum("contact", "conversation"),
+			"options":    arr(str()), "regex": str(),
+			"created_at": dateTime(), "updated_at": dateTime(),
+		}),
+		"CreateCustomAttributeRequest": object(M{
+			"key":         describedStr("Unique key within (tenant, applies_to); immutable after creation."),
+			"label":       str(),
+			"description": str(),
+			"type":        enum("text", "number", "boolean", "date", "list"),
+			"applies_to":  enum("contact", "conversation"),
+			"options":     describedArr(str(), "Required (non-empty) when type=list; rejected otherwise."),
+			"regex":       describedStr("Optional validation pattern; only valid when type=text."),
+		}, "key", "label", "type", "applies_to"),
+		"UpdateCustomAttributeRequest": object(M{
+			"label": str(), "description": str(),
+			"options": arr(str()), "regex": str(),
+		}),
 		"BusinessStatus": object(M{
 			"channel_id": str(), "open": boolean(), "reason": enum("open", "outside_hours", "holiday", "unconfigured"),
 			"timezone": str(), "local_time": dateTime(), "holiday_name": str(),

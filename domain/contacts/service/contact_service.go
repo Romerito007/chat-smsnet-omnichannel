@@ -20,6 +20,7 @@ type Service struct {
 	tags       contracts.TagResolver
 	avatars    contracts.AvatarValidator
 	avatarURLs shared.AvatarURLResolver
+	customAttr shared.CustomAttributeValidator
 }
 
 // New builds the service.
@@ -27,7 +28,15 @@ func New(repo repository.ContactRepository, clock shared.Clock) *Service {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}}
+	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}, customAttr: shared.NoopCustomAttributeValidator{}}
+}
+
+// SetCustomAttributeValidator wires the validator for custom_attributes (against
+// applies_to=contact definitions). Optional: when unset, values pass through.
+func (s *Service) SetCustomAttributeValidator(v shared.CustomAttributeValidator) {
+	if v != nil {
+		s.customAttr = v
+	}
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, contact writes are not
@@ -261,6 +270,18 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 		avatarID := strings.TrimSpace(*cmd.AvatarAttachmentID)
 		s.validateAvatar(ctx, avatarID, v)
 		contact.AvatarAttachmentID = avatarID
+	}
+	if cmd.CustomAttributes != nil {
+		attrs := *cmd.CustomAttributes
+		if err := s.customAttr.ValidateCustomAttributes(ctx, "contact", attrs); err != nil {
+			if apperror.From(err).Code == apperror.CodeValidation {
+				mergeDetails(v, apperror.From(err).Details)
+			} else {
+				return nil, err
+			}
+		} else {
+			contact.CustomAttributes = attrs
+		}
 	}
 	if len(v) > 0 {
 		return nil, apperror.Validation("invalid contact").WithDetails(v)

@@ -39,6 +39,13 @@ func enum(vals ...string) M {
 // validation/normalization rules a typed client should know about.
 func describedStr(desc string) M { return M{"type": "string", "description": desc} }
 
+// customAttributesObject is the free-form key→value map of custom attribute
+// values, validated server-side against the tenant's definitions for the entity
+// scope. On write it REPLACES the whole map (omit a key to remove it).
+func customAttributesObject() M {
+	return withDesc(freeObject(), "Tenant-defined custom attribute values (key→value), validated against the custom_attribute_definitions for this entity (contact/conversation). On PATCH it replaces the whole map; omit a key to remove it.")
+}
+
 // describedBool / describedInt / describedArr are the boolean/integer/array
 // counterparts of describedStr, for fields that carry a per-field description
 // (e.g. the ProviderHubConfig source mapping).
@@ -369,6 +376,7 @@ func tags() []any {
 		{"mcp", "MCP servers, tool discovery, manual runs and write-action approvals."},
 		{"conversationtools", "Tags, canned responses and close reasons."},
 		{"businesshours", "Holidays and channel business status."},
+		{"customattributes", "Custom attribute definitions (per tenant; applied to contacts/conversations)."},
 		{"sla", "SLA policies and tracking."},
 		{"notifications", "Operator notifications and preferences."},
 		{"csat", "Satisfaction surveys and responses."},
