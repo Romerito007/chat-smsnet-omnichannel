@@ -274,6 +274,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 		TenantID:      tenantID,
 		ContactID:     contactID,
 		Channel:       channel,
+		ChannelID:     strings.TrimSpace(cmd.ChannelID),
 		SectorID:      cmd.SectorID,
 		QueueID:       cmd.QueueID,
 		Status:        status,

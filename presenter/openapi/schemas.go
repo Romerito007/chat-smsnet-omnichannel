@@ -89,7 +89,8 @@ func schemas() M {
 		// ── conversations / messages ───────────────────────────────────────────
 		"Conversation": object(M{
 			"id": str(), "tenant_id": str(), "contact_id": str(), "channel": str(),
-			"sector_id": str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
+			"channel_id": describedStr("Id of the specific ChannelConnection this conversation belongs to (e.g. which of several same-type WhatsApp numbers). Empty only for conversations created without one."),
+			"sector_id":  str(), "queue_id": str(), "status": conversationStatusEnum(), "assigned_to": str(),
 			"priority": str(), "tags": tagIDArray(), "last_message_at": dateTime(),
 			"unread_count": integer(), "last_read_at": dateTime(),
 			"created_at": dateTime(), "updated_at": dateTime(), "closed_at": dateTime(),
@@ -118,7 +119,9 @@ func schemas() M {
 			"actor_id":   str(), "data": freeObject(), "created_at": dateTime(),
 		}),
 		"CreateConversationRequest": object(M{
-			"contact_id": str(), "channel": str(), "sector_id": str(), "queue_id": str(),
+			"contact_id": str(), "channel": str(),
+			"channel_id": describedStr("Optional id of the specific ChannelConnection (inbound sets it automatically; provide it for outbound to leave through the right connection)."),
+			"sector_id":  str(), "queue_id": str(),
 			"assigned_to": str(), "priority": str(), "tags": tagIDArray(),
 		}, "contact_id", "channel"),
 		"UpdateConversationRequest": object(M{

@@ -108,7 +108,7 @@ var closedStatuses = bson.A{
 	string(entity.StatusResolved), string(entity.StatusClosed), string(entity.StatusArchived),
 }
 
-func (r *ConversationRepository) FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*entity.Conversation, error) {
+func (r *ConversationRepository) FindOpenByContactChannelID(ctx context.Context, contactID, channelID string) (*entity.Conversation, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func (r *ConversationRepository) FindOpenByContactChannel(ctx context.Context, c
 	filter := bson.M{
 		"tenant_id":  tenantID,
 		"contact_id": contactID,
-		"channel":    channel,
+		"channel_id": channelID,
 		"status":     bson.M{"$nin": closedStatuses},
 	}
 	opts := options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})
@@ -225,6 +225,7 @@ func convToModel(c *entity.Conversation) models.Conversation {
 	m := models.Conversation{
 		ContactID:     c.ContactID,
 		Channel:       c.Channel,
+		ChannelID:     c.ChannelID,
 		SectorID:      c.SectorID,
 		QueueID:       c.QueueID,
 		Status:        string(c.Status),
@@ -249,6 +250,7 @@ func convToEntity(m *models.Conversation) *entity.Conversation {
 		TenantID:      m.TenantID,
 		ContactID:     m.ContactID,
 		Channel:       m.Channel,
+		ChannelID:     m.ChannelID,
 		SectorID:      m.SectorID,
 		QueueID:       m.QueueID,
 		Status:        entity.Status(m.Status),

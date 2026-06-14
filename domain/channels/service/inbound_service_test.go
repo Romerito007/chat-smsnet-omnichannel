@@ -88,11 +88,11 @@ func (r *fakeConvRepo) FindByID(_ context.Context, id string) (*conventity.Conve
 func (r *fakeConvRepo) FindByIDs(context.Context, []string) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
-func (r *fakeConvRepo) FindOpenByContactChannel(_ context.Context, contactID, channel string) (*conventity.Conversation, error) {
+func (r *fakeConvRepo) FindOpenByContactChannelID(_ context.Context, contactID, channelID string) (*conventity.Conversation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, c := range r.items {
-		if c.ContactID == contactID && c.Channel == channel && !c.Status.IsClosed() {
+		if c.ContactID == contactID && c.ChannelID == channelID && !c.Status.IsClosed() {
 			cp := *c
 			return &cp, nil
 		}
@@ -272,6 +272,11 @@ func TestInbound_CreatesAndQueuesIntoDefaultSector(t *testing.T) {
 	}
 	if fx.convs.items[res.ConversationID].SectorID != "sector-x" {
 		t.Errorf("expected default sector set")
+	}
+	// The conversation must persist the SPECIFIC channel connection id (conn1),
+	// not just the type — this is what makes per-channel routing/hours/assistant work.
+	if got := fx.convs.items[res.ConversationID].ChannelID; got != "conn1" {
+		t.Errorf("conversation channel_id = %q, want conn1 (the connection id)", got)
 	}
 	if !fx.pub.has(convcontracts.RealtimeMessageCreated) || !fx.pub.has(convcontracts.RealtimeConversationUpdated) {
 		t.Error("expected realtime events")

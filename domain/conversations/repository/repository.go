@@ -20,10 +20,11 @@ type ConversationRepository interface {
 	// FindByIDs batch-loads conversations by id within the tenant (missing ids
 	// absent), used to hydrate the SLA breach check without a FindByID per tracking.
 	FindByIDs(ctx context.Context, ids []string) ([]*entity.Conversation, error)
-	// FindOpenByContactChannel returns the most recent non-closed conversation
-	// for a contact on a channel, or a not_found AppError. Used by inbound to
-	// reuse an open conversation instead of creating a new one.
-	FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*entity.Conversation, error)
+	// FindOpenByContactChannelID returns the most recent non-closed conversation
+	// for a contact on a specific channel CONNECTION (by id), or a not_found
+	// AppError. Keyed by the connection id so two connections of the same type stay
+	// distinct conversations.
+	FindOpenByContactChannelID(ctx context.Context, contactID, channelID string) (*entity.Conversation, error)
 	// List returns conversations matching the filter and visibility, ordered by
 	// updated_at desc (keyset). Over-fetches by one for has_more detection.
 	List(ctx context.Context, filter contracts.ListFilter, vis contracts.Visibility, page shared.PageRequest) ([]*entity.Conversation, error)

@@ -60,7 +60,8 @@ type Conversation struct {
 	ID         string
 	TenantID   string
 	ContactID  string
-	Channel    string
+	Channel    string // channel TYPE (e.g. "whatsapp"); type-level logic (adapters, SLA match)
+	ChannelID  string // id of the specific ChannelConnection this conversation belongs to
 	SectorID   string
 	QueueID    string
 	Status     Status

@@ -7,6 +7,7 @@ import "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/enti
 type CreateConversation struct {
 	ContactID  string
 	Channel    string
+	ChannelID  string // id of the specific ChannelConnection (optional on manual create)
 	SectorID   string
 	QueueID    string
 	AssignedTo string

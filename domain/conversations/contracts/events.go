@@ -55,6 +55,7 @@ type ConversationPayload struct {
 	TenantID      string     `json:"tenant_id"`
 	ContactID     string     `json:"contact_id"`
 	Channel       string     `json:"channel"`
+	ChannelID     string     `json:"channel_id,omitempty"`
 	SectorID      string     `json:"sector_id,omitempty"`
 	QueueID       string     `json:"queue_id,omitempty"`
 	Status        string     `json:"status"`
@@ -74,6 +75,7 @@ func NewConversationPayload(c *entity.Conversation) ConversationPayload {
 		TenantID:      c.TenantID,
 		ContactID:     c.ContactID,
 		Channel:       c.Channel,
+		ChannelID:     c.ChannelID,
 		SectorID:      c.SectorID,
 		QueueID:       c.QueueID,
 		Status:        string(c.Status),

@@ -51,7 +51,7 @@ func (r *fakeConvRepo) FindByID(ctx context.Context, id string) (*conventity.Con
 func (r *fakeConvRepo) FindByIDs(context.Context, []string) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
-func (r *fakeConvRepo) FindOpenByContactChannel(context.Context, string, string) (*conventity.Conversation, error) {
+func (r *fakeConvRepo) FindOpenByContactChannelID(context.Context, string, string) (*conventity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
 }
 func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {

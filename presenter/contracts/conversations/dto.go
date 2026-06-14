@@ -16,6 +16,7 @@ import (
 type CreateConversationRequest struct {
 	ContactID  string   `json:"contact_id"`
 	Channel    string   `json:"channel"`
+	ChannelID  string   `json:"channel_id"`
 	SectorID   string   `json:"sector_id"`
 	QueueID    string   `json:"queue_id"`
 	AssignedTo string   `json:"assigned_to"`
@@ -28,6 +29,7 @@ func (r CreateConversationRequest) ToCommand() contracts.CreateConversation {
 	return contracts.CreateConversation{
 		ContactID:  r.ContactID,
 		Channel:    r.Channel,
+		ChannelID:  r.ChannelID,
 		SectorID:   r.SectorID,
 		QueueID:    r.QueueID,
 		AssignedTo: r.AssignedTo,
@@ -126,6 +128,7 @@ type ConversationResponse struct {
 	TenantID      string       `json:"tenant_id"`
 	ContactID     string       `json:"contact_id"`
 	Channel       string       `json:"channel"`
+	ChannelID     string       `json:"channel_id,omitempty"`
 	SectorID      string       `json:"sector_id,omitempty"`
 	QueueID       string       `json:"queue_id,omitempty"`
 	Status        string       `json:"status"`
@@ -218,6 +221,7 @@ func NewConversationResponse(c *entity.Conversation) ConversationResponse {
 		TenantID:      c.TenantID,
 		ContactID:     c.ContactID,
 		Channel:       c.Channel,
+		ChannelID:     c.ChannelID,
 		SectorID:      c.SectorID,
 		QueueID:       c.QueueID,
 		Status:        string(c.Status),

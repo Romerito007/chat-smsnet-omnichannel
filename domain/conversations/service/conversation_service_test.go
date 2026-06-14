@@ -54,7 +54,7 @@ func (r *fakeConvRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.Con
 	}
 	return out, nil
 }
-func (r *fakeConvRepo) FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*entity.Conversation, error) {
+func (r *fakeConvRepo) FindOpenByContactChannelID(ctx context.Context, contactID, channel string) (*entity.Conversation, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	for _, c := range r.items {
 		if c.TenantID == tenant && c.ContactID == contactID && c.Channel == channel && !c.Status.IsClosed() {

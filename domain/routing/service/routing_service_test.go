@@ -62,7 +62,7 @@ func (r *fakeConvRepo) FindByID(ctx context.Context, id string) (*conventity.Con
 func (r *fakeConvRepo) FindByIDs(context.Context, []string) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
-func (r *fakeConvRepo) FindOpenByContactChannel(ctx context.Context, contactID, channel string) (*conventity.Conversation, error) {
+func (r *fakeConvRepo) FindOpenByContactChannelID(ctx context.Context, contactID, channel string) (*conventity.Conversation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	tenant, _ := shared.TenantFrom(ctx)

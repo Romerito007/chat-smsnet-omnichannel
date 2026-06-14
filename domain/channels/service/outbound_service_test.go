@@ -111,6 +111,29 @@ func TestDispatch_CreatesDeliveryAndEnqueues(t *testing.T) {
 	}
 }
 
+func TestDispatch_UsesConversationChannelID(t *testing.T) {
+	// Two connections of the SAME type; the reply must leave through the SPECIFIC
+	// connection the conversation belongs to (channel_id), not the first by type.
+	conns := newFakeConnRepo()
+	conns.put(&chentity.ChannelConnection{ID: "connA", TenantID: "t1", Type: chentity.TypeCustom, Enabled: true})
+	conns.put(&chentity.ChannelConnection{ID: "connB", TenantID: "t1", Type: chentity.TypeCustom, Enabled: true})
+	deliveries := newFakeDeliveryRepo()
+	svc := NewOutboundService(conns, deliveries, newFakeConvRepo(), newFakeMsgRepo(), newFakeContactRepo(), fakeRegistry{&fakeAdapter{}}, &fakeEnqueuer{}, &fakePublisher{}, clockNow())
+
+	conv := &conventity.Conversation{ID: "conv1", TenantID: "t1", Channel: "custom", ChannelID: "connB"}
+	msg := &conventity.Message{ID: "m1", TenantID: "t1", ConversationID: "conv1", Direction: conventity.DirectionOutbound, Text: "hi"}
+	svc.Dispatch(tenantCtx(), conv, msg)
+
+	if len(deliveries.byID) != 1 {
+		t.Fatalf("expected one delivery, got %d", len(deliveries.byID))
+	}
+	for _, d := range deliveries.byID {
+		if d.ChannelConnectionID != "connB" {
+			t.Errorf("delivery used connection %q, want connB (the conversation's channel_id)", d.ChannelConnectionID)
+		}
+	}
+}
+
 func TestDeliver_SuccessMarksSent(t *testing.T) {
 	fx := newOutboundFixture()
 	_, deliveryID := seedMessage(fx, "hello")

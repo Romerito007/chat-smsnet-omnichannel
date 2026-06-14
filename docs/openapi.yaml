@@ -736,6 +736,9 @@ components:
                     type: string
                 channel:
                     type: string
+                channel_id:
+                    description: Id of the specific ChannelConnection this conversation belongs to (e.g. which of several same-type WhatsApp numbers). Empty only for conversations created without one.
+                    type: string
                 closed_at:
                     format: date-time
                     type: string
@@ -1073,6 +1076,9 @@ components:
                 assigned_to:
                     type: string
                 channel:
+                    type: string
+                channel_id:
+                    description: Optional id of the specific ChannelConnection (inbound sets it automatically; provide it for outbound to leave through the right connection).
                     type: string
                 contact_id:
                     type: string

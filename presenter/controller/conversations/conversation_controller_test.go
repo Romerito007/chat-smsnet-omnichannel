@@ -54,7 +54,7 @@ func (r *fakeConvRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.Con
 	}
 	return out, nil
 }
-func (r *fakeConvRepo) FindOpenByContactChannel(context.Context, string, string) (*entity.Conversation, error) {
+func (r *fakeConvRepo) FindOpenByContactChannelID(context.Context, string, string) (*entity.Conversation, error) {
 	return nil, apperror.NotFound("none")
 }
 func (r *fakeConvRepo) List(ctx context.Context, _ convcontracts.ListFilter, _ convcontracts.Visibility, _ shared.PageRequest) ([]*entity.Conversation, error) {

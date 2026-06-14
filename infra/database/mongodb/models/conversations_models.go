@@ -7,6 +7,7 @@ type Conversation struct {
 	Base          `bson:",inline"`
 	ContactID     string     `bson:"contact_id"`
 	Channel       string     `bson:"channel"`
+	ChannelID     string     `bson:"channel_id,omitempty"`
 	SectorID      string     `bson:"sector_id,omitempty"`
 	QueueID       string     `bson:"queue_id,omitempty"`
 	Status        string     `bson:"status"`

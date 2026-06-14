@@ -104,9 +104,21 @@ func (s *OutboundService) Dispatch(ctx context.Context, conv *conventity.Convers
 	if msg.Direction != conventity.DirectionOutbound {
 		return
 	}
-	conn, err := s.connections.FindEnabledByType(ctx, chentity.Type(conv.Channel))
-	if err != nil {
-		return // no connection for this channel → leave the message pending
+	// Resolve the SPECIFIC channel connection the conversation belongs to, so the
+	// reply leaves through the right number (deterministic with many same-type
+	// connections). Fall back to the first enabled of the type only when a
+	// conversation has no channel_id (e.g. created manually without one).
+	var (
+		conn *chentity.ChannelConnection
+		err  error
+	)
+	if conv.ChannelID != "" {
+		conn, err = s.connections.FindByID(ctx, conv.ChannelID)
+	} else {
+		conn, err = s.connections.FindEnabledByType(ctx, chentity.Type(conv.Channel))
+	}
+	if err != nil || conn == nil || !conn.Enabled {
+		return // no usable connection → leave the message pending
 	}
 	now := s.clock.Now()
 	delivery := &chentity.OutboundDelivery{

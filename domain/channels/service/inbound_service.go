@@ -129,7 +129,7 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		return chcontracts.InboundResult{}, err
 	}
 
-	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel)
+	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel, conn.ID)
 	if err != nil {
 		return chcontracts.InboundResult{}, err
 	}
@@ -182,8 +182,10 @@ func (s *InboundService) idempotentResult(ctx context.Context, rec *chentity.Inb
 	}
 }
 
-func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID, contactID, channel string) (*conventity.Conversation, bool, error) {
-	conv, err := s.conversations.FindOpenByContactChannel(ctx, contactID, channel)
+func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID, contactID, channel, channelID string) (*conventity.Conversation, bool, error) {
+	// Reuse an open conversation for this contact on the SAME channel connection
+	// (not just the same type) — two connections of the same type are distinct.
+	conv, err := s.conversations.FindOpenByContactChannelID(ctx, contactID, channelID)
 	if err == nil {
 		return conv, false, nil
 	}
@@ -197,6 +199,7 @@ func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID,
 		TenantID:      tenantID,
 		ContactID:     contactID,
 		Channel:       channel,
+		ChannelID:     channelID,
 		Status:        conventity.StatusNew,
 		Priority:      conventity.PriorityNormal,
 		LastMessageAt: now,
