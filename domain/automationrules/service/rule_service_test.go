@@ -116,7 +116,7 @@ func newRuleSvc(webhookIDs ...string) (*RuleService, *fakeRuleRepo) {
 }
 
 func sendWebhook(id string) []entity.Action {
-	return []entity.Action{{Type: entity.ActionSendWebhook, WebhookID: id}}
+	return []entity.Action{{Type: entity.ActionSendWebhook, Params: map[string]string{"webhook_id": id}}}
 }
 
 func TestRuleCreate_Valid(t *testing.T) {

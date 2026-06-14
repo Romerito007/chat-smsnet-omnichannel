@@ -26,8 +26,10 @@ func NewEnqueuer(client *infraasynq.Client) *Enqueuer {
 }
 
 // EmitRuleEvent enqueues the evaluation task. The payload travels as the webhook
-// data; the worker hydrates the conversation/contact for condition matching.
-func (e *Enqueuer) EmitRuleEvent(_ context.Context, tenantID, event, conversationID string, payload any) {
+// data; the worker hydrates the conversation/contact for condition matching. The
+// origin is read from the context (OriginAutomation when the event was produced by
+// a rule action) and a fresh event_id is stamped for the dedup/claim guard.
+func (e *Enqueuer) EmitRuleEvent(ctx context.Context, tenantID, event, conversationID string, payload any) {
 	if tenantID == "" || conversationID == "" {
 		return
 	}
@@ -40,6 +42,8 @@ func (e *Enqueuer) EmitRuleEvent(_ context.Context, tenantID, event, conversatio
 		Event:          event,
 		ConversationID: conversationID,
 		Data:           data,
+		EventID:        shared.NewID(),
+		Origin:         string(shared.RuleOriginFromContext(ctx)),
 	})
 	if err != nil {
 		return

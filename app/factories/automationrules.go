@@ -32,12 +32,16 @@ func AutomationRuleSink(c *container.Container) *infraautomationrules.Enqueuer {
 // worker handler). It reuses the webhooks dispatcher (EmitTo) for delivery and a
 // Redis deduper for the anti-loop guard.
 func AutomationRuleEvaluator(c *container.Container) *arservice.Evaluator {
+	// The executor runs the rule's actions: send_webhook via the webhooks
+	// dispatcher, send_message by injecting an automation-authored message through
+	// the conversations service (reusing the normal message_created pipeline).
+	executor := arservice.NewExecutor(WebhookDispatcher(c), conversationServiceBase(c))
 	return arservice.NewEvaluator(
 		arrepo.NewRuleRepository(c.Mongo.DB),
 		arrepo.NewLogRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		contactrepo.New(c.Mongo.DB),
-		WebhookDispatcher(c),
+		executor,
 		infraautomationrules.NewDeduper(c.Redis),
 		clock,
 	)

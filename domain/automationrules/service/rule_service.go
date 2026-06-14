@@ -201,20 +201,26 @@ func (s *RuleService) validate(ctx context.Context, r *entity.AutomationRule) er
 		v["actions"] = "at least one action is required"
 	}
 	for i, a := range r.Actions {
-		if a.Type != entity.ActionSendWebhook {
-			v[fieldKey("actions", i, "type")] = "unsupported action type"
-			continue
-		}
-		if strings.TrimSpace(a.WebhookID) == "" {
-			v[fieldKey("actions", i, "webhook_id")] = "is required"
-			continue
-		}
-		if _, err := s.webhooks.FindByID(ctx, a.WebhookID); err != nil {
-			if apperror.From(err).Code == apperror.CodeNotFound {
-				v[fieldKey("actions", i, "webhook_id")] = "unknown webhook_id"
+		switch a.Type {
+		case entity.ActionSendWebhook:
+			webhookID := strings.TrimSpace(a.Param("webhook_id"))
+			if webhookID == "" {
+				v[fieldKey("actions", i, "webhook_id")] = "is required"
 				continue
 			}
-			return err
+			if _, err := s.webhooks.FindByID(ctx, webhookID); err != nil {
+				if apperror.From(err).Code == apperror.CodeNotFound {
+					v[fieldKey("actions", i, "webhook_id")] = "unknown webhook_id"
+					continue
+				}
+				return err
+			}
+		case entity.ActionSendMessage:
+			if strings.TrimSpace(a.Param("text")) == "" {
+				v[fieldKey("actions", i, "text")] = "is required"
+			}
+		default:
+			v[fieldKey("actions", i, "type")] = "unsupported action type"
 		}
 	}
 	if len(v) > 0 {

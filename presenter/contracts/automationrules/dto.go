@@ -16,10 +16,12 @@ type ConditionDTO struct {
 	Value    string `json:"value"`
 }
 
-// ActionDTO is one action; for send_webhook, webhook_id references a webhook.
+// ActionDTO is one action. Each action reads only its own params: send_webhook →
+// webhook_id; send_message → text.
 type ActionDTO struct {
 	Type      string `json:"type"`
 	WebhookID string `json:"webhook_id,omitempty"`
+	Text      string `json:"text,omitempty"`
 }
 
 // RuleResponse is the public representation of an automation rule.
@@ -44,7 +46,7 @@ func NewRuleResponse(r *entity.AutomationRule) RuleResponse {
 	}
 	acts := make([]ActionDTO, 0, len(r.Actions))
 	for _, a := range r.Actions {
-		acts = append(acts, ActionDTO{Type: string(a.Type), WebhookID: a.WebhookID})
+		acts = append(acts, ActionDTO{Type: string(a.Type), WebhookID: a.Param("webhook_id"), Text: a.Param("text")})
 	}
 	return RuleResponse{
 		ID:          r.ID,
@@ -134,7 +136,14 @@ func toConditions(in []ConditionDTO) []entity.Condition {
 func toActions(in []ActionDTO) []entity.Action {
 	out := make([]entity.Action, 0, len(in))
 	for _, a := range in {
-		out = append(out, entity.Action{Type: entity.ActionType(a.Type), WebhookID: a.WebhookID})
+		params := map[string]string{}
+		if a.WebhookID != "" {
+			params["webhook_id"] = a.WebhookID
+		}
+		if a.Text != "" {
+			params["text"] = a.Text
+		}
+		out = append(out, entity.Action{Type: entity.ActionType(a.Type), Params: params})
 	}
 	return out
 }

@@ -144,7 +144,7 @@ func toModel(r *entity.AutomationRule) models.AutomationRule {
 	}
 	acts := make([]models.RuleAction, len(r.Actions))
 	for i, a := range r.Actions {
-		acts[i] = models.RuleAction{Type: string(a.Type), WebhookID: a.WebhookID}
+		acts[i] = models.RuleAction{Type: string(a.Type), Params: a.Params}
 	}
 	m := models.AutomationRule{
 		Name:        r.Name,
@@ -168,7 +168,7 @@ func toEntity(m *models.AutomationRule) *entity.AutomationRule {
 	}
 	acts := make([]entity.Action, len(m.Actions))
 	for i, a := range m.Actions {
-		acts[i] = entity.Action{Type: entity.ActionType(a.Type), WebhookID: a.WebhookID}
+		acts[i] = entity.Action{Type: entity.ActionType(a.Type), Params: a.Params}
 	}
 	return &entity.AutomationRule{
 		ID:          m.ID,

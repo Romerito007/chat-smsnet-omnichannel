@@ -717,6 +717,42 @@ func (s *Service) SendSystemMessage(ctx context.Context, conversationID, text st
 	return saved, nil
 }
 
+// SendAutomationMessage injects an outbound message authored by an automation rule
+// (SenderType=automation, SenderID=ruleID — shown as "System Automation"). It
+// reuses the normal send pipeline (persistMessage → message_created → webhooks), so
+// the integrator delivers it like any other outgoing message. The emitted
+// message_created carries origin=automation (derived from the sender), so it never
+// re-triggers automation rules. Tenant-scoped from ctx; no agent visibility check.
+func (s *Service) SendAutomationMessage(ctx context.Context, conversationID, ruleID, text string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	conv, err := s.conversations.FindByID(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(text) == "" {
+		return apperror.Validation("message text is required")
+	}
+	now := s.clock.Now()
+	msg := &entity.Message{
+		ID:             shared.NewID(),
+		TenantID:       conv.TenantID,
+		ConversationID: conv.ID,
+		SenderType:     entity.SenderAutomation,
+		SenderID:       ruleID,
+		Direction:      entity.DirectionOutbound,
+		MessageType:    entity.MessageText,
+		Text:           text,
+		CreatedAt:      now,
+		DeliveryStatus: entity.DeliveryPending,
+	}
+	if _, err := s.persistMessage(ctx, conv, msg, entity.EventMessageCreated); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ApplyTags adds and/or removes tags on a conversation. Added tags are validated
 // against the tenant's tag catalog (when wired). It records a conversation.tagged
 // timeline event and publishes realtime conversation.tagged + conversation.updated.
@@ -1105,7 +1141,14 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 	if eventType == entity.EventMessageCreated {
 		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, conv.SectorID,
 			contracts.NewIntegrationMessagePayload(msg, s.resolveIntegrationMedia(ctx, msg)))
-		s.emitRuleEvent(ctx, conv, entity.EventMessageCreated, contracts.NewMessagePayload(msg))
+		// ANTI-LOOP: a message authored by automation emits its message_created with
+		// origin=automation, so it never re-triggers automation rules — derived here
+		// from the sender so it holds even when ctx wasn't tagged upstream.
+		ruleCtx := ctx
+		if msg.SenderType == entity.SenderAutomation {
+			ruleCtx = shared.WithRuleOrigin(ctx, shared.OriginAutomation)
+		}
+		s.emitRuleEvent(ruleCtx, conv, entity.EventMessageCreated, contracts.NewMessagePayload(msg))
 	}
 	return msg, nil
 }

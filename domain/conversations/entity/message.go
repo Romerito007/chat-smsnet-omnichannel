@@ -13,6 +13,11 @@ const (
 	SenderAgent    SenderType = "agent"
 	SenderSystem   SenderType = "system"
 	SenderCopilot  SenderType = "copilot"
+	// SenderAutomation marks a message authored by an automation rule (shown as
+	// "System Automation" in history). It is also the anti-loop signal: a
+	// message_created emitted for an automation-authored message carries
+	// origin=automation, so it never re-triggers automation rules.
+	SenderAutomation SenderType = "automation"
 )
 
 // Direction is the flow of a message relative to the operation.

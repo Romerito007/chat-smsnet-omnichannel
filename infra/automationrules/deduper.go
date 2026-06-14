@@ -7,12 +7,11 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/redis"
 )
 
-// dedupWindow bounds how long a (rule,conversation,event) firing suppresses a
-// repeat. It is the anti-loop guard: since the only action is send_webhook (which
-// leaves the system and mutates no internal state), there is no internal feedback
-// loop — this window only absorbs bursts and external-callback re-entrancy. If an
-// internal-mutating action is ever added, revisit this guard.
-const dedupWindow = 10 * time.Second
+// dedupWindow bounds how long a (rule, event_id) firing stays claimed. The key is
+// claimed BEFORE the rule's actions run, so an Asynq retry of the same task finds
+// it claimed and skips — making side-effectful actions (e.g. send_message) safe
+// against retries. The window only needs to outlive the task's retry horizon.
+const dedupWindow = 1 * time.Hour
 
 // Deduper is a Redis SETNX anti-loop guard for rule firings.
 type Deduper struct {

@@ -9,3 +9,35 @@ import "context"
 type RuleEventSink interface {
 	EmitRuleEvent(ctx context.Context, tenantID, event, conversationID string, payload any)
 }
+
+// RuleOrigin tags what caused a lifecycle event, carried on the context so the
+// emitting service does not need a wider signature. It is the PRIMARY anti-loop
+// mechanism: events produced by an automation action are tagged OriginAutomation,
+// and the automation evaluator never fires rules from automation-origin events —
+// so automation cannot feed itself.
+type RuleOrigin string
+
+const (
+	// OriginExternal is the default: a human/customer/integration-caused event.
+	OriginExternal RuleOrigin = "external"
+	// OriginAutomation marks an event produced by an automation rule action.
+	OriginAutomation RuleOrigin = "automation"
+)
+
+type ruleOriginKey struct{}
+
+// WithRuleOrigin returns a context tagged with the given rule-event origin. The
+// automation executor wraps its action calls with OriginAutomation so every
+// lifecycle event they emit is suppressed by the evaluator.
+func WithRuleOrigin(ctx context.Context, o RuleOrigin) context.Context {
+	return context.WithValue(ctx, ruleOriginKey{}, o)
+}
+
+// RuleOriginFromContext returns the context's rule origin, defaulting to
+// OriginExternal when unset.
+func RuleOriginFromContext(ctx context.Context) RuleOrigin {
+	if o, ok := ctx.Value(ruleOriginKey{}).(RuleOrigin); ok && o != "" {
+		return o
+	}
+	return OriginExternal
+}

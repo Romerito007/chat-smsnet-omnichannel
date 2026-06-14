@@ -12,6 +12,7 @@ import (
 	contactrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/repository"
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/repository"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
 // fakeConvRepo embeds the interface and overrides FindByID.
@@ -58,7 +59,7 @@ func newEvaluator(conv *conventity.Conversation, contact *contactentity.Contact,
 		rules, logs,
 		&fakeConvRepo{conv: conv},
 		&fakeContactRepo{contact: contact},
-		emitter,
+		NewExecutor(emitter, nil),
 		fakeDeduper{allow: allow},
 		fixedClock{t: time.Unix(1700000000, 0).UTC()},
 	)
@@ -68,13 +69,39 @@ func newEvaluator(conv *conventity.Conversation, contact *contactentity.Contact,
 func ruleFor(event entity.RuleEvent, webhookID string, conds ...entity.Condition) *entity.AutomationRule {
 	return &entity.AutomationRule{
 		ID: "r1", TenantID: "t1", Name: "R", Event: event, Enabled: true,
-		Conditions: conds, Actions: []entity.Action{{Type: entity.ActionSendWebhook, WebhookID: webhookID}},
+		Conditions: conds,
+		Actions:    []entity.Action{{Type: entity.ActionSendWebhook, Params: map[string]string{"webhook_id": webhookID}}},
 	}
+}
+
+// fakeMessenger records automation message sends. When loopback is set it
+// re-enters the evaluator with an origin=automation message.created task — exactly
+// what the conversations service would emit for an automation-authored message —
+// so a test can prove the loop terminates.
+type fakeMessenger struct {
+	ev    *Evaluator
+	sends int
+}
+
+func (m *fakeMessenger) SendAutomationMessage(ctx context.Context, conversationID, _, _ string) error {
+	m.sends++
+	if m.ev != nil {
+		_ = m.ev.Evaluate(ctx, arcontracts.EvaluateTask{
+			TenantID: "t1", Event: "message.created", ConversationID: conversationID,
+			EventID: "evt-auto", Origin: string(shared.OriginAutomation),
+		})
+	}
+	return nil
 }
 
 func task(event, convID string, data any) arcontracts.EvaluateTask {
 	raw, _ := json.Marshal(data)
 	return arcontracts.EvaluateTask{TenantID: "t1", Event: event, ConversationID: convID, Data: raw}
+}
+
+func mustJSON(v any) json.RawMessage {
+	raw, _ := json.Marshal(v)
+	return raw
 }
 
 func TestEvaluate_MatchFiresWebhook(t *testing.T) {
@@ -151,6 +178,64 @@ func TestEvaluate_MessageCreatedMatchesAgainstConversation(t *testing.T) {
 	_ = json.Unmarshal([]byte(emitter.calls[0].data), &got)
 	if got["id"] != "m1" {
 		t.Errorf("webhook data should be the message payload, got %s", emitter.calls[0].data)
+	}
+}
+
+func TestEvaluate_AutomationOriginSkipped(t *testing.T) {
+	// An event produced BY an automation action (origin=automation) must never be
+	// evaluated — the rule does not fire even though it matches.
+	conv := &conventity.Conversation{ID: "cv1", TenantID: "t1", Status: conventity.Status("new"), Channel: "whatsapp", ContactID: "c1"}
+	repo := newFakeRuleRepo()
+	repo.byID["r1"] = ruleFor(entity.EventMessageCreated, "wh1")
+	emitter := &fakeEmitter{}
+	ev, _ := newEvaluator(conv, nil, repo, emitter, true)
+
+	err := ev.Evaluate(context.Background(), arcontracts.EvaluateTask{
+		TenantID: "t1", Event: "message.created", ConversationID: "cv1",
+		EventID: "e1", Origin: string(shared.OriginAutomation),
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if len(emitter.calls) != 0 {
+		t.Errorf("automation-origin event must not fire any rule: %+v", emitter.calls)
+	}
+}
+
+// TestEvaluate_SendMessageDoesNotLoop is the critical anti-loop case: a rule on
+// message_created whose action is send_message. The automation message it creates
+// emits its OWN message.created — but that one is origin=automation, so the rule
+// does NOT fire again. The send happens exactly once; the loop terminates.
+func TestEvaluate_SendMessageDoesNotLoop(t *testing.T) {
+	conv := &conventity.Conversation{ID: "cv1", TenantID: "t1", Status: conventity.Status("new"), Channel: "whatsapp", ContactID: "c1"}
+	repo := newFakeRuleRepo()
+	repo.byID["r1"] = &entity.AutomationRule{
+		ID: "r1", TenantID: "t1", Name: "auto-reply", Event: entity.EventMessageCreated, Enabled: true,
+		Actions: []entity.Action{{Type: entity.ActionSendMessage, Params: map[string]string{"text": "olá!"}}},
+	}
+	logs := &fakeLogRepo{}
+	messenger := &fakeMessenger{}
+	ev := NewEvaluator(
+		repo, logs,
+		&fakeConvRepo{conv: conv},
+		&fakeContactRepo{contact: &contactentity.Contact{ID: "c1"}},
+		NewExecutor(&fakeEmitter{}, messenger),
+		fakeDeduper{allow: true},
+		fixedClock{t: time.Unix(1700000000, 0).UTC()},
+	)
+	messenger.ev = ev // close the loop: the automation message re-enters the evaluator
+
+	// A genuine (external) customer message arrives.
+	err := ev.Evaluate(context.Background(), arcontracts.EvaluateTask{
+		TenantID: "t1", Event: "message.created", ConversationID: "cv1",
+		EventID: "evt-customer", Origin: string(shared.OriginExternal),
+		Data: mustJSON(map[string]any{"id": "m1", "text": "preciso de suporte"}),
+	})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if messenger.sends != 1 {
+		t.Fatalf("expected exactly one automation message (no loop), got %d", messenger.sends)
 	}
 }
 

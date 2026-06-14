@@ -8,9 +8,12 @@ type EvalStatus string
 const (
 	// EvalActionEnqueued: the rule matched and its action(s) were enqueued.
 	EvalActionEnqueued EvalStatus = "action_enqueued"
-	// EvalSkippedDedup: the rule matched but was skipped by the anti-loop dedup
-	// window (same rule+conversation+event fired recently).
+	// EvalSkippedDedup: the rule matched but was skipped by the anti-loop dedup —
+	// the (rule, event_id) firing was already claimed (e.g. a task retry).
 	EvalSkippedDedup EvalStatus = "skipped_dedup"
+	// EvalSkippedAutomation: the event was produced by an automation action
+	// (origin=automation) and is suppressed so automation never feeds itself.
+	EvalSkippedAutomation EvalStatus = "skipped_automation"
 	// EvalError: an action failed to enqueue (e.g. webhook disabled/gone).
 	EvalError EvalStatus = "error"
 )

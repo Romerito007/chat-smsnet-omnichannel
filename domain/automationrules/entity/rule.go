@@ -109,10 +109,14 @@ func OperatorAllowed(field ConditionField, op ConditionOperator) bool {
 // ActionType is the kind of action a rule runs.
 type ActionType string
 
-// ActionSendWebhook delivers the event to an existing webhook (by id) via the
-// webhooks pipeline. It is the only action type implemented; the field is kept
-// open so more actions can be added later.
-const ActionSendWebhook ActionType = "send_webhook"
+const (
+	// ActionSendWebhook delivers the event to an existing webhook (by id) via the
+	// webhooks pipeline. Param: webhook_id.
+	ActionSendWebhook ActionType = "send_webhook"
+	// ActionSendMessage injects an outbound message authored by automation
+	// (SenderType=automation), reusing the normal send pipeline. Param: text.
+	ActionSendMessage ActionType = "send_message"
+)
 
 // Condition is one field/operator/value test. Value is a single string (a tag id
 // for the tags field); multiple conditions on a rule combine with AND.
@@ -122,11 +126,20 @@ type Condition struct {
 	Value    string
 }
 
-// Action is one thing a rule does on match. For send_webhook, WebhookID references
-// a registered webhook subscription.
+// Action is one thing a rule does on match. Params holds the action's typed
+// inputs by key (e.g. "webhook_id", "text"), kept as an open map so new action
+// types add params without changing the schema.
 type Action struct {
-	Type      ActionType
-	WebhookID string
+	Type   ActionType
+	Params map[string]string
+}
+
+// Param returns the named param value (empty when unset).
+func (a Action) Param(key string) string {
+	if a.Params == nil {
+		return ""
+	}
+	return a.Params[key]
 }
 
 // AutomationRule is a tenant's automation rule: event + AND-conditions + actions.
@@ -147,8 +160,8 @@ type AutomationRule struct {
 func (r *AutomationRule) WebhookIDs() []string {
 	var out []string
 	for _, a := range r.Actions {
-		if a.Type == ActionSendWebhook && a.WebhookID != "" {
-			out = append(out, a.WebhookID)
+		if a.Type == ActionSendWebhook && a.Param("webhook_id") != "" {
+			out = append(out, a.Param("webhook_id"))
 		}
 	}
 	return out

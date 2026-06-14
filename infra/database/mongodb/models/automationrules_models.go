@@ -20,10 +20,11 @@ type RuleCondition struct {
 	Value    string `bson:"value"`
 }
 
-// RuleAction is one action; for send_webhook, WebhookID references a webhook.
+// RuleAction is one action; Params holds the action's typed inputs by key (e.g.
+// "webhook_id", "text").
 type RuleAction struct {
-	Type      string `bson:"type"`
-	WebhookID string `bson:"webhook_id,omitempty"`
+	Type   string            `bson:"type"`
+	Params map[string]string `bson:"params,omitempty"`
 }
 
 // RuleEvaluationLog is the BSON document for one rule firing (no event payload).

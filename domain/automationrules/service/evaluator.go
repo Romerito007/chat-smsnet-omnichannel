@@ -33,7 +33,7 @@ type Evaluator struct {
 	logs          repository.LogRepository
 	conversations convrepo.ConversationRepository
 	contacts      contactrepo.ContactRepository
-	emitter       WebhookEmitter
+	actions       ActionRunner
 	dedup         Deduper
 	clock         shared.Clock
 }
@@ -44,19 +44,26 @@ func NewEvaluator(
 	logs repository.LogRepository,
 	conversations convrepo.ConversationRepository,
 	contacts contactrepo.ContactRepository,
-	emitter WebhookEmitter,
+	actions ActionRunner,
 	dedup Deduper,
 	clock shared.Clock,
 ) *Evaluator {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Evaluator{rules: rules, logs: logs, conversations: conversations, contacts: contacts, emitter: emitter, dedup: dedup, clock: clock}
+	return &Evaluator{rules: rules, logs: logs, conversations: conversations, contacts: contacts, actions: actions, dedup: dedup, clock: clock}
 }
 
 // Evaluate processes one task. The internal event is mapped to a rule event;
 // unmapped events are ignored. The tenant is taken from the task and put on ctx.
 func (e *Evaluator) Evaluate(ctx context.Context, task arcontracts.EvaluateTask) error {
+	// ANTI-LOOP (primary): events produced by an automation action are tagged
+	// origin=automation and never evaluated — so automation cannot feed itself.
+	// This kills the loop at the root (e.g. a send_message action's message_created
+	// never re-triggers the rule that created it).
+	if task.Origin == string(shared.OriginAutomation) {
+		return nil
+	}
 	ruleEvent, ok := entity.RuleEventForInternal(task.Event)
 	if !ok {
 		return nil // not an event rules react to
@@ -84,8 +91,11 @@ func (e *Evaluator) Evaluate(ctx context.Context, task arcontracts.EvaluateTask)
 		if !rule.Matches(ec) {
 			continue
 		}
+		// Dedup CLAIMS the (rule, event_id) firing BEFORE running actions, so an
+		// Asynq retry of the same task finds the key already claimed and skips —
+		// never re-running a side-effectful action (e.g. send_message twice).
 		if e.dedup != nil {
-			allowed, derr := e.dedup.Allow(ctx, dedupKey(task.TenantID, rule.ID, task.ConversationID, string(ruleEvent)))
+			allowed, derr := e.dedup.Allow(ctx, dedupKey(task.TenantID, rule.ID, task.EventID))
 			if derr == nil && !allowed {
 				e.log(ctx, task, rule.ID, ruleEvent, entity.EvalSkippedDedup, "")
 				continue
@@ -96,17 +106,20 @@ func (e *Evaluator) Evaluate(ctx context.Context, task arcontracts.EvaluateTask)
 	return nil
 }
 
-// fire runs a matching rule's actions, logging the outcome.
+// fire runs a matching rule's actions in declared order, best-effort: a failing
+// action does not abort the rest. The outcome is logged (error summary on the
+// first failure). Actions run via the executor, which tags ctx origin=automation.
 func (e *Evaluator) fire(ctx context.Context, task arcontracts.EvaluateTask, rule *entity.AutomationRule, ruleEvent entity.RuleEvent) {
+	ac := ActionContext{
+		TenantID:       task.TenantID,
+		ConversationID: task.ConversationID,
+		RuleID:         rule.ID,
+		EventWire:      string(ruleEvent),
+		Data:           task.Data,
+	}
 	var firstErr string
 	for _, a := range rule.Actions {
-		if a.Type != entity.ActionSendWebhook {
-			continue
-		}
-		// The webhook data is the original event payload; the event is the rule
-		// wire name. EmitTo ignores the webhook's events[] AND scopes — the rule
-		// already decided this delivery.
-		if err := e.emitter.EmitTo(ctx, task.TenantID, a.WebhookID, string(ruleEvent), task.Data); err != nil && firstErr == "" {
+		if err := e.actions.Run(ctx, a, ac); err != nil && firstErr == "" {
 			firstErr = summarize(err)
 		}
 	}
@@ -154,8 +167,8 @@ func (e *Evaluator) log(ctx context.Context, task arcontracts.EvaluateTask, rule
 	})
 }
 
-func dedupKey(tenantID, ruleID, conversationID, event string) string {
-	return "rule:fired:" + tenantID + ":" + ruleID + ":" + conversationID + ":" + event
+func dedupKey(tenantID, ruleID, eventID string) string {
+	return "rule:fired:" + tenantID + ":" + ruleID + ":" + eventID
 }
 
 func summarize(err error) string {
