@@ -35,7 +35,17 @@ type SendMessage struct {
 	MessageType entity.MessageType
 	Text        string
 	Attachments []entity.Attachment
-	Metadata    map[string]any
+	// Template is required when MessageType=template (WhatsApp): the opaque
+	// integrator template id + filled named params. The display text and the
+	// outbound payload are derived from it.
+	Template *SendTemplate
+	Metadata map[string]any
+}
+
+// SendTemplate is the template selection on a template send.
+type SendTemplate struct {
+	TemplateID string
+	Params     map[string]string
 }
 
 // EditMessage is the input to edit a message's text (soft edit: edited_at is set

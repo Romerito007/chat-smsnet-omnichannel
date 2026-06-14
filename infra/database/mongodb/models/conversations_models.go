@@ -33,24 +33,25 @@ type Attachment struct {
 
 // Message is the BSON document for a message. Edits/deletes are soft.
 type Message struct {
-	ID                string         `bson:"_id"`
-	TenantID          string         `bson:"tenant_id"`
-	ConversationID    string         `bson:"conversation_id"`
-	SenderType        string         `bson:"sender_type"`
-	SenderID          string         `bson:"sender_id,omitempty"`
-	Direction         string         `bson:"direction"`
-	MessageType       string         `bson:"message_type"`
-	Text              string         `bson:"text"`
-	Attachments       []Attachment   `bson:"attachments,omitempty"`
-	Metadata          map[string]any `bson:"metadata,omitempty"`
-	CreatedAt         time.Time      `bson:"created_at"`
-	DeliveryStatus    string         `bson:"delivery_status,omitempty"`
-	DeliveryError     string         `bson:"delivery_error,omitempty"`
-	ExternalMessageID string         `bson:"external_message_id,omitempty"`
-	DeliveredAt       *time.Time     `bson:"delivered_at,omitempty"`
-	ReadAt            *time.Time     `bson:"read_at,omitempty"`
-	EditedAt          *time.Time     `bson:"edited_at,omitempty"`
-	DeletedAt         *time.Time     `bson:"deleted_at,omitempty"`
+	ID                string           `bson:"_id"`
+	TenantID          string           `bson:"tenant_id"`
+	ConversationID    string           `bson:"conversation_id"`
+	SenderType        string           `bson:"sender_type"`
+	SenderID          string           `bson:"sender_id,omitempty"`
+	Direction         string           `bson:"direction"`
+	MessageType       string           `bson:"message_type"`
+	Text              string           `bson:"text"`
+	Attachments       []Attachment     `bson:"attachments,omitempty"`
+	Template          *MessageTemplate `bson:"template,omitempty"`
+	Metadata          map[string]any   `bson:"metadata,omitempty"`
+	CreatedAt         time.Time        `bson:"created_at"`
+	DeliveryStatus    string           `bson:"delivery_status,omitempty"`
+	DeliveryError     string           `bson:"delivery_error,omitempty"`
+	ExternalMessageID string           `bson:"external_message_id,omitempty"`
+	DeliveredAt       *time.Time       `bson:"delivered_at,omitempty"`
+	ReadAt            *time.Time       `bson:"read_at,omitempty"`
+	EditedAt          *time.Time       `bson:"edited_at,omitempty"`
+	DeletedAt         *time.Time       `bson:"deleted_at,omitempty"`
 }
 
 // ConversationEvent is the BSON document for a conversation timeline event.
@@ -63,4 +64,10 @@ type ConversationEvent struct {
 	ActorID        string         `bson:"actor_id,omitempty"`
 	Data           map[string]any `bson:"data,omitempty"`
 	CreatedAt      time.Time      `bson:"created_at"`
+}
+
+// MessageTemplate is the BSON sub-document for a WhatsApp template message.
+type MessageTemplate struct {
+	TemplateID string            `bson:"template_id"`
+	Params     map[string]string `bson:"params,omitempty"`
 }

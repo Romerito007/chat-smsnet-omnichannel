@@ -85,15 +85,19 @@ type Attachment struct {
 // Message is a single entry in a conversation. Edits and deletes are soft
 // (EditedAt / DeletedAt) so history is preserved.
 type Message struct {
-	ID                string
-	TenantID          string
-	ConversationID    string
-	SenderType        SenderType
-	SenderID          string
-	Direction         Direction
-	MessageType       MessageType
-	Text              string
-	Attachments       []Attachment
+	ID             string
+	TenantID       string
+	ConversationID string
+	SenderType     SenderType
+	SenderID       string
+	Direction      Direction
+	MessageType    MessageType
+	Text           string
+	Attachments    []Attachment
+	// Template is set for message_type=template (WhatsApp). It carries the opaque
+	// integrator template id + filled named params sent to the integrator. Text
+	// holds the locally-resolved display string (never sent out).
+	Template          *TemplatePayload
 	Metadata          map[string]any
 	CreatedAt         time.Time
 	DeliveryStatus    DeliveryStatus
@@ -103,6 +107,14 @@ type Message struct {
 	ReadAt            *time.Time
 	EditedAt          *time.Time
 	DeletedAt         *time.Time
+}
+
+// MessageTemplate is the WhatsApp template payload of an outgoing template
+// message: the opaque integrator template id and the filled named params. Only
+// these go to the integrator; the resolved display text lives in Message.Text.
+type TemplatePayload struct {
+	TemplateID string
+	Params     map[string]string
 }
 
 // IsDeleted reports whether the message was soft-deleted.

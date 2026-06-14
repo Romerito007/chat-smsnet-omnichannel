@@ -176,6 +176,7 @@ func msgToModel(m *entity.Message) models.Message {
 		MessageType:       string(m.MessageType),
 		Text:              m.Text,
 		Attachments:       atts,
+		Template:          msgTemplateToModel(m.Template),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    string(m.DeliveryStatus),
@@ -203,6 +204,7 @@ func msgToEntity(m *models.Message) *entity.Message {
 		MessageType:       entity.MessageType(m.MessageType),
 		Text:              m.Text,
 		Attachments:       atts,
+		Template:          msgTemplateToEntity(m.Template),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    entity.DeliveryStatus(m.DeliveryStatus),
@@ -216,3 +218,17 @@ func msgToEntity(m *models.Message) *entity.Message {
 }
 
 var _ repository.MessageRepository = (*MessageRepository)(nil)
+
+func msgTemplateToModel(t *entity.TemplatePayload) *models.MessageTemplate {
+	if t == nil {
+		return nil
+	}
+	return &models.MessageTemplate{TemplateID: t.TemplateID, Params: t.Params}
+}
+
+func msgTemplateToEntity(t *models.MessageTemplate) *entity.TemplatePayload {
+	if t == nil {
+		return nil
+	}
+	return &entity.TemplatePayload{TemplateID: t.TemplateID, Params: t.Params}
+}

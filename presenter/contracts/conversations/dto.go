@@ -78,11 +78,18 @@ type AttachmentRequest struct {
 	Size        int64  `json:"size"`
 }
 
+// TemplateRequest selects a WhatsApp template + its named params on a template send.
+type TemplateRequest struct {
+	TemplateID string            `json:"template_id"`
+	Params     map[string]string `json:"params"`
+}
+
 // SendMessageRequest is the body of POST /v1/conversations/{id}/messages.
 type SendMessageRequest struct {
 	MessageType string              `json:"message_type"`
 	Text        string              `json:"text"`
 	Attachments []AttachmentRequest `json:"attachments"`
+	Template    *TemplateRequest    `json:"template"`
 	Metadata    map[string]any      `json:"metadata"`
 }
 
@@ -92,12 +99,16 @@ func (r SendMessageRequest) ToCommand() contracts.SendMessage {
 	for i, a := range r.Attachments {
 		atts[i] = entity.Attachment{ID: a.ID, URL: a.URL, ContentType: a.ContentType, Filename: a.Filename, Size: a.Size}
 	}
-	return contracts.SendMessage{
+	cmd := contracts.SendMessage{
 		MessageType: entity.MessageType(r.MessageType),
 		Text:        r.Text,
 		Attachments: atts,
 		Metadata:    r.Metadata,
 	}
+	if r.Template != nil {
+		cmd.Template = &contracts.SendTemplate{TemplateID: r.Template.TemplateID, Params: r.Template.Params}
+	}
+	return cmd
 }
 
 // EditMessageRequest is the body of PATCH /v1/conversations/{id}/messages/{mid}.
@@ -305,6 +316,7 @@ type MessageResponse struct {
 	MessageType       string              `json:"message_type"`
 	Text              string              `json:"text"`
 	Attachments       []AttachmentRequest `json:"attachments,omitempty"`
+	Template          *TemplateRequest    `json:"template,omitempty"`
 	Metadata          map[string]any      `json:"metadata,omitempty"`
 	DeliveryStatus    string              `json:"delivery_status,omitempty"`
 	ExternalMessageID string              `json:"external_message_id,omitempty"`
@@ -318,7 +330,7 @@ func NewMessageResponse(m *entity.Message) MessageResponse {
 	for i, a := range m.Attachments {
 		atts[i] = AttachmentRequest{ID: a.ID, URL: a.URL, ContentType: a.ContentType, Filename: a.Filename, Size: a.Size}
 	}
-	return MessageResponse{
+	resp := MessageResponse{
 		ID:                m.ID,
 		ConversationID:    m.ConversationID,
 		SenderType:        string(m.SenderType),
@@ -333,6 +345,10 @@ func NewMessageResponse(m *entity.Message) MessageResponse {
 		CreatedAt:         m.CreatedAt,
 		EditedAt:          m.EditedAt,
 	}
+	if m.Template != nil {
+		resp.Template = &TemplateRequest{TemplateID: m.Template.TemplateID, Params: m.Template.Params}
+	}
+	return resp
 }
 
 // NewMessageResponses maps a slice.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
+	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
@@ -417,6 +418,58 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 
 // SendMessage posts an outbound message from the acting agent. Outbound messages
 // are born delivery_status=pending; the channels domain performs delivery.
+// resolveTemplate validates a template send against the conversation's channel
+// mirror and returns the locally-resolved display text + the outbound payload. The
+// template id must exist on the channel (else 422); every declared variable must
+// be filled and no extra params supplied (else 422). The chat validates presence
+// only — value format/semantics are the integrator/Meta's job.
+func (s *Service) resolveTemplate(ctx context.Context, conv *entity.Conversation, sel *contracts.SendTemplate) (string, *entity.TemplatePayload, error) {
+	if sel == nil || strings.TrimSpace(sel.TemplateID) == "" {
+		return "", nil, apperror.Validation("template is required for a template message").
+			WithDetails(map[string]any{"template.template_id": "is required"})
+	}
+	if conv.ChannelID == "" {
+		return "", nil, apperror.Validation("conversation has no channel to resolve the template against")
+	}
+	conn, err := s.channels.FindByID(ctx, conv.ChannelID)
+	if err != nil {
+		return "", nil, err
+	}
+	tmpl := chentity.FindTemplate(conn.WhatsAppTemplates, sel.TemplateID)
+	if tmpl == nil {
+		return "", nil, apperror.Validation("template not available on this channel").
+			WithDetails(map[string]any{"template.template_id": "not found on this channel"})
+	}
+
+	params := sel.Params
+	if params == nil {
+		params = map[string]string{}
+	}
+	v := map[string]any{}
+	declared := map[string]bool{}
+	for _, va := range tmpl.Body.Variables {
+		declared[va.Key] = true
+		if _, ok := params[va.Key]; !ok || strings.TrimSpace(params[va.Key]) == "" {
+			v["template.params."+va.Key] = "is required"
+		}
+	}
+	for k := range params {
+		if !declared[k] {
+			v["template.params."+k] = "is not a variable of this template"
+		}
+	}
+	if len(v) > 0 {
+		return "", nil, apperror.Validation("invalid template params").WithDetails(v)
+	}
+
+	// Resolve {{key}} placeholders in the body for the chat history (display only).
+	display := tmpl.Body.Text
+	for _, va := range tmpl.Body.Variables {
+		display = strings.ReplaceAll(display, "{{"+va.Key+"}}", params[va.Key])
+	}
+	return display, &entity.TemplatePayload{TemplateID: tmpl.ID, Params: params}, nil
+}
+
 func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd contracts.SendMessage) (*entity.Message, error) {
 	conv, ac, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
@@ -433,14 +486,28 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 	if !mtype.Valid() {
 		return nil, apperror.Validation("invalid message_type")
 	}
-	if strings.TrimSpace(cmd.Text) == "" && len(cmd.Attachments) == 0 {
-		return nil, apperror.Validation("message text or attachments required")
-	}
-	// Reject a send that references a non-existent / cross-tenant / unconfirmed
-	// attachment, so we never store an orphan reference.
-	if s.attachments != nil && len(cmd.Attachments) > 0 {
-		if err := s.attachments.ValidateMessageAttachments(ctx, attachmentIDs(cmd.Attachments)); err != nil {
-			return nil, err
+
+	// A template send derives its display text + outbound payload from the channel's
+	// template mirror; a normal send needs text or attachments.
+	text := cmd.Text
+	var templatePayload *entity.TemplatePayload
+	if mtype == entity.MessageTemplate {
+		resolved, payload, terr := s.resolveTemplate(ctx, conv, cmd.Template)
+		if terr != nil {
+			return nil, terr
+		}
+		text = resolved
+		templatePayload = payload
+	} else {
+		if strings.TrimSpace(cmd.Text) == "" && len(cmd.Attachments) == 0 {
+			return nil, apperror.Validation("message text or attachments required")
+		}
+		// Reject a send that references a non-existent / cross-tenant / unconfirmed
+		// attachment, so we never store an orphan reference.
+		if s.attachments != nil && len(cmd.Attachments) > 0 {
+			if err := s.attachments.ValidateMessageAttachments(ctx, attachmentIDs(cmd.Attachments)); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -453,8 +520,9 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 		SenderID:       ac.UserID,
 		Direction:      entity.DirectionOutbound,
 		MessageType:    mtype,
-		Text:           cmd.Text,
+		Text:           text,
 		Attachments:    cmd.Attachments,
+		Template:       templatePayload,
 		Metadata:       cmd.Metadata,
 		CreatedAt:      now,
 		DeliveryStatus: entity.DeliveryPending,

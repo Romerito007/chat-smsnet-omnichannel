@@ -173,6 +173,7 @@ func (s *OutboundService) Deliver(ctx context.Context, deliveryID string) error 
 		Contact:           recipient,
 		Text:              message.Text,
 		Attachments:       s.integrationAttachments(ctx, message.Attachments),
+		Template:          outboundTemplate(message),
 		Metadata:          message.Metadata,
 	})
 	if err != nil {
@@ -362,3 +363,12 @@ func (s *OutboundService) publishStatus(ctx context.Context, conv *conventity.Co
 }
 
 var _ convcontracts.OutboundDispatcher = (*OutboundService)(nil)
+
+// outboundTemplate maps a template message to the outbound payload (id + params
+// only). Returns nil for non-template messages.
+func outboundTemplate(m *conventity.Message) *chcontracts.OutboundTemplate {
+	if m.Template == nil {
+		return nil
+	}
+	return &chcontracts.OutboundTemplate{ID: m.Template.TemplateID, Params: m.Template.Params}
+}

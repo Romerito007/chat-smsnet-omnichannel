@@ -156,7 +156,17 @@ api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
 **nunca** em claro nem retornado após criação), `webhook_verify_token` (=
 `inbound_token`, exibido uma vez), `default_sector_id`, `business_hours`,
 `enabled`, `uses_protocol` bool (liga numeração de protocolo por conversa neste
-channel; default false — ver `conversations.protocol`).
+channel; default false — ver `conversations.protocol`), `whatsapp_templates`
+(espelho **render-only** dos templates do integrador: `id` opaque, `name`,
+`language`, `body{text, variables[{key,label,example}]}`, `header?`, `buttons?`,
+`footer?`; substituído por completo a cada push; o chat NÃO fala com a Meta).
+
+> **Atributos personalizados:** `contacts.custom_attributes` e
+> `conversations.custom_attributes` (mapa key→value, validado contra
+> `custom_attribute_definitions` por `applies_to`). Mensagens de **template**
+> (`messages.message_type=template`) guardam `template{template_id, params}` e o
+> `text` resolvido (só exibição local); o webhook de saída leva **só**
+> `template.id` + `template.params` (sem texto/estrutura).
 
 ### `protocol_counters`
 Contador atômico de protocolo. Um doc por `(tenant, ano)`: `_id` =

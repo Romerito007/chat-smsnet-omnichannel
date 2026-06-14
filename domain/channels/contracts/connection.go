@@ -4,27 +4,29 @@ import chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/
 
 // CreateConnection registers a channel connection.
 type CreateConnection struct {
-	Type            chentity.Type
-	Name            string
-	BaseURL         string
-	AuthType        chentity.AuthType
-	Secret          string
-	DefaultSectorID string
-	BusinessHours   map[string]any
-	UsesProtocol    bool
+	Type              chentity.Type
+	Name              string
+	BaseURL           string
+	AuthType          chentity.AuthType
+	Secret            string
+	DefaultSectorID   string
+	BusinessHours     map[string]any
+	UsesProtocol      bool
+	WhatsAppTemplates []chentity.WhatsAppTemplate
 }
 
 // UpdateConnection carries optional fields; nil pointers mean "leave unchanged".
 type UpdateConnection struct {
-	Name            *string
-	Status          *chentity.Status
-	BaseURL         *string
-	AuthType        *chentity.AuthType
-	Secret          *string
-	DefaultSectorID *string
-	BusinessHours   *map[string]any
-	Enabled         *bool
-	UsesProtocol    *bool
+	Name              *string
+	Status            *chentity.Status
+	BaseURL           *string
+	AuthType          *chentity.AuthType
+	Secret            *string
+	DefaultSectorID   *string
+	BusinessHours     *map[string]any
+	Enabled           *bool
+	UsesProtocol      *bool
+	WhatsAppTemplates *[]chentity.WhatsAppTemplate
 }
 
 // TestResult is the outcome of POST /v1/channels/{id}/test.

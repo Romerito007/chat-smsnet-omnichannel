@@ -6,18 +6,54 @@ import "time"
 // stored encrypted (encrypted_secret); the integration token is stored only as a
 // SHA-256 hash (inbound_token_hash), never in plaintext.
 type ChannelConnection struct {
-	Base             `bson:",inline"`
-	Type             string         `bson:"type"`
-	Name             string         `bson:"name,omitempty"`
-	Status           string         `bson:"status"`
-	BaseURL          string         `bson:"base_url,omitempty"`
-	AuthType         string         `bson:"auth_type,omitempty"`
-	EncryptedSecret  string         `bson:"encrypted_secret,omitempty"`
-	InboundTokenHash string         `bson:"inbound_token_hash"`
-	DefaultSectorID  string         `bson:"default_sector_id,omitempty"`
-	BusinessHours    map[string]any `bson:"business_hours,omitempty"`
-	Enabled          bool           `bson:"enabled"`
-	UsesProtocol     bool           `bson:"uses_protocol,omitempty"`
+	Base              `bson:",inline"`
+	Type              string             `bson:"type"`
+	Name              string             `bson:"name,omitempty"`
+	Status            string             `bson:"status"`
+	BaseURL           string             `bson:"base_url,omitempty"`
+	AuthType          string             `bson:"auth_type,omitempty"`
+	EncryptedSecret   string             `bson:"encrypted_secret,omitempty"`
+	InboundTokenHash  string             `bson:"inbound_token_hash"`
+	DefaultSectorID   string             `bson:"default_sector_id,omitempty"`
+	BusinessHours     map[string]any     `bson:"business_hours,omitempty"`
+	Enabled           bool               `bson:"enabled"`
+	UsesProtocol      bool               `bson:"uses_protocol,omitempty"`
+	WhatsAppTemplates []WhatsAppTemplate `bson:"whatsapp_templates,omitempty"`
+}
+
+// WhatsAppTemplate is the BSON sub-document mirroring an integrator WhatsApp
+// template (render-only).
+type WhatsAppTemplate struct {
+	ID       string                   `bson:"id"`
+	Name     string                   `bson:"name"`
+	Language string                   `bson:"language,omitempty"`
+	Category string                   `bson:"category,omitempty"`
+	Body     WhatsAppTemplateBody     `bson:"body"`
+	Header   *WhatsAppTemplateHeader  `bson:"header,omitempty"`
+	Buttons  []WhatsAppTemplateButton `bson:"buttons,omitempty"`
+	Footer   string                   `bson:"footer,omitempty"`
+}
+
+type WhatsAppTemplateBody struct {
+	Text      string                     `bson:"text"`
+	Variables []WhatsAppTemplateVariable `bson:"variables,omitempty"`
+}
+
+type WhatsAppTemplateVariable struct {
+	Key     string `bson:"key"`
+	Label   string `bson:"label,omitempty"`
+	Example string `bson:"example,omitempty"`
+}
+
+type WhatsAppTemplateHeader struct {
+	Type string `bson:"type"`
+	Text string `bson:"text,omitempty"`
+}
+
+type WhatsAppTemplateButton struct {
+	Type string `bson:"type"`
+	Text string `bson:"text"`
+	URL  string `bson:"url,omitempty"`
 }
 
 // OutboundDelivery is the BSON document for an outbound delivery record.

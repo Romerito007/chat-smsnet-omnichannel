@@ -93,6 +93,16 @@ type messageBody struct {
 	Private     bool         `json:"private"`             // internal notes are never delivered
 	FileType    string       `json:"file_type,omitempty"` // message-level (first attachment)
 	Attachments []attachment `json:"attachments,omitempty"`
+	// Template carries the integrator template id + filled params for a WhatsApp
+	// template send. Set only for templates; content/text/attachments are empty
+	// then (the integrator already has the model and renders/sends to Meta).
+	Template *templatePayload `json:"template,omitempty"`
+}
+
+// templatePayload is the outbound template section: id + params ONLY.
+type templatePayload struct {
+	ID     string            `json:"id"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 type envelope struct {
@@ -141,10 +151,7 @@ func (a *Adapter) SendMessage(ctx context.Context, conn *chentity.ChannelConnect
 			Phone:      send.Contact.Phone,
 			ExternalID: firstNonEmpty(send.Contact.ExternalID, send.ExternalContactID),
 		},
-		Message: messageBody{
-			Content: send.Text, Text: send.Text, MessageType: "outgoing", Private: false,
-			FileType: msgFileType, Attachments: atts,
-		},
+		Message:   outboundMessageBody(send, atts, msgFileType),
 		Timestamp: time.Now().UTC().UnixMilli(),
 		Metadata:  send.Metadata,
 	}
@@ -223,3 +230,19 @@ func truncate(b []byte, n int) string {
 }
 
 var _ chcontracts.Adapter = (*Adapter)(nil)
+
+// outboundMessageBody builds the message section. For a template send it carries
+// ONLY the template id + params (no resolved text/structure); otherwise the text +
+// attachments.
+func outboundMessageBody(send chcontracts.OutboundSend, atts []attachment, fileType string) messageBody {
+	if send.Template != nil {
+		return messageBody{
+			MessageType: "outgoing",
+			Template:    &templatePayload{ID: send.Template.ID, Params: send.Template.Params},
+		}
+	}
+	return messageBody{
+		Content: send.Text, Text: send.Text, MessageType: "outgoing", Private: false,
+		FileType: fileType, Attachments: atts,
+	}
+}

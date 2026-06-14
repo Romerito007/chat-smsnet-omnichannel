@@ -79,6 +79,9 @@ type ChannelConnection struct {
 	// a closed last conversation is NOT reopened (a new one is created). When false
 	// (default), a closed last conversation is reopened and no protocol is assigned.
 	UsesProtocol bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// WhatsAppTemplates is a render-only mirror of the integrator's WhatsApp
+	// templates (selector + variable form). Replaced wholesale on each push.
+	WhatsAppTemplates []WhatsAppTemplate
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }

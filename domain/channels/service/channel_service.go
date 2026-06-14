@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -105,6 +106,9 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 	if err := bhentity.ValidateSchedule(cmd.BusinessHours); err != nil {
 		return nil, apperror.Validation(err.Error()).WithDetails(map[string]any{"business_hours": err.Error()})
 	}
+	if err := validateTemplates(cmd.WhatsAppTemplates); err != nil {
+		return nil, err
+	}
 	// The API channel signs outbound deliveries with an HMAC secret. When the
 	// company does not supply one, generate it so a signing key always exists;
 	// it is returned once on creation and never again.
@@ -115,22 +119,23 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 	now := s.clock.Now()
 	token := newInboundToken()
 	conn := &entity.ChannelConnection{
-		ID:               shared.NewID(),
-		TenantID:         tenantID,
-		Type:             cmd.Type,
-		Name:             strings.TrimSpace(cmd.Name),
-		Status:           entity.StatusDisconnected,
-		BaseURL:          strings.TrimSpace(cmd.BaseURL),
-		AuthType:         authType,
-		Secret:           secret,
-		InboundToken:     token,
-		InboundTokenHash: hashInboundToken(token),
-		DefaultSectorID:  cmd.DefaultSectorID,
-		BusinessHours:    cmd.BusinessHours,
-		Enabled:          true,
-		UsesProtocol:     cmd.UsesProtocol,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		ID:                shared.NewID(),
+		TenantID:          tenantID,
+		Type:              cmd.Type,
+		Name:              strings.TrimSpace(cmd.Name),
+		Status:            entity.StatusDisconnected,
+		BaseURL:           strings.TrimSpace(cmd.BaseURL),
+		AuthType:          authType,
+		Secret:            secret,
+		InboundToken:      token,
+		InboundTokenHash:  hashInboundToken(token),
+		DefaultSectorID:   cmd.DefaultSectorID,
+		BusinessHours:     cmd.BusinessHours,
+		Enabled:           true,
+		UsesProtocol:      cmd.UsesProtocol,
+		WhatsAppTemplates: cmd.WhatsAppTemplates,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 	if err := s.repo.Create(ctx, conn); err != nil {
 		return nil, err
@@ -206,6 +211,12 @@ func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts
 	}
 	if cmd.UsesProtocol != nil {
 		conn.UsesProtocol = *cmd.UsesProtocol
+	}
+	if cmd.WhatsAppTemplates != nil {
+		if err := validateTemplates(*cmd.WhatsAppTemplates); err != nil {
+			return nil, err
+		}
+		conn.WhatsAppTemplates = *cmd.WhatsAppTemplates
 	}
 	conn.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, conn); err != nil {
@@ -348,4 +359,33 @@ func randomToken(n int) string {
 	buf := make([]byte, n)
 	_, _ = rand.Read(buf)
 	return hex.EncodeToString(buf)
+}
+
+// validateTemplates checks the render-only template mirror: each item needs an id
+// and a name; declared body variables need a key. The integrator owns deeper
+// semantics, so this is intentionally minimal.
+func validateTemplates(templates []entity.WhatsAppTemplate) error {
+	v := map[string]any{}
+	seen := map[string]bool{}
+	for i, t := range templates {
+		if strings.TrimSpace(t.ID) == "" {
+			v[fmt.Sprintf("whatsapp_templates[%d].id", i)] = "is required"
+		} else if seen[t.ID] {
+			v[fmt.Sprintf("whatsapp_templates[%d].id", i)] = "is duplicated"
+		} else {
+			seen[t.ID] = true
+		}
+		if strings.TrimSpace(t.Name) == "" {
+			v[fmt.Sprintf("whatsapp_templates[%d].name", i)] = "is required"
+		}
+		for j, va := range t.Body.Variables {
+			if strings.TrimSpace(va.Key) == "" {
+				v[fmt.Sprintf("whatsapp_templates[%d].body.variables[%d].key", i, j)] = "is required"
+			}
+		}
+	}
+	if len(v) > 0 {
+		return apperror.Validation("invalid whatsapp_templates").WithDetails(v)
+	}
+	return nil
 }

@@ -26,7 +26,16 @@ type fakeChannelRepo struct {
 func (r *fakeChannelRepo) FindByID(ctx context.Context, id string) (*chentity.ChannelConnection, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	if r.ids[id] {
-		return &chentity.ChannelConnection{ID: id, TenantID: tenant, Type: chentity.TypeWhatsApp, Enabled: true}, nil
+		return &chentity.ChannelConnection{
+			ID: id, TenantID: tenant, Type: chentity.TypeWhatsApp, Enabled: true,
+			WhatsAppTemplates: []chentity.WhatsAppTemplate{{
+				ID: "welcome", Name: "Boas-vindas", Language: "pt_BR",
+				Body: chentity.WhatsAppTemplateBody{
+					Text:      "Olá {{nome}}, bem-vindo!",
+					Variables: []chentity.WhatsAppTemplateVariable{{Key: "nome", Label: "Nome"}},
+				},
+			}},
+		}, nil
 	}
 	return nil, apperror.NotFound("nf")
 }
@@ -545,5 +554,66 @@ func TestCloseInactive_ClosesIdleAndIdempotent(t *testing.T) {
 	n2, _ := svc.CloseInactive(adminCtx(), time.Hour)
 	if n2 != 0 {
 		t.Errorf("second run should close 0, got %d", n2)
+	}
+}
+
+// ── template send ────────────────────────────────────────────────────────────
+
+func TestSendMessage_Template_ResolvesAndStores(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	ctx := adminCtx()
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
+
+	msg, err := svc.SendMessage(ctx, conv.ID, contracts.SendMessage{
+		MessageType: entity.MessageTemplate,
+		Template:    &contracts.SendTemplate{TemplateID: "welcome", Params: map[string]string{"nome": "João"}},
+	})
+	if err != nil {
+		t.Fatalf("template send: %v", err)
+	}
+	if msg.MessageType != entity.MessageTemplate {
+		t.Errorf("message_type = %q, want template", msg.MessageType)
+	}
+	// Display text is resolved server-side from the channel template + params.
+	if msg.Text != "Olá João, bem-vindo!" {
+		t.Errorf("display text = %q, want resolved", msg.Text)
+	}
+	if msg.Template == nil || msg.Template.TemplateID != "welcome" || msg.Template.Params["nome"] != "João" {
+		t.Errorf("template payload not stored: %+v", msg.Template)
+	}
+}
+
+func TestSendMessage_Template_UnknownIDRejected(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	ctx := adminCtx()
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
+
+	_, err := svc.SendMessage(ctx, conv.ID, contracts.SendMessage{
+		MessageType: entity.MessageTemplate,
+		Template:    &contracts.SendTemplate{TemplateID: "ghost", Params: map[string]string{"nome": "x"}},
+	})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("expected validation_error for unknown template id, got %v", err)
+	}
+}
+
+func TestSendMessage_Template_BadParamsRejected(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	ctx := adminCtx()
+	conv, _ := svc.Create(ctx, contracts.CreateConversation{ContactID: "c1", ChannelID: "ch1", SectorID: "s1"})
+
+	// Missing the declared variable.
+	if _, err := svc.SendMessage(ctx, conv.ID, contracts.SendMessage{
+		MessageType: entity.MessageTemplate,
+		Template:    &contracts.SendTemplate{TemplateID: "welcome", Params: map[string]string{}},
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("expected validation_error for missing variable, got %v", err)
+	}
+	// Extra param not declared by the template.
+	if _, err := svc.SendMessage(ctx, conv.ID, contracts.SendMessage{
+		MessageType: entity.MessageTemplate,
+		Template:    &contracts.SendTemplate{TemplateID: "welcome", Params: map[string]string{"nome": "João", "extra": "x"}},
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("expected validation_error for extra param, got %v", err)
 	}
 }

@@ -17,7 +17,16 @@ type OutboundSend struct {
 	Contact           OutboundContact
 	Text              string
 	Attachments       []conventity.Attachment
-	Metadata          map[string]any
+	// Template, when set, is a WhatsApp template send: the integrator receives the
+	// opaque template id + filled params ONLY (no resolved text, no structure).
+	Template *OutboundTemplate
+	Metadata map[string]any
+}
+
+// OutboundTemplate is the template payload forwarded to the integrator.
+type OutboundTemplate struct {
+	ID     string
+	Params map[string]string
 }
 
 // OutboundContact is the minimal contact reference included in an outbound

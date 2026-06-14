@@ -17,16 +17,17 @@ import (
 // these are accepted as aliases of base_url/secret. The inbound_token is always
 // generated server-side.
 type CreateConnectionRequest struct {
-	Type            string         `json:"type"`
-	Name            string         `json:"name"`
-	BaseURL         string         `json:"base_url"`
-	OutboundURL     string         `json:"outbound_url"`
-	AuthType        string         `json:"auth_type"`
-	Secret          string         `json:"secret"`
-	OutboundSecret  string         `json:"outbound_secret"`
-	DefaultSectorID string         `json:"default_sector_id"`
-	BusinessHours   map[string]any `json:"business_hours"`
-	UsesProtocol    bool           `json:"uses_protocol"`
+	Type              string                `json:"type"`
+	Name              string                `json:"name"`
+	BaseURL           string                `json:"base_url"`
+	OutboundURL       string                `json:"outbound_url"`
+	AuthType          string                `json:"auth_type"`
+	Secret            string                `json:"secret"`
+	OutboundSecret    string                `json:"outbound_secret"`
+	DefaultSectorID   string                `json:"default_sector_id"`
+	BusinessHours     map[string]any        `json:"business_hours"`
+	UsesProtocol      bool                  `json:"uses_protocol"`
+	WhatsAppTemplates []WhatsAppTemplateDTO `json:"whatsapp_templates"`
 }
 
 // ToCommand maps to the service command, preferring the API-channel field names
@@ -41,30 +42,32 @@ func (r CreateConnectionRequest) ToCommand() chcontracts.CreateConnection {
 		secret = r.OutboundSecret
 	}
 	return chcontracts.CreateConnection{
-		Type:            chentity.Type(r.Type),
-		Name:            r.Name,
-		BaseURL:         baseURL,
-		AuthType:        chentity.AuthType(r.AuthType),
-		Secret:          secret,
-		DefaultSectorID: r.DefaultSectorID,
-		BusinessHours:   r.BusinessHours,
-		UsesProtocol:    r.UsesProtocol,
+		Type:              chentity.Type(r.Type),
+		Name:              r.Name,
+		BaseURL:           baseURL,
+		AuthType:          chentity.AuthType(r.AuthType),
+		Secret:            secret,
+		DefaultSectorID:   r.DefaultSectorID,
+		BusinessHours:     r.BusinessHours,
+		UsesProtocol:      r.UsesProtocol,
+		WhatsAppTemplates: templatesToEntity(r.WhatsAppTemplates),
 	}
 }
 
 // UpdateConnectionRequest is the body of PATCH /v1/channels/{id}.
 type UpdateConnectionRequest struct {
-	Name            *string         `json:"name"`
-	Status          *string         `json:"status"`
-	BaseURL         *string         `json:"base_url"`
-	OutboundURL     *string         `json:"outbound_url"`
-	AuthType        *string         `json:"auth_type"`
-	Secret          *string         `json:"secret"`
-	OutboundSecret  *string         `json:"outbound_secret"`
-	DefaultSectorID *string         `json:"default_sector_id"`
-	BusinessHours   *map[string]any `json:"business_hours"`
-	Enabled         *bool           `json:"enabled"`
-	UsesProtocol    *bool           `json:"uses_protocol"`
+	Name              *string                `json:"name"`
+	Status            *string                `json:"status"`
+	BaseURL           *string                `json:"base_url"`
+	OutboundURL       *string                `json:"outbound_url"`
+	AuthType          *string                `json:"auth_type"`
+	Secret            *string                `json:"secret"`
+	OutboundSecret    *string                `json:"outbound_secret"`
+	DefaultSectorID   *string                `json:"default_sector_id"`
+	BusinessHours     *map[string]any        `json:"business_hours"`
+	Enabled           *bool                  `json:"enabled"`
+	UsesProtocol      *bool                  `json:"uses_protocol"`
+	WhatsAppTemplates *[]WhatsAppTemplateDTO `json:"whatsapp_templates"`
 }
 
 // ToCommand maps to the service command, accepting the API-channel field names
@@ -95,6 +98,10 @@ func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
 		at := chentity.AuthType(*r.AuthType)
 		cmd.AuthType = &at
 	}
+	if r.WhatsAppTemplates != nil {
+		ts := templatesToEntity(*r.WhatsAppTemplates)
+		cmd.WhatsAppTemplates = &ts
+	}
 	return cmd
 }
 
@@ -102,41 +109,43 @@ func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
 // outbound secret nor the inbound token is ever returned here (only whether each
 // is set); both are revealed only once, on creation, via CreatedConnectionResponse.
 type ConnectionResponse struct {
-	ID              string         `json:"id"`
-	TenantID        string         `json:"tenant_id"`
-	Type            string         `json:"type"`
-	Name            string         `json:"name,omitempty"`
-	Status          string         `json:"status"`
-	BaseURL         string         `json:"base_url,omitempty"`
-	AuthType        string         `json:"auth_type,omitempty"`
-	HasSecret       bool           `json:"has_secret"`
-	HasInboundToken bool           `json:"has_inbound_token"`
-	DefaultSectorID string         `json:"default_sector_id,omitempty"`
-	BusinessHours   map[string]any `json:"business_hours,omitempty"`
-	Enabled         bool           `json:"enabled"`
-	UsesProtocol    bool           `json:"uses_protocol"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
+	ID                string                `json:"id"`
+	TenantID          string                `json:"tenant_id"`
+	Type              string                `json:"type"`
+	Name              string                `json:"name,omitempty"`
+	Status            string                `json:"status"`
+	BaseURL           string                `json:"base_url,omitempty"`
+	AuthType          string                `json:"auth_type,omitempty"`
+	HasSecret         bool                  `json:"has_secret"`
+	HasInboundToken   bool                  `json:"has_inbound_token"`
+	DefaultSectorID   string                `json:"default_sector_id,omitempty"`
+	BusinessHours     map[string]any        `json:"business_hours,omitempty"`
+	Enabled           bool                  `json:"enabled"`
+	UsesProtocol      bool                  `json:"uses_protocol"`
+	WhatsAppTemplates []WhatsAppTemplateDTO `json:"whatsapp_templates,omitempty"`
+	CreatedAt         time.Time             `json:"created_at"`
+	UpdatedAt         time.Time             `json:"updated_at"`
 }
 
 // NewConnectionResponse maps a connection, masking both the secret and token.
 func NewConnectionResponse(c *chentity.ChannelConnection) ConnectionResponse {
 	return ConnectionResponse{
-		ID:              c.ID,
-		TenantID:        c.TenantID,
-		Type:            string(c.Type),
-		Name:            c.Name,
-		Status:          string(c.Status),
-		BaseURL:         c.BaseURL,
-		AuthType:        string(c.AuthType),
-		HasSecret:       c.Secret != "",
-		HasInboundToken: c.InboundTokenHash != "",
-		DefaultSectorID: c.DefaultSectorID,
-		BusinessHours:   c.BusinessHours,
-		Enabled:         c.Enabled,
-		UsesProtocol:    c.UsesProtocol,
-		CreatedAt:       c.CreatedAt,
-		UpdatedAt:       c.UpdatedAt,
+		ID:                c.ID,
+		TenantID:          c.TenantID,
+		Type:              string(c.Type),
+		Name:              c.Name,
+		Status:            string(c.Status),
+		BaseURL:           c.BaseURL,
+		AuthType:          string(c.AuthType),
+		HasSecret:         c.Secret != "",
+		HasInboundToken:   c.InboundTokenHash != "",
+		DefaultSectorID:   c.DefaultSectorID,
+		BusinessHours:     c.BusinessHours,
+		Enabled:           c.Enabled,
+		UsesProtocol:      c.UsesProtocol,
+		WhatsAppTemplates: templatesFromEntity(c.WhatsAppTemplates),
+		CreatedAt:         c.CreatedAt,
+		UpdatedAt:         c.UpdatedAt,
 	}
 }
 
@@ -243,4 +252,94 @@ func (r InboundRequest) ToMessage(channel string) chcontracts.InboundMessage {
 		Metadata:          r.Metadata,
 		Timestamp:         r.Timestamp,
 	}
+}
+
+// ── whatsapp templates (render-only mirror) ─────────────────────────────────
+
+// WhatsAppTemplateDTO mirrors entity.WhatsAppTemplate on the wire.
+type WhatsAppTemplateDTO struct {
+	ID       string                   `json:"id"`
+	Name     string                   `json:"name"`
+	Language string                   `json:"language,omitempty"`
+	Category string                   `json:"category,omitempty"`
+	Body     WhatsAppTemplateBodyDTO  `json:"body"`
+	Header   *WhatsAppTemplateHeader  `json:"header,omitempty"`
+	Buttons  []WhatsAppTemplateButton `json:"buttons,omitempty"`
+	Footer   string                   `json:"footer,omitempty"`
+}
+
+type WhatsAppTemplateBodyDTO struct {
+	Text      string                     `json:"text"`
+	Variables []WhatsAppTemplateVariable `json:"variables,omitempty"`
+}
+
+type WhatsAppTemplateVariable struct {
+	Key     string `json:"key"`
+	Label   string `json:"label,omitempty"`
+	Example string `json:"example,omitempty"`
+}
+
+type WhatsAppTemplateHeader struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+type WhatsAppTemplateButton struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+	URL  string `json:"url,omitempty"`
+}
+
+func templatesToEntity(in []WhatsAppTemplateDTO) []chentity.WhatsAppTemplate {
+	if in == nil {
+		return nil
+	}
+	out := make([]chentity.WhatsAppTemplate, len(in))
+	for i, t := range in {
+		vars := make([]chentity.WhatsAppTemplateVariable, len(t.Body.Variables))
+		for j, v := range t.Body.Variables {
+			vars[j] = chentity.WhatsAppTemplateVariable{Key: v.Key, Label: v.Label, Example: v.Example}
+		}
+		btns := make([]chentity.WhatsAppTemplateButton, len(t.Buttons))
+		for j, b := range t.Buttons {
+			btns[j] = chentity.WhatsAppTemplateButton{Type: b.Type, Text: b.Text, URL: b.URL}
+		}
+		e := chentity.WhatsAppTemplate{
+			ID: t.ID, Name: t.Name, Language: t.Language, Category: t.Category,
+			Body:    chentity.WhatsAppTemplateBody{Text: t.Body.Text, Variables: vars},
+			Buttons: btns, Footer: t.Footer,
+		}
+		if t.Header != nil {
+			e.Header = &chentity.WhatsAppTemplateHeader{Type: t.Header.Type, Text: t.Header.Text}
+		}
+		out[i] = e
+	}
+	return out
+}
+
+func templatesFromEntity(in []chentity.WhatsAppTemplate) []WhatsAppTemplateDTO {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]WhatsAppTemplateDTO, len(in))
+	for i, t := range in {
+		vars := make([]WhatsAppTemplateVariable, len(t.Body.Variables))
+		for j, v := range t.Body.Variables {
+			vars[j] = WhatsAppTemplateVariable{Key: v.Key, Label: v.Label, Example: v.Example}
+		}
+		btns := make([]WhatsAppTemplateButton, len(t.Buttons))
+		for j, b := range t.Buttons {
+			btns[j] = WhatsAppTemplateButton{Type: b.Type, Text: b.Text, URL: b.URL}
+		}
+		d := WhatsAppTemplateDTO{
+			ID: t.ID, Name: t.Name, Language: t.Language, Category: t.Category,
+			Body:    WhatsAppTemplateBodyDTO{Text: t.Body.Text, Variables: vars},
+			Buttons: btns, Footer: t.Footer,
+		}
+		if t.Header != nil {
+			d.Header = &WhatsAppTemplateHeader{Type: t.Header.Type, Text: t.Header.Text}
+		}
+		out[i] = d
+	}
+	return out
 }

@@ -63,6 +63,7 @@ func (r *ConnectionRepository) Update(ctx context.Context, c *entity.ChannelConn
 			"default_sector_id":  c.DefaultSectorID,
 			"enabled":            c.Enabled,
 			"uses_protocol":      c.UsesProtocol,
+			"whatsapp_templates": templatesToModel(c.WhatsAppTemplates),
 			"updated_at":         c.UpdatedAt,
 		}},
 	)
@@ -149,17 +150,18 @@ func (r *ConnectionRepository) toModel(c *entity.ChannelConnection) (models.Chan
 		return models.ChannelConnection{}, err
 	}
 	m := models.ChannelConnection{
-		Type:             string(c.Type),
-		Name:             c.Name,
-		Status:           string(c.Status),
-		BaseURL:          c.BaseURL,
-		AuthType:         string(c.AuthType),
-		EncryptedSecret:  enc,
-		InboundTokenHash: c.InboundTokenHash,
-		DefaultSectorID:  c.DefaultSectorID,
-		BusinessHours:    c.BusinessHours,
-		Enabled:          c.Enabled,
-		UsesProtocol:     c.UsesProtocol,
+		Type:              string(c.Type),
+		Name:              c.Name,
+		Status:            string(c.Status),
+		BaseURL:           c.BaseURL,
+		AuthType:          string(c.AuthType),
+		EncryptedSecret:   enc,
+		InboundTokenHash:  c.InboundTokenHash,
+		DefaultSectorID:   c.DefaultSectorID,
+		BusinessHours:     c.BusinessHours,
+		Enabled:           c.Enabled,
+		UsesProtocol:      c.UsesProtocol,
+		WhatsAppTemplates: templatesToModel(c.WhatsAppTemplates),
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -174,22 +176,77 @@ func (r *ConnectionRepository) toEntity(m *models.ChannelConnection) (*entity.Ch
 		return nil, apperror.Internal("decrypt secret").Wrap(err)
 	}
 	return &entity.ChannelConnection{
-		ID:               m.ID,
-		TenantID:         m.TenantID,
-		Type:             entity.Type(m.Type),
-		Name:             m.Name,
-		Status:           entity.Status(m.Status),
-		BaseURL:          m.BaseURL,
-		AuthType:         entity.AuthType(m.AuthType),
-		Secret:           secret,
-		InboundTokenHash: m.InboundTokenHash,
-		DefaultSectorID:  m.DefaultSectorID,
-		BusinessHours:    m.BusinessHours,
-		Enabled:          m.Enabled,
-		UsesProtocol:     m.UsesProtocol,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
+		ID:                m.ID,
+		TenantID:          m.TenantID,
+		Type:              entity.Type(m.Type),
+		Name:              m.Name,
+		Status:            entity.Status(m.Status),
+		BaseURL:           m.BaseURL,
+		AuthType:          entity.AuthType(m.AuthType),
+		Secret:            secret,
+		InboundTokenHash:  m.InboundTokenHash,
+		DefaultSectorID:   m.DefaultSectorID,
+		BusinessHours:     m.BusinessHours,
+		Enabled:           m.Enabled,
+		UsesProtocol:      m.UsesProtocol,
+		WhatsAppTemplates: templatesToEntity(m.WhatsAppTemplates),
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
 	}, nil
+}
+
+func templatesToModel(in []entity.WhatsAppTemplate) []models.WhatsAppTemplate {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]models.WhatsAppTemplate, len(in))
+	for i, t := range in {
+		vars := make([]models.WhatsAppTemplateVariable, len(t.Body.Variables))
+		for j, v := range t.Body.Variables {
+			vars[j] = models.WhatsAppTemplateVariable{Key: v.Key, Label: v.Label, Example: v.Example}
+		}
+		btns := make([]models.WhatsAppTemplateButton, len(t.Buttons))
+		for j, b := range t.Buttons {
+			btns[j] = models.WhatsAppTemplateButton{Type: b.Type, Text: b.Text, URL: b.URL}
+		}
+		m := models.WhatsAppTemplate{
+			ID: t.ID, Name: t.Name, Language: t.Language, Category: t.Category,
+			Body:    models.WhatsAppTemplateBody{Text: t.Body.Text, Variables: vars},
+			Buttons: btns, Footer: t.Footer,
+		}
+		if t.Header != nil {
+			m.Header = &models.WhatsAppTemplateHeader{Type: t.Header.Type, Text: t.Header.Text}
+		}
+		out[i] = m
+	}
+	return out
+}
+
+func templatesToEntity(in []models.WhatsAppTemplate) []entity.WhatsAppTemplate {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]entity.WhatsAppTemplate, len(in))
+	for i, t := range in {
+		vars := make([]entity.WhatsAppTemplateVariable, len(t.Body.Variables))
+		for j, v := range t.Body.Variables {
+			vars[j] = entity.WhatsAppTemplateVariable{Key: v.Key, Label: v.Label, Example: v.Example}
+		}
+		btns := make([]entity.WhatsAppTemplateButton, len(t.Buttons))
+		for j, b := range t.Buttons {
+			btns[j] = entity.WhatsAppTemplateButton{Type: b.Type, Text: b.Text, URL: b.URL}
+		}
+		e := entity.WhatsAppTemplate{
+			ID: t.ID, Name: t.Name, Language: t.Language, Category: t.Category,
+			Body:    entity.WhatsAppTemplateBody{Text: t.Body.Text, Variables: vars},
+			Buttons: btns, Footer: t.Footer,
+		}
+		if t.Header != nil {
+			e.Header = &entity.WhatsAppTemplateHeader{Type: t.Header.Type, Text: t.Header.Text}
+		}
+		out[i] = e
+	}
+	return out
 }
 
 var _ repository.ConnectionRepository = (*ConnectionRepository)(nil)
