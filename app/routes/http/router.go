@@ -52,6 +52,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		v1.Use(middleware.Idempotency(c.Redis))
 
 		registerAuthRoutes(v1, c)
+		registerPlatformRoutes(v1, c)
 		registerTenantRoutes(v1, c)
 		registerIAMRoutes(v1, c)
 		registerSectorRoutes(v1, c)

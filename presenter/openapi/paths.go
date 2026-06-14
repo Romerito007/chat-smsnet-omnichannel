@@ -26,6 +26,18 @@ func registerAuth(p *paths) {
 		reqBody: body(ref("UpdateProfileRequest")), responses: M{"200": jsonResp("Updated", ref("User"))}}))
 	p.add("POST", "/v1/me/change-password", op(opConfig{tag: "auth", summary: "Change own password",
 		reqBody: body(ref("ChangePasswordRequest")), responses: M{"204": emptyResp("Changed")}}))
+
+	// Platform plane: the external provisioner creates a tenant + owner via the
+	// X-Platform-Key credential (NOT a tenant Bearer token), and gets back a
+	// ready-to-use tenant-scoped access token.
+	p.add("POST", "/v1/platform/tenants", op(opConfig{tag: "platform",
+		summary:  "Provision a tenant + owner (platform key; returns a ready owner token)",
+		security: []any{M{"platformKey": []any{}}},
+		reqBody:  body(ref("ProvisionTenantRequest")),
+		responses: M{
+			"201": jsonResp("Tenant provisioned", ref("ProvisionTenantResponse")),
+			"200": jsonResp("Existing tenant (idempotent retry on external_ref)", ref("ProvisionTenantResponse")),
+		}}))
 }
 
 func registerTenantIAM(p *paths) {

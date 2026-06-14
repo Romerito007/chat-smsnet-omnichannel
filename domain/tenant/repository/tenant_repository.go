@@ -15,6 +15,9 @@ type TenantRepository interface {
 	Create(ctx context.Context, t *entity.Tenant) error
 	// FindByID returns the tenant or a not_found AppError.
 	FindByID(ctx context.Context, id string) (*entity.Tenant, error)
+	// FindByExternalRef returns the tenant with the given provisioner external_ref,
+	// or a not_found AppError. Used for durable provisioning idempotency.
+	FindByExternalRef(ctx context.Context, ref string) (*entity.Tenant, error)
 	// Update persists mutable fields (name, status, settings).
 	Update(ctx context.Context, t *entity.Tenant) error
 	// ListActive returns every active tenant. Used by periodic jobs to fan work

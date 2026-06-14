@@ -39,6 +39,7 @@ type Config struct {
 	Asynq         AsynqConfig
 	Otel          OtelConfig
 	Auth          AuthConfig
+	Platform      PlatformConfig
 	Realtime      RealtimeConfig
 	Channels      ChannelsConfig
 	Automation    AutomationConfig
@@ -169,6 +170,14 @@ type AuthConfig struct {
 	VerificationTTL time.Duration
 	ResetTTL        time.Duration
 	InviteTTL       time.Duration
+}
+
+// PlatformConfig holds the platform-plane service keys used by the external
+// provisioner (above tenant isolation). APIKeys maps a key id to the SHA-256 hex
+// hash of its secret; the secret itself is never stored. Empty (no keys) disables
+// the platform provisioning endpoint.
+type PlatformConfig struct {
+	APIKeys map[string]string // key_id -> sha256(secret) hex
 }
 
 // EmailConfig holds the SMTP transport settings used to send real emails
@@ -341,6 +350,9 @@ func Load() (Config, error) {
 			ResetTTL:        getDuration("AUTH_PASSWORD_RESET_TTL", time.Hour),
 			InviteTTL:       getDuration("AUTH_INVITE_TTL", 72*time.Hour),
 		},
+		Platform: PlatformConfig{
+			APIKeys: parsePlatformKeys(getList("PLATFORM_API_KEYS", nil)),
+		},
 		Realtime: RealtimeConfig{
 			MaxConnPerUser: getInt("WS_MAX_CONN_PER_USER", 10),
 		},
@@ -496,6 +508,29 @@ func getDuration(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+// parsePlatformKeys parses entries of the form "key_id:sha256hex" into a map of
+// key id -> secret hash. Malformed entries (missing ":" or empty parts) are
+// skipped. The platform secret is never stored — only its hash.
+func parsePlatformKeys(entries []string) map[string]string {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(entries))
+	for _, e := range entries {
+		id, hash, ok := strings.Cut(e, ":")
+		id = strings.TrimSpace(id)
+		hash = strings.ToLower(strings.TrimSpace(hash))
+		if !ok || id == "" || hash == "" {
+			continue
+		}
+		out[id] = hash
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func getList(key string, def []string) []string {

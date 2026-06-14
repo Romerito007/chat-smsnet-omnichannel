@@ -2140,6 +2140,54 @@ components:
                         - none
                     type: string
             type: object
+        ProvisionTenantRequest:
+            properties:
+                external_ref:
+                    description: 'The provisioner''s natural key for this account. Durable idempotency: a repeat with the same external_ref returns the existing tenant + a fresh token instead of creating a duplicate.'
+                    type: string
+                owner_email:
+                    type: string
+                owner_name:
+                    type: string
+                owner_password:
+                    type: string
+                tenant_name:
+                    type: string
+            required:
+                - tenant_name
+                - owner_name
+                - owner_email
+                - owner_password
+                - external_ref
+            type: object
+        ProvisionTenantResponse:
+            properties:
+                access_expires_at:
+                    format: date-time
+                    type: string
+                access_token:
+                    description: A ready-to-use tenant-scoped Bearer access token for the owner. Use it directly on the tenant API (e.g. POST /v1/channels) — no extra login step. Access-only (no refresh).
+                    type: string
+                created:
+                    description: True when a new tenant was created; false when an existing tenant was returned for a repeated external_ref.
+                    type: boolean
+                owner:
+                    properties:
+                        email:
+                            type: string
+                        id:
+                            type: string
+                    type: object
+                tenant:
+                    properties:
+                        id:
+                            type: string
+                        name:
+                            type: string
+                    type: object
+                token_type:
+                    type: string
+            type: object
         Queue:
             properties:
                 created_at:
@@ -3298,6 +3346,11 @@ components:
             bearerFormat: JWT
             scheme: bearer
             type: http
+        platformKey:
+            description: Platform service credential "key_id.secret" for the provisioner plane (above tenant isolation). Not a tenant Bearer token.
+            in: header
+            name: X-Platform-Key
+            type: apiKey
 info:
     description: 'Multi-tenant omnichannel chat backend. All endpoints are under /v1. Errors use the standard envelope { error: { code, message, details?, request_id? } }; lists use keyset (cursor) pagination { data, page: { next_cursor?, has_more } }; protected endpoints require a Bearer JWT access token (the tenant is derived from the token, never a header).'
     title: chat-smsnet-omnichannel API
@@ -7284,6 +7337,43 @@ paths:
             summary: Mark all notifications read
             tags:
                 - notifications
+    /v1/platform/tenants:
+        post:
+            operationId: postPlatformTenants
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProvisionTenantRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProvisionTenantResponse'
+                    description: Existing tenant (idempotent retry on external_ref)
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProvisionTenantResponse'
+                    description: Tenant provisioned
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            security:
+                - platformKey: []
+            summary: Provision a tenant + owner (platform key; returns a ready owner token)
+            tags:
+                - platform
     /v1/privacy/contacts/{id}/anonymize:
         post:
             operationId: postPrivacyContactsByIdAnonymize
@@ -9707,6 +9797,8 @@ servers:
 tags:
     - description: Login, token rotation, signup/verification, password reset, self profile.
       name: auth
+    - description: 'Platform plane (above tenant isolation): the external provisioner creates tenants via X-Platform-Key.'
+      name: platform
     - description: The current tenant.
       name: tenant
     - description: Users, roles and permissions.

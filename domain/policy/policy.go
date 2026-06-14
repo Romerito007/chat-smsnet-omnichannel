@@ -25,3 +25,8 @@ var SensitiveAuthRateLimit = RateLimit{Requests: 5, Window: time.Minute}
 // (inbound messages + delivery receipts) per client IP, so an external gateway
 // integrating by integration token can't exhaust the shared API budget.
 var InboundChannelRateLimit = RateLimit{Requests: 600, Window: time.Minute}
+
+// PlatformProvisionRateLimit caps the platform-plane provisioning endpoint per
+// client IP. Provisioning is rare and the provisioner has a stable egress, so the
+// budget is small — a strict backstop against a leaked-key flood.
+var PlatformProvisionRateLimit = RateLimit{Requests: 20, Window: time.Minute}

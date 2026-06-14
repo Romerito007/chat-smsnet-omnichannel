@@ -26,12 +26,13 @@ func New(db *mongo.Database) *Repository {
 // Create inserts a new tenant (self-service signup).
 func (r *Repository) Create(ctx context.Context, t *entity.Tenant) error {
 	_, err := r.coll.InsertOne(ctx, models.Tenant{
-		ID:        t.ID,
-		Name:      t.Name,
-		Status:    string(t.Status),
-		Settings:  t.Settings,
-		CreatedAt: t.CreatedAt,
-		UpdatedAt: t.UpdatedAt,
+		ID:          t.ID,
+		Name:        t.Name,
+		Status:      string(t.Status),
+		ExternalRef: t.ExternalRef,
+		Settings:    t.Settings,
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
 	})
 	return mongodb.MapError(err)
 }
@@ -40,6 +41,16 @@ func (r *Repository) Create(ctx context.Context, t *entity.Tenant) error {
 func (r *Repository) FindByID(ctx context.Context, id string) (*entity.Tenant, error) {
 	var m models.Tenant
 	if err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return toEntity(&m), nil
+}
+
+// FindByExternalRef returns the tenant with the given provisioner external_ref,
+// or a not_found error. Used for durable provisioning idempotency.
+func (r *Repository) FindByExternalRef(ctx context.Context, ref string) (*entity.Tenant, error) {
+	var m models.Tenant
+	if err := r.coll.FindOne(ctx, bson.M{"external_ref": ref}).Decode(&m); err != nil {
 		return nil, mongodb.MapError(err)
 	}
 	return toEntity(&m), nil
@@ -76,12 +87,13 @@ func (r *Repository) ListActive(ctx context.Context) ([]*entity.Tenant, error) {
 
 func toEntity(m *models.Tenant) *entity.Tenant {
 	return &entity.Tenant{
-		ID:        m.ID,
-		Name:      m.Name,
-		Status:    entity.Status(m.Status),
-		Settings:  m.Settings,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
+		ID:          m.ID,
+		Name:        m.Name,
+		Status:      entity.Status(m.Status),
+		ExternalRef: m.ExternalRef,
+		Settings:    m.Settings,
+		CreatedAt:   m.CreatedAt,
+		UpdatedAt:   m.UpdatedAt,
 	}
 }
 

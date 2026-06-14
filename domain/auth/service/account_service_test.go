@@ -32,6 +32,9 @@ func (r *acctTenantRepo) FindByID(_ context.Context, id string) (*tenantentity.T
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *acctTenantRepo) FindByExternalRef(context.Context, string) (*tenantentity.Tenant, error) {
+	return nil, apperror.NotFound("nf")
+}
 func (r *acctTenantRepo) Update(_ context.Context, t *tenantentity.Tenant) error {
 	r.byID[t.ID] = t
 	return nil

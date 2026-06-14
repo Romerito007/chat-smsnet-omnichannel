@@ -5,12 +5,13 @@ import "time"
 // Tenant is the top-level isolation boundary. Every other document references
 // its id via tenant_id.
 type Tenant struct {
-	ID        string         `bson:"_id"`
-	Name      string         `bson:"name"`
-	Status    string         `bson:"status"`
-	Settings  map[string]any `bson:"settings,omitempty"`
-	CreatedAt time.Time      `bson:"created_at"`
-	UpdatedAt time.Time      `bson:"updated_at"`
+	ID          string         `bson:"_id"`
+	Name        string         `bson:"name"`
+	Status      string         `bson:"status"`
+	ExternalRef string         `bson:"external_ref,omitempty"`
+	Settings    map[string]any `bson:"settings,omitempty"`
+	CreatedAt   time.Time      `bson:"created_at"`
+	UpdatedAt   time.Time      `bson:"updated_at"`
 }
 
 // Role is a named permission bundle within a tenant.

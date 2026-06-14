@@ -133,6 +133,7 @@ Além da permissão, há **escopo de dados** (`SectorScope` no papel):
 | Inbound de canal (`/inbound/channel/{channel}/messages`, `.../delivery-receipts`) | **inbound_token do canal** (`X-Inbound-Token`/corpo, hash em tempo constante) + HMAC do corpo opcional |
 | Coleta de CSAT (link público) | token assinado de vida curta |
 | Webhook **outbound** (nosso) | assinamos com HMAC; subscriber valida |
+| **Provisionamento de tenant** (`POST /platform/tenants`) | **`X-Platform-Key: key_id.secret`** (plano de plataforma, ACIMA do tenant), `PlatformAuth` separado do `AuthContext`; chaves em `PLATFORM_API_KEYS` (hash em repouso, compare em tempo constante). NÃO carrega contexto de tenant; só cria tenant+owner. Auditado como `platform.tenant_provisioned` (ActorType `platform`, ActorID = key_id). |
 
 ### Integração por token de canal (sem JWT)
 

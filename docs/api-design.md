@@ -98,6 +98,28 @@ POST   /auth/password/reset        # aplica novo password
 GET    /auth/me                    # perfil + permissões do ator
 ```
 
+### platform (provisionador externo — plano ACIMA do tenant)
+```
+POST   /platform/tenants           # cria tenant + owner; devolve token do owner pronto
+```
+- **Auth:** header `X-Platform-Key: key_id.secret` (NÃO é o Bearer do tenant),
+  validado por um middleware `PlatformAuth` separado; chaves em `PLATFORM_API_KEYS`
+  (`key_id:sha256(secret)`, hash em repouso). Sem chaves configuradas, o endpoint
+  responde 401 (inerte).
+- **Escopo estrito:** cria tenant + owner e **nada mais** — não carrega contexto de
+  tenant existente, não opera cross-tenant. Chave vazada cria tenants novos e pega
+  token deles, mas **nunca toca um tenant existente**.
+- **Body:** `{ tenant_name, owner_name, owner_email, owner_password, external_ref }`.
+- **Resposta:** `{ tenant:{id,name}, owner:{id,email}, access_token, token_type:"Bearer",
+  access_expires_at, created }`. O `access_token` é **tenant-scoped e pronto** — o
+  provisionador cria os channels (`POST /v1/channels`) direto com ele, sem login.
+  Access-only (sem refresh).
+- **Idempotência durável:** `external_ref` (a chave natural do provisionador) tem
+  índice único; retry com o mesmo `external_ref` devolve o tenant existente +
+  **token novo** (`created:false`, 200), sobrevivendo a evicção de cache.
+- O **signup público** (`/auth/signup`) permanece inalterado (owner pendente de
+  verificação, resposta neutra).
+
 ### iam (users, roles) — tudo sob `user.manage`
 ```
 GET    /users                      POST   /users

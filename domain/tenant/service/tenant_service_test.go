@@ -30,6 +30,9 @@ func (r *fakeTenantRepo) FindByID(_ context.Context, id string) (*entity.Tenant,
 	}
 	return nil, apperror.NotFound("resource not found")
 }
+func (r *fakeTenantRepo) FindByExternalRef(context.Context, string) (*entity.Tenant, error) {
+	return nil, apperror.NotFound("resource not found")
+}
 func (r *fakeTenantRepo) ListActive(_ context.Context) ([]*entity.Tenant, error) {
 	var out []*entity.Tenant
 	for _, t := range r.tenants {

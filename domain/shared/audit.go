@@ -7,9 +7,10 @@ import (
 
 // Actor types recorded on audit entries.
 const (
-	ActorTypeUser   = "user"   // an authenticated operator
-	ActorTypeSystem = "system" // an internal job / system actor
-	ActorTypePublic = "public" // unauthenticated / public token
+	ActorTypeUser     = "user"     // an authenticated operator
+	ActorTypeSystem   = "system"   // an internal job / system actor
+	ActorTypePublic   = "public"   // unauthenticated / public token
+	ActorTypePlatform = "platform" // the external provisioner (above tenant isolation)
 )
 
 // AuditEntry is an immutable record of a security/compliance-relevant action.

@@ -207,6 +207,7 @@ type opConfig struct {
 	tag       string
 	summary   string
 	public    bool
+	security  []any // when set, overrides the global Bearer requirement (e.g. the platform key)
 	params    []M
 	reqBody   M
 	responses M // success responses, keyed by status code string
@@ -235,6 +236,8 @@ func op(c opConfig) M {
 	}
 	if c.public {
 		o["security"] = []any{} // override the global Bearer requirement
+	} else if len(c.security) > 0 {
+		o["security"] = c.security // a non-Bearer scheme (e.g. the platform key)
 	}
 	return o
 }
@@ -336,7 +339,8 @@ func Build() M {
 		"tags":     tags(),
 		"components": M{
 			"securitySchemes": M{
-				"bearerAuth": M{"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+				"bearerAuth":  M{"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+				"platformKey": M{"type": "apiKey", "in": "header", "name": "X-Platform-Key", "description": "Platform service credential \"key_id.secret\" for the provisioner plane (above tenant isolation). Not a tenant Bearer token."},
 			},
 			"responses": errorResponses(),
 			"schemas":   schemas(),
@@ -348,6 +352,7 @@ func Build() M {
 func tags() []any {
 	desc := []struct{ name, description string }{
 		{"auth", "Login, token rotation, signup/verification, password reset, self profile."},
+		{"platform", "Platform plane (above tenant isolation): the external provisioner creates tenants via X-Platform-Key."},
 		{"tenant", "The current tenant."},
 		{"iam", "Users, roles and permissions."},
 		{"sectors", "Service sectors (departments)."},

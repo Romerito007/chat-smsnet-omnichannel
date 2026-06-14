@@ -19,6 +19,23 @@ func schemas() M {
 		}, "has_more"),
 		"MessageAck": object(M{"message": str()}),
 
+		// ── platform plane (provisioner; X-Platform-Key) ───────────────────────
+		"ProvisionTenantRequest": object(M{
+			"tenant_name":    str(),
+			"owner_name":     str(),
+			"owner_email":    str(),
+			"owner_password": str(),
+			"external_ref":   describedStr("The provisioner's natural key for this account. Durable idempotency: a repeat with the same external_ref returns the existing tenant + a fresh token instead of creating a duplicate."),
+		}, "tenant_name", "owner_name", "owner_email", "owner_password", "external_ref"),
+		"ProvisionTenantResponse": object(M{
+			"tenant":            object(M{"id": str(), "name": str()}),
+			"owner":             object(M{"id": str(), "email": str()}),
+			"access_token":      describedStr("A ready-to-use tenant-scoped Bearer access token for the owner. Use it directly on the tenant API (e.g. POST /v1/channels) — no extra login step. Access-only (no refresh)."),
+			"token_type":        str(),
+			"access_expires_at": dateTime(),
+			"created":           describedBool("True when a new tenant was created; false when an existing tenant was returned for a repeated external_ref."),
+		}),
+
 		// ── auth / iam ─────────────────────────────────────────────────────────
 		"LoginRequest":          object(M{"email": str(), "password": str()}, "email", "password"),
 		"RefreshRequest":        object(M{"refresh_token": str()}, "refresh_token"),
