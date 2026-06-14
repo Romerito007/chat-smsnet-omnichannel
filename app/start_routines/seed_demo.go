@@ -27,7 +27,6 @@ import (
 	iamentity "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/entity"
 	mcpentity "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/entity"
 	privacyentity "github.com/romerito007/chat-smsnet-omnichannel/domain/privacy/entity"
-	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
 	queueentity "github.com/romerito007/chat-smsnet-omnichannel/domain/queues/entity"
 	sectorentity "github.com/romerito007/chat-smsnet-omnichannel/domain/sectors/entity"
 	slaentity "github.com/romerito007/chat-smsnet-omnichannel/domain/sla/entity"
@@ -44,7 +43,6 @@ import (
 	iamrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/iam"
 	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/mcp"
 	privacyrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/privacy"
-	phrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/providerhub"
 	queuerepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/queues"
 	sectorrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/sectors"
 	slarepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/sla"
@@ -504,21 +502,6 @@ func (d *demoSeeder) seedTaxonomyCSAT() error {
 // ── 4.7 integrations ────────────────────────────────────────────────────────────
 
 func (d *demoSeeder) seedIntegrations() error {
-	// ProviderHub: a real ISP slug, placeholder base_url + encrypted api key.
-	// Skip if the tenant already has one (never clobber a real config).
-	phRepo := phrepo.NewConfigRepository(d.db, d.c.Cipher)
-	if _, err := phRepo.FindEnabled(d.ctx); err != nil {
-		ph := &phentity.ProviderIntegrationConfig{
-			ID: shared.NewID(), TenantID: d.tenantID, Name: "SMSNet Demo",
-			SMSNetBaseURL: "https://smsnet.demo.local", SMSNetAPIKey: "demo-smsnet-key-PLACEHOLDER",
-			ISPType: phentity.ISPSGP, Enabled: true, TimeoutMs: 8000, CreatedAt: d.now, UpdatedAt: d.now,
-		}
-		if err := phRepo.Create(d.ctx, ph); err != nil {
-			return err
-		}
-		d.mark("providerhub_configs", ph.ID)
-	}
-
 	// MCP: one example server.
 	srv := &mcpentity.ServerConnection{
 		ID: shared.NewID(), TenantID: d.tenantID, Name: "smsnet-integrations",
