@@ -11,13 +11,14 @@ type ChannelIdentity struct {
 
 // SupportedIdentityChannels is the closed set of channels a contact external
 // identity may use. It is the union of the real channel-connection types
-// (api, whatsapp, telegram, instagram, webchat, custom) plus the CRM-only
-// identity channels (sms, email, crm) — broader than channel connections
+// (api, whatsapp, telegram, instagram, messenger, webchat, custom) plus the
+// CRM-only identity channels (sms, email, crm) — broader than channel connections
 // because a CRM contact can carry identifiers the inbox doesn't connect to.
 var SupportedIdentityChannels = map[string]struct{}{
 	"whatsapp":  {},
 	"telegram":  {},
 	"instagram": {},
+	"messenger": {},
 	"webchat":   {},
 	"sms":       {},
 	"email":     {},

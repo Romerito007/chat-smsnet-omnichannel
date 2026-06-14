@@ -569,6 +569,8 @@ func (d *demoSeeder) seedIntegrations() error {
 		{"WhatsApp Oficial", chentity.TypeWhatsApp, weekdayHours("America/Sao_Paulo", "08:00", "18:00")},
 		// Mon–Fri with a lunch break + Saturday morning.
 		{"API Genérica", chentity.TypeAPI, lunchHours("America/Sao_Paulo")},
+		// Facebook Messenger (runs on the generic api adapter; no native adapter).
+		{"Messenger", chentity.TypeMessenger, weekdayHours("America/Sao_Paulo", "09:00", "18:00")},
 		// No hours set → always open (24/7).
 		{"E-mail", chentity.TypeCustom, nil},
 	}

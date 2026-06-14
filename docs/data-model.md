@@ -149,7 +149,7 @@ text `(name)`, 🔑 keyset.
 ## Canais e integrações
 
 ### `channel_connections`
-`tenant_id`🔑, `type` (api/whatsapp/webchat/…), `name`,
+`tenant_id`🔑, `type` (api/whatsapp/telegram/instagram/messenger/webchat/custom), `name`,
 `status` (connected/disconnected/error), `base_url` (= `outbound_url` no canal
 api), `auth_type`, `encrypted_secret` (= `outbound_secret` cifrado AES-GCM,
 **nunca** em claro nem retornado após criação), `webhook_verify_token` (=

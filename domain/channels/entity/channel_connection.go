@@ -16,6 +16,7 @@ const (
 	TypeWhatsApp  Type = "whatsapp"
 	TypeTelegram  Type = "telegram"
 	TypeInstagram Type = "instagram"
+	TypeMessenger Type = "messenger"
 	TypeWebchat   Type = "webchat"
 	TypeCustom    Type = "custom"
 )
@@ -23,7 +24,7 @@ const (
 // Valid reports whether t is a known channel type.
 func (t Type) Valid() bool {
 	switch t {
-	case TypeAPI, TypeWhatsApp, TypeTelegram, TypeInstagram, TypeWebchat, TypeCustom:
+	case TypeAPI, TypeWhatsApp, TypeTelegram, TypeInstagram, TypeMessenger, TypeWebchat, TypeCustom:
 		return true
 	}
 	return false

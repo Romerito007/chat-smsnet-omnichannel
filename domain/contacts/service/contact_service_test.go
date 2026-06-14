@@ -192,6 +192,20 @@ func TestCreate_NormalizesAndPersists(t *testing.T) {
 	}
 }
 
+func TestCreate_AcceptsMessengerIdentity(t *testing.T) {
+	svc := newSvc()
+	c, err := svc.Create(tenantCtx(), contracts.CreateContact{
+		Name:        "Meg",
+		ExternalIDs: []contracts.ExternalIdentity{{Channel: "messenger", ExternalID: "fb-1234"}},
+	})
+	if err != nil {
+		t.Fatalf("create with messenger identity: %v", err)
+	}
+	if len(c.Identities) != 1 || c.Identities[0].Channel != "messenger" {
+		t.Errorf("messenger identity not persisted: %+v", c.Identities)
+	}
+}
+
 func TestCreate_RequiresName(t *testing.T) {
 	if _, err := newSvc().Create(tenantCtx(), contracts.CreateContact{Name: "  "}); apperror.From(err).Code != apperror.CodeValidation {
 		t.Errorf("expected validation_error without name, got %v", err)

@@ -85,7 +85,7 @@ func ispTypeStr() M {
 // identity may use (domain/contacts/entity.SupportedIdentityChannels): the real
 // channel-connection types plus the CRM-only identity channels (sms/email/crm).
 func contactIdentityChannelEnum() M {
-	return enum("whatsapp", "telegram", "instagram", "webchat", "sms", "email", "api", "crm", "custom")
+	return enum("whatsapp", "telegram", "instagram", "messenger", "webchat", "sms", "email", "api", "crm", "custom")
 }
 
 // conversationStatusEnum is the single source of truth for the conversation

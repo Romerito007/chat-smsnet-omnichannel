@@ -687,6 +687,7 @@ components:
                         - whatsapp
                         - telegram
                         - instagram
+                        - messenger
                         - webchat
                         - sms
                         - email

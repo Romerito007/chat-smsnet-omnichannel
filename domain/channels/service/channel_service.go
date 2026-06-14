@@ -96,7 +96,7 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 	}
 	if !cmd.Type.Valid() {
 		return nil, apperror.Validation("invalid channel type").
-			WithDetails(map[string]any{"type": "must be api|whatsapp|telegram|instagram|webchat|custom"})
+			WithDetails(map[string]any{"type": "must be api|whatsapp|telegram|instagram|messenger|webchat|custom"})
 	}
 	authType := cmd.AuthType
 	if authType == "" {

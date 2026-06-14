@@ -17,8 +17,8 @@ type Registry struct {
 
 // NewRegistry builds the registry with the real adapters. The generic API channel
 // is the production default; webchat acknowledges delivery over the realtime
-// layer. Every other type (whatsapp/telegram/instagram/custom) integrates over
-// the generic API channel until it gets a dedicated adapter.
+// layer. Every other type (whatsapp/telegram/instagram/messenger/custom)
+// integrates over the generic API channel until it gets a dedicated adapter.
 func NewRegistry() *Registry {
 	return &Registry{
 		adapters: map[chentity.Type]chcontracts.Adapter{

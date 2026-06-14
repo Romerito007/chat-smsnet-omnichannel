@@ -174,6 +174,17 @@ func TestCreateConnection_InvalidType(t *testing.T) {
 	}
 }
 
+func TestCreateConnection_MessengerTypeIsValid(t *testing.T) {
+	svc, repo, _ := newConnService()
+	conn, err := svc.Create(tenantCtx(), chcontracts.CreateConnection{Type: chentity.TypeMessenger, Name: "FB"})
+	if err != nil {
+		t.Fatalf("create messenger connection: %v", err)
+	}
+	if conn.Type != chentity.TypeMessenger || repo.byID[conn.ID].Type != chentity.TypeMessenger {
+		t.Errorf("messenger connection not persisted with the right type: %+v", conn)
+	}
+}
+
 func validHours() map[string]any {
 	return map[string]any{
 		"timezone": "America/Sao_Paulo",
