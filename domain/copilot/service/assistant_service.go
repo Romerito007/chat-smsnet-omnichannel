@@ -13,22 +13,37 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
-// CreateAssistant is the input to AssistantService.Create.
+// CreateAssistant is the input to AssistantService.Create. Behavior fields default
+// when their pointer is nil (gates off, sampling defaults, no persona).
 type CreateAssistant struct {
-	Name         string
-	ChannelIDs   []string
-	ISPProfileID string
-	MCPServerID  string
-	Enabled      *bool // nil → true
+	Name                  string
+	ChannelIDs            []string
+	ISPProfileID          string
+	MCPServerID           string
+	AllowCustomerData     *bool
+	AllowFinancialData    *bool
+	AllowMonitoringData   *bool
+	HumanApprovalRequired *bool
+	Temperature           *float64
+	MaxTokens             *int
+	SystemInstructions    *string
+	Enabled               *bool // nil → true
 }
 
 // UpdateAssistant carries optional fields; nil pointers mean "leave unchanged".
 type UpdateAssistant struct {
-	Name         *string
-	ChannelIDs   *[]string
-	ISPProfileID *string
-	MCPServerID  *string
-	Enabled      *bool
+	Name                  *string
+	ChannelIDs            *[]string
+	ISPProfileID          *string
+	MCPServerID           *string
+	AllowCustomerData     *bool
+	AllowFinancialData    *bool
+	AllowMonitoringData   *bool
+	HumanApprovalRequired *bool
+	Temperature           *float64
+	MaxTokens             *int
+	SystemInstructions    *string
+	Enabled               *bool
 }
 
 // AssistantService manages copilot assistants (many per tenant). It validates that
@@ -92,15 +107,25 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 	}
 	now := s.clock.Now()
 	a := &entity.Assistant{
-		ID:           shared.NewID(),
-		TenantID:     tenantID,
-		Name:         name,
-		ChannelIDs:   cmd.ChannelIDs,
-		ISPProfileID: ispProfileID,
-		MCPServerID:  mcpServerID,
-		Enabled:      enabled,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                    shared.NewID(),
+		TenantID:              tenantID,
+		Name:                  name,
+		ChannelIDs:            cmd.ChannelIDs,
+		ISPProfileID:          ispProfileID,
+		MCPServerID:           mcpServerID,
+		AllowCustomerData:     boolOr(cmd.AllowCustomerData, false),
+		AllowFinancialData:    boolOr(cmd.AllowFinancialData, false),
+		AllowMonitoringData:   boolOr(cmd.AllowMonitoringData, false),
+		HumanApprovalRequired: boolOr(cmd.HumanApprovalRequired, false),
+		Temperature:           floatOr(cmd.Temperature, entity.DefaultTemperature),
+		MaxTokens:             intOr(cmd.MaxTokens, entity.DefaultMaxTokens),
+		SystemInstructions:    strings.TrimSpace(strOr(cmd.SystemInstructions, "")),
+		Enabled:               enabled,
+		CreatedAt:             now,
+		UpdatedAt:             now,
+	}
+	if err := validateBehavior(a.Temperature, a.MaxTokens); err != nil {
+		return nil, err
 	}
 	if err := s.repo.Create(ctx, a); err != nil {
 		return nil, err
@@ -142,6 +167,33 @@ func (s *AssistantService) Update(ctx context.Context, id string, cmd UpdateAssi
 			return nil, err
 		}
 	}
+	if cmd.AllowCustomerData != nil {
+		a.AllowCustomerData = *cmd.AllowCustomerData
+	}
+	if cmd.AllowFinancialData != nil {
+		a.AllowFinancialData = *cmd.AllowFinancialData
+	}
+	if cmd.AllowMonitoringData != nil {
+		a.AllowMonitoringData = *cmd.AllowMonitoringData
+	}
+	if cmd.HumanApprovalRequired != nil {
+		a.HumanApprovalRequired = *cmd.HumanApprovalRequired
+	}
+	if cmd.Temperature != nil {
+		a.Temperature = *cmd.Temperature
+	}
+	if cmd.MaxTokens != nil {
+		a.MaxTokens = *cmd.MaxTokens
+	}
+	if cmd.SystemInstructions != nil {
+		a.SystemInstructions = strings.TrimSpace(*cmd.SystemInstructions)
+	}
+	// Only re-validate sampling when it was actually changed.
+	if cmd.Temperature != nil || cmd.MaxTokens != nil {
+		if err := validateBehavior(a.Temperature, a.MaxTokens); err != nil {
+			return nil, err
+		}
+	}
 	if cmd.Enabled != nil {
 		a.Enabled = *cmd.Enabled
 	}
@@ -150,6 +202,44 @@ func (s *AssistantService) Update(ctx context.Context, id string, cmd UpdateAssi
 		return nil, err
 	}
 	return a, nil
+}
+
+// validateBehavior enforces the per-assistant sampling ranges.
+func validateBehavior(temperature float64, maxTokens int) error {
+	if temperature < 0 || temperature > 2 {
+		return apperror.Validation("temperature must be between 0 and 2").
+			WithDetails(map[string]any{"temperature": "out of range"})
+	}
+	if maxTokens <= 0 {
+		return apperror.Validation("max_tokens must be positive").
+			WithDetails(map[string]any{"max_tokens": "must be positive"})
+	}
+	return nil
+}
+
+func boolOr(p *bool, def bool) bool {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+func floatOr(p *float64, def float64) float64 {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+func intOr(p *int, def int) int {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+func strOr(p *string, def string) string {
+	if p != nil {
+		return *p
+	}
+	return def
 }
 
 // Delete removes an assistant.

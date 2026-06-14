@@ -85,7 +85,7 @@ func (o *openAICompatible) Infer(ctx context.Context, req contracts.Request) (co
 	}
 	base := orDefault(req.BaseURL, o.defaultBaseURL)
 	messages := []oaiMessage{
-		{Role: "system", Content: systemPrompt(req.Action)},
+		{Role: "system", Content: fullSystemPrompt(req)},
 		{Role: "user", Content: renderContext(req.Context)},
 	}
 	// Replay the tool-calling loop: each exchange is an assistant turn with

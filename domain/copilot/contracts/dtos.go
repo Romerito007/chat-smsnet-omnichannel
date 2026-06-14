@@ -6,20 +6,15 @@ import "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 // finishes, so the requesting agent's UI can render the result.
 const RealtimeSuggestionCompleted = "copilot.suggestion_completed"
 
-// SaveConfig is the input to create-or-update the tenant's copilot config. Nil
-// pointers leave existing values unchanged (PATCH semantics).
+// SaveConfig is the input to create-or-update the tenant's copilot AI infra. Nil
+// pointers leave existing values unchanged (PATCH semantics). Behavior (gates,
+// sampling, persona) is set per assistant, not here.
 type SaveConfig struct {
-	Provider              *string
-	Model                 *string
-	APIKey                *string
-	BaseURL               *string
-	Temperature           *float64
-	MaxTokens             *int
-	AllowCustomerData     *bool
-	AllowFinancialData    *bool
-	AllowMonitoringData   *bool
-	HumanApprovalRequired *bool
-	Enabled               *bool
+	Provider *string
+	Model    *string
+	APIKey   *string
+	BaseURL  *string
+	Enabled  *bool
 }
 
 // SuggestReplyInput requests a drafted reply for a conversation.

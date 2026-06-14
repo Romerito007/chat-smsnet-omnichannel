@@ -17,10 +17,8 @@ import (
 // (privacy-safe): a tenant must explicitly opt in to share customer/financial/
 // monitoring data with the provider.
 const (
-	defaultProvider    = entity.ProviderOpenAI
-	defaultModel       = "gpt-4o-mini"
-	defaultTemperature = 0.7
-	defaultMaxTokens   = 512
+	defaultProvider = entity.ProviderOpenAI
+	defaultModel    = "gpt-4o-mini"
 )
 
 // ConfigService manages the per-tenant copilot configuration.
@@ -51,9 +49,8 @@ func (s *ConfigService) auditSaved(ctx context.Context, cfg *entity.AIConfig) {
 	_ = s.auditor.Record(ctx, shared.AuditEntry{
 		Action: "ai.config.updated", ResourceType: "ai_config", ResourceID: cfg.TenantID,
 		Data: map[string]any{
-			"provider":            string(cfg.Provider),
-			"model":               cfg.Model,
-			"allow_customer_data": cfg.AllowCustomerData,
+			"provider": string(cfg.Provider),
+			"model":    cfg.Model,
 		},
 	})
 }
@@ -115,15 +112,13 @@ func (s *ConfigService) Save(ctx context.Context, cmd contracts.SaveConfig) (*en
 func (s *ConfigService) defaultConfig(tenantID string) *entity.AIConfig {
 	now := s.clock.Now()
 	return &entity.AIConfig{
-		ID:          shared.NewID(),
-		TenantID:    tenantID,
-		Provider:    defaultProvider,
-		Model:       defaultModel,
-		Temperature: defaultTemperature,
-		MaxTokens:   defaultMaxTokens,
-		Enabled:     true,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:        shared.NewID(),
+		TenantID:  tenantID,
+		Provider:  defaultProvider,
+		Model:     defaultModel,
+		Enabled:   true,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -144,30 +139,6 @@ func applySave(cfg *entity.AIConfig, cmd contracts.SaveConfig) error {
 	}
 	if cmd.BaseURL != nil {
 		cfg.BaseURL = strings.TrimSpace(*cmd.BaseURL)
-	}
-	if cmd.Temperature != nil {
-		if *cmd.Temperature < 0 || *cmd.Temperature > 2 {
-			return apperror.Validation("temperature must be between 0 and 2").WithDetails(map[string]any{"temperature": "out of range"})
-		}
-		cfg.Temperature = *cmd.Temperature
-	}
-	if cmd.MaxTokens != nil {
-		if *cmd.MaxTokens <= 0 {
-			return apperror.Validation("max_tokens must be positive").WithDetails(map[string]any{"max_tokens": "must be positive"})
-		}
-		cfg.MaxTokens = *cmd.MaxTokens
-	}
-	if cmd.AllowCustomerData != nil {
-		cfg.AllowCustomerData = *cmd.AllowCustomerData
-	}
-	if cmd.AllowFinancialData != nil {
-		cfg.AllowFinancialData = *cmd.AllowFinancialData
-	}
-	if cmd.AllowMonitoringData != nil {
-		cfg.AllowMonitoringData = *cmd.AllowMonitoringData
-	}
-	if cmd.HumanApprovalRequired != nil {
-		cfg.HumanApprovalRequired = *cmd.HumanApprovalRequired
 	}
 	if cmd.Enabled != nil {
 		cfg.Enabled = *cmd.Enabled

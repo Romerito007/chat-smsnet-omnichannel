@@ -927,6 +927,15 @@ components:
             type: object
         CopilotAssistant:
             properties:
+                allow_customer_data:
+                    description: 'Behavior gate: let the customer profile enter the prompt.'
+                    type: boolean
+                allow_financial_data:
+                    description: 'Behavior gate: let financial data enter the prompt.'
+                    type: boolean
+                allow_monitoring_data:
+                    description: 'Behavior gate: let monitoring/technical status enter the prompt.'
+                    type: boolean
                 channel_ids:
                     description: Ids of the specific ChannelConnections this assistant serves (not types).
                     items:
@@ -937,16 +946,28 @@ components:
                     type: string
                 enabled:
                     type: boolean
+                human_approval_required:
+                    description: Require human approval for write tools (a proposed write always requires approval regardless).
+                    type: boolean
                 id:
                     type: string
                 isp_profile_id:
                     description: Pinned providerhub ISP profile id (SMSNET tools). Mutually exclusive with mcp_server_id; empty for none.
                     type: string
+                max_tokens:
+                    description: Max output tokens (>0).
+                    type: integer
                 mcp_server_id:
                     description: Pinned tenant MCP server id (its tools only). Mutually exclusive with isp_profile_id; empty for none. A server referenced here is the ONLY way it reaches the copilot.
                     type: string
                 name:
                     type: string
+                system_instructions:
+                    description: Free-text persona/conduct, APPENDED to the fixed action system prompt (never replaces it).
+                    type: string
+                temperature:
+                    description: Sampling temperature 0–2.
+                    type: number
                 tenant_id:
                     type: string
                 updated_at:
@@ -955,12 +976,6 @@ components:
             type: object
         CopilotConfig:
             properties:
-                allow_customer_data:
-                    type: boolean
-                allow_financial_data:
-                    type: boolean
-                allow_monitoring_data:
-                    type: boolean
                 base_url:
                     type: string
                 created_at:
@@ -970,18 +985,12 @@ components:
                     type: boolean
                 has_key:
                     type: boolean
-                human_approval_required:
-                    type: boolean
                 id:
                     type: string
-                max_tokens:
-                    type: integer
                 model:
                     type: string
                 provider:
                     type: string
-                temperature:
-                    type: number
                 tenant_id:
                     type: string
                 updated_at:
@@ -1170,6 +1179,15 @@ components:
             type: object
         CreateCopilotAssistantRequest:
             properties:
+                allow_customer_data:
+                    description: Default false.
+                    type: boolean
+                allow_financial_data:
+                    description: Default false.
+                    type: boolean
+                allow_monitoring_data:
+                    description: Default false.
+                    type: boolean
                 channel_ids:
                     description: Ids of ChannelConnections to serve; each must exist for the tenant.
                     items:
@@ -1178,14 +1196,26 @@ components:
                 enabled:
                     description: Defaults to true when omitted.
                     type: boolean
+                human_approval_required:
+                    description: Default false.
+                    type: boolean
                 isp_profile_id:
                     description: Optional providerhub ISP profile id to pin; must exist. Mutually exclusive with mcp_server_id (both set → 422).
                     type: string
+                max_tokens:
+                    description: '>0; default 512 when omitted.'
+                    type: integer
                 mcp_server_id:
                     description: Optional tenant MCP server id to pin; must exist. Mutually exclusive with isp_profile_id (both set → 422).
                     type: string
                 name:
                     type: string
+                system_instructions:
+                    description: Optional persona/conduct text.
+                    type: string
+                temperature:
+                    description: 0–2; default 0.7 when omitted.
+                    type: number
             required:
                 - name
             type: object
@@ -2749,22 +2779,13 @@ components:
             type: object
         SaveCopilotConfigRequest:
             properties:
-                allow_customer_data:
-                    type: boolean
-                allow_financial_data:
-                    type: boolean
-                allow_monitoring_data:
-                    type: boolean
                 api_key:
+                    description: New provider key; OMIT to keep the stored one, empty string to clear. Never returned.
                     type: string
                 base_url:
                     type: string
                 enabled:
                     type: boolean
-                human_approval_required:
-                    type: boolean
-                max_tokens:
-                    type: integer
                 model:
                     type: string
                 provider:
@@ -2776,8 +2797,6 @@ components:
                         - deepseek
                         - perplexity
                     type: string
-                temperature:
-                    type: number
             type: object
         Sector:
             properties:
@@ -3125,20 +3144,36 @@ components:
             type: object
         UpdateCopilotAssistantRequest:
             properties:
+                allow_customer_data:
+                    type: boolean
+                allow_financial_data:
+                    type: boolean
+                allow_monitoring_data:
+                    type: boolean
                 channel_ids:
                     items:
                         type: string
                     type: array
                 enabled:
                     type: boolean
+                human_approval_required:
+                    type: boolean
                 isp_profile_id:
                     description: Mutually exclusive with mcp_server_id.
                     type: string
+                max_tokens:
+                    description: '>0.'
+                    type: integer
                 mcp_server_id:
                     description: Mutually exclusive with isp_profile_id.
                     type: string
                 name:
                     type: string
+                system_instructions:
+                    type: string
+                temperature:
+                    description: 0–2.
+                    type: number
             type: object
         UpdateCustomAttributeRequest:
             properties:

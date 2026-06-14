@@ -18,9 +18,19 @@ type Assistant struct {
 	//   - both empty       → no external tools.
 	ISPProfileID string
 	MCPServerID  string
-	Enabled      bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// Behavior (per assistant): the privacy gates, the human-approval switch,
+	// sampling, and free-text persona/conduct instructions. The AI infra
+	// (provider/model/key/base_url) stays global in AIConfig.
+	AllowCustomerData     bool
+	AllowFinancialData    bool
+	AllowMonitoringData   bool
+	HumanApprovalRequired bool
+	Temperature           float64
+	MaxTokens             int
+	SystemInstructions    string
+	Enabled               bool
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 // ServesChannelID reports whether the assistant serves the given channel

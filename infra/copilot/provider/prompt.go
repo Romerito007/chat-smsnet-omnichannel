@@ -7,6 +7,18 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 )
 
+// fullSystemPrompt is the system message a provider sends: the fixed action prompt
+// FIRST (guarantees the base behavior — same language, concise, output shape), then
+// the assistant's free-text persona/conduct APPENDED after a blank line. The
+// persona adds segment context; it never replaces the base.
+func fullSystemPrompt(req contracts.Request) string {
+	base := systemPrompt(req.Action)
+	if extra := strings.TrimSpace(req.SystemInstructions); extra != "" {
+		return base + "\n\n" + extra
+	}
+	return base
+}
+
 // systemPrompt returns the action-specific system instruction shared by every
 // real provider. It steers the model toward a concise, support-appropriate
 // answer; the (policy-filtered) conversation context is supplied as user content.

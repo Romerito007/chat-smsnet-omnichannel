@@ -8,76 +8,54 @@ import (
 	centity "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 )
 
-// SaveConfigRequest is the body of PATCH /v1/copilot/config (upsert).
+// SaveConfigRequest is the body of PATCH /v1/copilot/config (upsert). It carries
+// only the AI infrastructure; behavior (gates/sampling/persona) is set per
+// assistant, not here.
 type SaveConfigRequest struct {
-	Provider              *string  `json:"provider"`
-	Model                 *string  `json:"model"`
-	APIKey                *string  `json:"api_key"`
-	BaseURL               *string  `json:"base_url"`
-	Temperature           *float64 `json:"temperature"`
-	MaxTokens             *int     `json:"max_tokens"`
-	AllowCustomerData     *bool    `json:"allow_customer_data"`
-	AllowFinancialData    *bool    `json:"allow_financial_data"`
-	AllowMonitoringData   *bool    `json:"allow_monitoring_data"`
-	HumanApprovalRequired *bool    `json:"human_approval_required"`
-	Enabled               *bool    `json:"enabled"`
+	Provider *string `json:"provider"`
+	Model    *string `json:"model"`
+	APIKey   *string `json:"api_key"`
+	BaseURL  *string `json:"base_url"`
+	Enabled  *bool   `json:"enabled"`
 }
 
 // ToCommand maps to the service command.
 func (r SaveConfigRequest) ToCommand() ccontracts.SaveConfig {
 	return ccontracts.SaveConfig{
-		Provider:              r.Provider,
-		Model:                 r.Model,
-		APIKey:                r.APIKey,
-		BaseURL:               r.BaseURL,
-		Temperature:           r.Temperature,
-		MaxTokens:             r.MaxTokens,
-		AllowCustomerData:     r.AllowCustomerData,
-		AllowFinancialData:    r.AllowFinancialData,
-		AllowMonitoringData:   r.AllowMonitoringData,
-		HumanApprovalRequired: r.HumanApprovalRequired,
-		Enabled:               r.Enabled,
+		Provider: r.Provider,
+		Model:    r.Model,
+		APIKey:   r.APIKey,
+		BaseURL:  r.BaseURL,
+		Enabled:  r.Enabled,
 	}
 }
 
-// ConfigResponse is the public representation of a tenant's copilot config. The
+// ConfigResponse is the public representation of a tenant's copilot AI infra. The
 // API key is never returned — only whether one is set (HasKey).
 type ConfigResponse struct {
-	ID                    string    `json:"id"`
-	TenantID              string    `json:"tenant_id"`
-	Provider              string    `json:"provider"`
-	Model                 string    `json:"model"`
-	HasKey                bool      `json:"has_key"`
-	BaseURL               string    `json:"base_url,omitempty"`
-	Temperature           float64   `json:"temperature"`
-	MaxTokens             int       `json:"max_tokens"`
-	AllowCustomerData     bool      `json:"allow_customer_data"`
-	AllowFinancialData    bool      `json:"allow_financial_data"`
-	AllowMonitoringData   bool      `json:"allow_monitoring_data"`
-	HumanApprovalRequired bool      `json:"human_approval_required"`
-	Enabled               bool      `json:"enabled"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
+	Provider  string    `json:"provider"`
+	Model     string    `json:"model"`
+	HasKey    bool      `json:"has_key"`
+	BaseURL   string    `json:"base_url,omitempty"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // NewConfigResponse maps a config entity, masking the API key.
 func NewConfigResponse(c *centity.AIConfig) ConfigResponse {
 	return ConfigResponse{
-		ID:                    c.ID,
-		TenantID:              c.TenantID,
-		Provider:              string(c.Provider),
-		Model:                 c.Model,
-		HasKey:                c.APIKey != "",
-		BaseURL:               c.BaseURL,
-		Temperature:           c.Temperature,
-		MaxTokens:             c.MaxTokens,
-		AllowCustomerData:     c.AllowCustomerData,
-		AllowFinancialData:    c.AllowFinancialData,
-		AllowMonitoringData:   c.AllowMonitoringData,
-		HumanApprovalRequired: c.HumanApprovalRequired,
-		Enabled:               c.Enabled,
-		CreatedAt:             c.CreatedAt,
-		UpdatedAt:             c.UpdatedAt,
+		ID:        c.ID,
+		TenantID:  c.TenantID,
+		Provider:  string(c.Provider),
+		Model:     c.Model,
+		HasKey:    c.APIKey != "",
+		BaseURL:   c.BaseURL,
+		Enabled:   c.Enabled,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
 	}
 }
 

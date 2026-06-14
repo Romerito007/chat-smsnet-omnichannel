@@ -138,6 +138,31 @@ assistente da conversa (`ISPToolBridge.ToolSource(channel_id)`):
 Inferência do copiloto (`POST /v1/copilot/suggest-reply` etc.) contra um provedor
 OpenAI-compatível (OpenAI/Mistral/DeepSeek/Perplexity), Anthropic ou Gemini.
 
+## Infra global vs. comportamento por assistente (modelo híbrido)
+
+A **`copilot_config`** (tenant, `PATCH /v1/copilot/config`) carrega **só a infra de
+IA compartilhada**: `provider`, `model`, `api_key`, `base_url`, `enabled`. Uma
+**única chave** serve todos os segmentos.
+
+O **comportamento** desceu para o **`CopilotAssistant`** (por assistente/canal):
+`allow_customer_data`, `allow_financial_data`, `allow_monitoring_data`,
+`human_approval_required`, `temperature` (0–2), `max_tokens` (>0) e
+`system_instructions` (persona/conduta, texto livre). Assim canais diferentes
+(ex.: WhatsApp de ISP vs. de loja) têm gates, persona e temperatura próprios sem
+replicar a chave de IA.
+
+**Resolução na inferência** (`Service.run`): resolve o assistente pela
+`conv.channel_id` (`FindByChannelID`) e monta o `Request` com **provider/model/key
+da config global** + **gates/temperature/max_tokens/system_instructions do
+assistente**. O `system_instructions` é **concatenado** ao system prompt fixo da
+ação: `systemPrompt(action)` + `"\n\n"` + persona (o fixo garante o comportamento
+base — idioma, concisão, formato; a persona adiciona segmento).
+
+**Sem assistente resolvido** (`channel_id` vazio ou nenhum assistente serve o
+canal): o copiloto roda com **`DefaultBehavior` conservador** — **todos os gates
+OFF** (nada sensível no prompt), **sem persona**, `temperature=0.7`,
+`max_tokens=512`. Não cai em gate global (não existe mais) e não bloqueia.
+
 ## Resolução da API key (precedência)
 
 1. **Config do tenant** (`copilot_config.api_key`, cifrada AES-GCM via

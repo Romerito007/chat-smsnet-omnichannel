@@ -53,18 +53,12 @@ func (r *ConfigRepository) Update(ctx context.Context, c *entity.AIConfig) error
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": c.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
-			"provider":                c.Provider,
-			"model":                   c.Model,
-			"encrypted_api_key":       enc,
-			"base_url":                c.BaseURL,
-			"temperature":             c.Temperature,
-			"max_tokens":              c.MaxTokens,
-			"allow_customer_data":     c.AllowCustomerData,
-			"allow_financial_data":    c.AllowFinancialData,
-			"allow_monitoring_data":   c.AllowMonitoringData,
-			"human_approval_required": c.HumanApprovalRequired,
-			"enabled":                 c.Enabled,
-			"updated_at":              c.UpdatedAt,
+			"provider":          c.Provider,
+			"model":             c.Model,
+			"encrypted_api_key": enc,
+			"base_url":          c.BaseURL,
+			"enabled":           c.Enabled,
+			"updated_at":        c.UpdatedAt,
 		}},
 	)
 	if err != nil {
@@ -94,17 +88,11 @@ func (r *ConfigRepository) toModel(c *entity.AIConfig) (models.AIConfig, error) 
 		return models.AIConfig{}, err
 	}
 	m := models.AIConfig{
-		Provider:              string(c.Provider),
-		Model:                 c.Model,
-		EncryptedAPIKey:       enc,
-		BaseURL:               c.BaseURL,
-		Temperature:           c.Temperature,
-		MaxTokens:             c.MaxTokens,
-		AllowCustomerData:     c.AllowCustomerData,
-		AllowFinancialData:    c.AllowFinancialData,
-		AllowMonitoringData:   c.AllowMonitoringData,
-		HumanApprovalRequired: c.HumanApprovalRequired,
-		Enabled:               c.Enabled,
+		Provider:        string(c.Provider),
+		Model:           c.Model,
+		EncryptedAPIKey: enc,
+		BaseURL:         c.BaseURL,
+		Enabled:         c.Enabled,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -119,21 +107,15 @@ func (r *ConfigRepository) toEntity(m *models.AIConfig) (*entity.AIConfig, error
 		return nil, apperror.Internal("decrypt api key").Wrap(err)
 	}
 	return &entity.AIConfig{
-		ID:                    m.ID,
-		TenantID:              m.TenantID,
-		Provider:              entity.Provider(m.Provider),
-		Model:                 m.Model,
-		APIKey:                key,
-		BaseURL:               m.BaseURL,
-		Temperature:           m.Temperature,
-		MaxTokens:             m.MaxTokens,
-		AllowCustomerData:     m.AllowCustomerData,
-		AllowFinancialData:    m.AllowFinancialData,
-		AllowMonitoringData:   m.AllowMonitoringData,
-		HumanApprovalRequired: m.HumanApprovalRequired,
-		Enabled:               m.Enabled,
-		CreatedAt:             m.CreatedAt,
-		UpdatedAt:             m.UpdatedAt,
+		ID:        m.ID,
+		TenantID:  m.TenantID,
+		Provider:  entity.Provider(m.Provider),
+		Model:     m.Model,
+		APIKey:    key,
+		BaseURL:   m.BaseURL,
+		Enabled:   m.Enabled,
+		CreatedAt: m.CreatedAt,
+		UpdatedAt: m.UpdatedAt,
 	}, nil
 }
 

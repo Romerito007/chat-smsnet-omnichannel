@@ -116,12 +116,16 @@ func (allowAllMonitoring) Monitoring(context.Context, string) (*contracts.Monito
 	return &contracts.MonitoringInfo{Summary: "offline since 09:00"}, nil
 }
 
-// spyProvider captures the context it was asked to infer over.
-type spyProvider struct{ got contracts.PromptContext }
+// spyProvider captures the request it was asked to infer over.
+type spyProvider struct {
+	got    contracts.PromptContext
+	gotReq contracts.Request
+}
 
 func (p *spyProvider) Name() string { return "spy" }
 func (p *spyProvider) Infer(_ context.Context, req contracts.Request) (contracts.Response, error) {
 	p.got = req.Context
+	p.gotReq = req
 	return contracts.Response{Text: "ok", TokensInput: 5, TokensOutput: 2}, nil
 }
 
@@ -145,15 +149,14 @@ func sampleMessages() *fakeMessages {
 }
 
 func conv() *conventity.Conversation {
-	return &conventity.Conversation{ID: "conv1", TenantID: "t1", Channel: "whatsapp", ContactID: "c1", SectorID: "s1"}
+	return &conventity.Conversation{ID: "conv1", TenantID: "t1", Channel: "whatsapp", ChannelID: "ch1", ContactID: "c1", SectorID: "s1"}
 }
 
 // ── context-builder privacy tests ────────────────────────────────────────────
 
 func TestContext_AllPoliciesDisabled_NoEnrichment(t *testing.T) {
 	b := builderWithAllSources(sampleMessages())
-	cfg := &entity.AIConfig{} // all allow_* false
-	pc := b.Build(context.Background(), cfg, conv(), "")
+	pc := b.Build(context.Background(), entity.Behavior{}, conv(), "") // all gates false
 
 	if pc.Customer != nil {
 		t.Errorf("customer data leaked despite allow_customer_data=false: %+v", pc.Customer)
@@ -182,8 +185,8 @@ func TestContext_AllPoliciesDisabled_NoEnrichment(t *testing.T) {
 func TestContext_FinancialGated(t *testing.T) {
 	b := builderWithAllSources(sampleMessages())
 	// customer + monitoring allowed, financial NOT.
-	cfg := &entity.AIConfig{AllowCustomerData: true, AllowMonitoringData: true}
-	pc := b.Build(context.Background(), cfg, conv(), "")
+	beh := entity.Behavior{AllowCustomerData: true, AllowMonitoringData: true}
+	pc := b.Build(context.Background(), beh, conv(), "")
 
 	if pc.Customer == nil {
 		t.Errorf("customer should be present when allowed")
@@ -198,8 +201,8 @@ func TestContext_FinancialGated(t *testing.T) {
 
 func TestContext_AllPoliciesEnabled_FullEnrichment(t *testing.T) {
 	b := builderWithAllSources(sampleMessages())
-	cfg := &entity.AIConfig{AllowCustomerData: true, AllowFinancialData: true, AllowMonitoringData: true}
-	pc := b.Build(context.Background(), cfg, conv(), "")
+	beh := entity.Behavior{AllowCustomerData: true, AllowFinancialData: true, AllowMonitoringData: true}
+	pc := b.Build(context.Background(), beh, conv(), "")
 	if pc.Customer == nil || pc.Financial == nil || pc.Monitoring == nil {
 		t.Errorf("all sections should be present when all policies enabled: %+v", pc)
 	}
@@ -208,8 +211,8 @@ func TestContext_AllPoliciesEnabled_FullEnrichment(t *testing.T) {
 func TestContext_NilSourcesAreSafe(t *testing.T) {
 	// Policies enabled but no sources wired → no data, no panic.
 	b := NewContextBuilder(sampleMessages(), nil, nil, nil)
-	cfg := &entity.AIConfig{AllowCustomerData: true, AllowFinancialData: true, AllowMonitoringData: true}
-	pc := b.Build(context.Background(), cfg, conv(), "")
+	beh := entity.Behavior{AllowCustomerData: true, AllowFinancialData: true, AllowMonitoringData: true}
+	pc := b.Build(context.Background(), beh, conv(), "")
 	if pc.Customer != nil || pc.Financial != nil || pc.Monitoring != nil {
 		t.Errorf("nil sources should yield no enrichment")
 	}
@@ -217,12 +220,19 @@ func TestContext_NilSourcesAreSafe(t *testing.T) {
 
 // ── service-level tests ──────────────────────────────────────────────────────
 
-func newService(cfg *entity.AIConfig, spy *spyProvider) (*Service, *fakeLogs) {
+func newService(cfg *entity.AIConfig, spy *spyProvider, assistants ...*entity.Assistant) (*Service, *fakeLogs) {
 	logs := &fakeLogs{}
 	cfgSvc := NewConfigService(&fakeConfigRepo{cfg: cfg}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
 	convs := &fakeConvRepo{items: map[string]*conventity.Conversation{"conv1": conv()}}
 	builder := builderWithAllSources(sampleMessages())
 	svc := NewService(cfgSvc, logs, convs, builder, spyResolver{p: spy}, shared.NoopPublisher{}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	// Resolve per-assistant behavior; with no assistant the service uses the
+	// conservative DefaultBehavior (all gates off).
+	repo := &fakeAssistantRepo{byID: map[string]*entity.Assistant{}}
+	for _, a := range assistants {
+		repo.byID[a.ID] = a
+	}
+	svc.SetAssistantResolver(repo)
 	return svc, logs
 }
 
@@ -259,8 +269,10 @@ func TestService_SuggestReply_PersistsLogAndRespectsPolicy(t *testing.T) {
 
 func TestService_HumanApprovalRequired(t *testing.T) {
 	spy := &spyProvider{}
-	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.Provider("echo"), Model: "echo-1", APIKey: "test-key", Enabled: true, HumanApprovalRequired: true}
-	svc, logs := newService(cfg, spy)
+	cfg := &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.Provider("echo"), Model: "echo-1", APIKey: "test-key", Enabled: true}
+	// human_approval_required now lives on the assistant serving the channel.
+	assistant := &entity.Assistant{ID: "a1", TenantID: "t1", Name: "A", ChannelIDs: []string{"ch1"}, HumanApprovalRequired: true, Enabled: true}
+	svc, logs := newService(cfg, spy, assistant)
 
 	res, err := svc.Summarize(allCtx(), contracts.SummarizeInput{ConversationID: "conv1"})
 	if err != nil {
@@ -293,5 +305,55 @@ func TestService_VisibilityEnforced(t *testing.T) {
 	ctx = authz.WithAuthContext(ctx, authz.NewAuthContext("t1", "bob", nil, []string{"s2"}, authz.ScopeOwn))
 	if _, err := svc.SuggestReply(ctx, contracts.SuggestReplyInput{ConversationID: "conv1"}); apperror.From(err).Code != apperror.CodeNotFound {
 		t.Errorf("expected not_found for out-of-scope conversation, got %v", err)
+	}
+}
+
+// ── per-assistant behavior tests ─────────────────────────────────────────────
+
+func echoCfg() *entity.AIConfig {
+	return &entity.AIConfig{ID: "cfg1", TenantID: "t1", Provider: entity.Provider("echo"), Model: "echo-1", APIKey: "test-key", Enabled: true}
+}
+
+func TestService_AssistantGatesEnrichPrompt(t *testing.T) {
+	spy := &spyProvider{}
+	// The assistant serving ch1 allows customer data and sets a temperature.
+	a := &entity.Assistant{ID: "a1", TenantID: "t1", Name: "Vendas", ChannelIDs: []string{"ch1"},
+		AllowCustomerData: true, Temperature: 1.2, MaxTokens: 700,
+		SystemInstructions: "Persona de vendas.", Enabled: true}
+	svc, _ := newService(echoCfg(), spy, a)
+
+	if _, err := svc.Summarize(allCtx(), contracts.SummarizeInput{ConversationID: "conv1"}); err != nil {
+		t.Fatalf("summarize: %v", err)
+	}
+	if spy.got.Customer == nil {
+		t.Error("the assistant's allow_customer_data gate must let customer data into the prompt")
+	}
+	if spy.got.Financial != nil {
+		t.Error("financial must stay gated (assistant gate false)")
+	}
+	if spy.gotReq.Temperature != 1.2 || spy.gotReq.MaxTokens != 700 {
+		t.Errorf("the assistant's sampling must be applied, got temp=%v max=%d", spy.gotReq.Temperature, spy.gotReq.MaxTokens)
+	}
+	if spy.gotReq.SystemInstructions != "Persona de vendas." {
+		t.Errorf("the assistant persona must reach the request, got %q", spy.gotReq.SystemInstructions)
+	}
+}
+
+func TestService_NoAssistantUsesConservativeDefault(t *testing.T) {
+	spy := &spyProvider{}
+	svc, _ := newService(echoCfg(), spy) // no assistant for ch1
+
+	if _, err := svc.Summarize(allCtx(), contracts.SummarizeInput{ConversationID: "conv1"}); err != nil {
+		t.Fatalf("summarize: %v", err)
+	}
+	// All data gates OFF, no persona, default sampling.
+	if spy.got.Customer != nil || spy.got.Financial != nil || spy.got.Monitoring != nil {
+		t.Errorf("no assistant must gate ALL data, got %+v", spy.got)
+	}
+	if spy.gotReq.SystemInstructions != "" {
+		t.Errorf("no assistant must mean no persona, got %q", spy.gotReq.SystemInstructions)
+	}
+	if spy.gotReq.Temperature != entity.DefaultTemperature || spy.gotReq.MaxTokens != entity.DefaultMaxTokens {
+		t.Errorf("no assistant must use default sampling, got temp=%v max=%d", spy.gotReq.Temperature, spy.gotReq.MaxTokens)
 	}
 }

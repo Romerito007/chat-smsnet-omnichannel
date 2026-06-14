@@ -2,30 +2,32 @@ package models
 
 import "time"
 
-// AIConfig is the BSON document for a tenant's copilot configuration.
+// AIConfig is the BSON document for a tenant's copilot AI infrastructure.
 type AIConfig struct {
-	Base                  `bson:",inline"`
-	Provider              string  `bson:"provider"`
-	Model                 string  `bson:"model"`
-	EncryptedAPIKey       string  `bson:"encrypted_api_key,omitempty"`
-	BaseURL               string  `bson:"base_url,omitempty"`
-	Temperature           float64 `bson:"temperature"`
-	MaxTokens             int     `bson:"max_tokens"`
-	AllowCustomerData     bool    `bson:"allow_customer_data"`
-	AllowFinancialData    bool    `bson:"allow_financial_data"`
-	AllowMonitoringData   bool    `bson:"allow_monitoring_data"`
-	HumanApprovalRequired bool    `bson:"human_approval_required"`
-	Enabled               bool    `bson:"enabled"`
+	Base            `bson:",inline"`
+	Provider        string `bson:"provider"`
+	Model           string `bson:"model"`
+	EncryptedAPIKey string `bson:"encrypted_api_key,omitempty"`
+	BaseURL         string `bson:"base_url,omitempty"`
+	Enabled         bool   `bson:"enabled"`
 }
 
-// Assistant is the BSON document for a copilot assistant (many per tenant).
+// Assistant is the BSON document for a copilot assistant (many per tenant). It
+// carries the per-assistant behavior (gates, sampling, persona).
 type Assistant struct {
-	Base         `bson:",inline"`
-	Name         string   `bson:"name"`
-	ChannelIDs   []string `bson:"channel_ids,omitempty"`
-	ISPProfileID string   `bson:"isp_profile_id,omitempty"`
-	MCPServerID  string   `bson:"mcp_server_id,omitempty"`
-	Enabled      bool     `bson:"enabled"`
+	Base                  `bson:",inline"`
+	Name                  string   `bson:"name"`
+	ChannelIDs            []string `bson:"channel_ids,omitempty"`
+	ISPProfileID          string   `bson:"isp_profile_id,omitempty"`
+	MCPServerID           string   `bson:"mcp_server_id,omitempty"`
+	AllowCustomerData     bool     `bson:"allow_customer_data"`
+	AllowFinancialData    bool     `bson:"allow_financial_data"`
+	AllowMonitoringData   bool     `bson:"allow_monitoring_data"`
+	HumanApprovalRequired bool     `bson:"human_approval_required"`
+	Temperature           float64  `bson:"temperature"`
+	MaxTokens             int      `bson:"max_tokens"`
+	SystemInstructions    string   `bson:"system_instructions,omitempty"`
+	Enabled               bool     `bson:"enabled"`
 }
 
 // AILog is the BSON document for one copilot call. It stores only summaries of

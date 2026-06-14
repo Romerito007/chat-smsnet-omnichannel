@@ -81,8 +81,9 @@ func userPreferencesSchema() M {
 // describedBool / describedInt / describedArr are the boolean/integer/array
 // counterparts of describedStr, for fields that carry a per-field description
 // (e.g. the ProviderHubConfig source mapping).
-func describedBool(desc string) M { return M{"type": "boolean", "description": desc} }
-func describedInt(desc string) M  { return M{"type": "integer", "description": desc} }
+func describedBool(desc string) M   { return M{"type": "boolean", "description": desc} }
+func describedInt(desc string) M    { return M{"type": "integer", "description": desc} }
+func describedNumber(desc string) M { return M{"type": "number", "description": desc} }
 func describedArr(items M, desc string) M {
 	return M{"type": "array", "items": items, "description": desc}
 }

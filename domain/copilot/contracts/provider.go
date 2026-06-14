@@ -29,7 +29,10 @@ type Request struct {
 	BaseURL     string
 	Temperature float64
 	MaxTokens   int
-	Context     PromptContext
+	// SystemInstructions is the assistant's free-text persona/conduct, APPENDED to
+	// the fixed action system prompt (never replacing it). Empty for none.
+	SystemInstructions string
+	Context            PromptContext
 	// Tools are the (provider-agnostic) tool/function definitions the model may
 	// call. They come from the MCP registry, not from any hard-coded tool. When
 	// empty, the provider runs a plain completion.

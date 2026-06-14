@@ -37,6 +37,30 @@ type Service struct {
 	tools         contracts.ToolBroker
 	logger        shared.Logger
 	envKeys       map[entity.Provider]string
+	assistants    repository.AssistantRepository
+}
+
+// SetAssistantResolver wires the assistant repository so the copilot resolves the
+// conversation's assistant (by channel_id) to apply its behavior (gates, sampling,
+// persona). Optional: when unset, every conversation uses DefaultBehavior.
+func (s *Service) SetAssistantResolver(a repository.AssistantRepository) {
+	if a != nil {
+		s.assistants = a
+	}
+}
+
+// resolveBehavior resolves the conversation channel's assistant behavior; when no
+// assistant serves the channel (or channel_id is empty), the conservative
+// DefaultBehavior is used — all data gates OFF, no persona, default sampling.
+func (s *Service) resolveBehavior(ctx context.Context, channelID string) entity.Behavior {
+	if s.assistants == nil || channelID == "" {
+		return entity.DefaultBehavior()
+	}
+	a, err := s.assistants.FindByChannelID(ctx, channelID)
+	if err != nil || a == nil {
+		return entity.DefaultBehavior()
+	}
+	return a.Behavior()
 }
 
 // SetToolBroker wires the MCP tool broker enabling the agentic loop. Optional:
@@ -122,9 +146,13 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 		return contracts.Result{}, apperror.Validation("copilot is disabled for this tenant")
 	}
 
+	// Behavior (gates/sampling/persona) comes from the conversation's assistant; no
+	// assistant → conservative DefaultBehavior.
+	behavior := s.resolveBehavior(ctx, conv.ChannelID)
+
 	provider, err := s.resolver.Resolve(cfg.Provider)
 	if err != nil {
-		s.log(ctx, conv, cfg, action, "", entity.StatusError, 0, 0, "provider not available: "+string(cfg.Provider))
+		s.log(ctx, conv, cfg, behavior, action, "", entity.StatusError, 0, 0, "provider not available: "+string(cfg.Provider))
 		return contracts.Result{}, apperror.Integration(friendlyUnavailable)
 	}
 
@@ -136,21 +164,22 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 		apiKey = s.envKeys[cfg.Provider]
 	}
 	if apiKey == "" {
-		s.log(ctx, conv, cfg, action, "", entity.StatusError, 0, 0, "no api key (tenant or env)")
+		s.log(ctx, conv, cfg, behavior, action, "", entity.StatusError, 0, 0, "no api key (tenant or env)")
 		return contracts.Result{}, apperror.Integration(
 			"the copilot API key is not configured — set it in copilot settings or via env").
 			WithDetails(map[string]any{"category": "api_key_missing"})
 	}
 
-	pc := s.builder.Build(ctx, cfg, conv, instruction)
+	pc := s.builder.Build(ctx, behavior, conv, instruction)
 	base := contracts.Request{
-		Action:      action,
-		Model:       cfg.Model,
-		APIKey:      apiKey,
-		BaseURL:     cfg.BaseURL,
-		Temperature: cfg.Temperature,
-		MaxTokens:   cfg.MaxTokens,
-		Context:     pc,
+		Action:             action,
+		Model:              cfg.Model,
+		APIKey:             apiKey,
+		BaseURL:            cfg.BaseURL,
+		Temperature:        behavior.Temperature,
+		MaxTokens:          behavior.MaxTokens,
+		SystemInstructions: behavior.SystemInstructions,
+		Context:            pc,
 	}
 
 	var resp contracts.Response
@@ -161,7 +190,7 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 		resp, err = provider.Infer(ctx, base)
 	}
 	if err != nil {
-		s.log(ctx, conv, cfg, action, "", entity.StatusError, 0, 0, summarize(err))
+		s.log(ctx, conv, cfg, behavior, action, "", entity.StatusError, 0, 0, summarize(err))
 		// Record the real provider cause server-side (status + error body) so the
 		// 502 is diagnosable; the client gets a friendly message + safe category.
 		if s.logger != nil {
@@ -176,8 +205,8 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 	}
 
 	cost := estimateCost(cfg.Provider, resp.TokensInput, resp.TokensOutput)
-	// A proposed write action always needs approval, regardless of the config flag.
-	requiresApproval := cfg.HumanApprovalRequired || len(proposed) > 0
+	// A proposed write action always needs approval, regardless of the gate.
+	requiresApproval := behavior.HumanApprovalRequired || len(proposed) > 0
 	status := entity.StatusSuccess
 	if requiresApproval {
 		status = entity.StatusPendingApproval
@@ -196,7 +225,7 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 		ProposedActions:  proposed,
 	}
 
-	s.log(ctx, conv, cfg, action, outputSummary(resp), status, resp.TokensInput, resp.TokensOutput, "")
+	s.log(ctx, conv, cfg, behavior, action, outputSummary(resp), status, resp.TokensInput, resp.TokensOutput, "")
 	s.publish(ctx, conv, result)
 	return result, nil
 }
@@ -287,7 +316,7 @@ func (s *Service) loadVisible(ctx context.Context, id string) (*conventity.Conve
 	return nil, apperror.NotFound("conversation not found")
 }
 
-func (s *Service) log(ctx context.Context, conv *conventity.Conversation, cfg *entity.AIConfig, action entity.Action, output string, status entity.LogStatus, tokIn, tokOut int, errMsg string) {
+func (s *Service) log(ctx context.Context, conv *conventity.Conversation, cfg *entity.AIConfig, behavior entity.Behavior, action entity.Action, output string, status entity.LogStatus, tokIn, tokOut int, errMsg string) {
 	userID := ""
 	if ac, ok := authz.FromContext(ctx); ok {
 		userID = ac.UserID
@@ -300,7 +329,7 @@ func (s *Service) log(ctx context.Context, conv *conventity.Conversation, cfg *e
 		Provider:       string(cfg.Provider),
 		Model:          cfg.Model,
 		Action:         action,
-		InputSummary:   inputSummary(cfg, action),
+		InputSummary:   inputSummary(behavior, action),
 		OutputSummary:  output,
 		TokensInput:    tokIn,
 		TokensOutput:   tokOut,
@@ -320,9 +349,9 @@ func (s *Service) publish(ctx context.Context, conv *conventity.Conversation, re
 
 // inputSummary records which policy-gated sections were eligible, without any
 // raw data — an audit trail of what the model could see.
-func inputSummary(cfg *entity.AIConfig, action entity.Action) string {
+func inputSummary(beh entity.Behavior, action entity.Action) string {
 	return fmt.Sprintf("action=%s customer=%t financial=%t monitoring=%t",
-		action, cfg.AllowCustomerData, cfg.AllowFinancialData, cfg.AllowMonitoringData)
+		action, beh.AllowCustomerData, beh.AllowFinancialData, beh.AllowMonitoringData)
 }
 
 func outputSummary(resp contracts.Response) string {

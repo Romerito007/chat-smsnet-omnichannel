@@ -28,9 +28,10 @@ func IsValidProvider(p Provider) bool {
 	}
 }
 
-// AIConfig is a tenant's copilot configuration. The allow_*_data flags are
-// privacy switches: when false, the corresponding data is never placed in the
-// prompt sent to the provider, regardless of availability.
+// AIConfig is a tenant's copilot AI INFRASTRUCTURE: the shared provider, model,
+// credential and endpoint. Behavior (privacy gates, human approval, sampling,
+// persona) lives per-assistant on CopilotAssistant — see entity.Behavior — so a
+// single AI key serves segments with different conduct.
 type AIConfig struct {
 	ID       string
 	TenantID string
@@ -41,14 +42,8 @@ type AIConfig struct {
 	APIKey string
 	// BaseURL optionally overrides the provider's default API endpoint (e.g. an
 	// OpenAI-compatible gateway or a self-hosted proxy).
-	BaseURL               string
-	Temperature           float64
-	MaxTokens             int
-	AllowCustomerData     bool
-	AllowFinancialData    bool
-	AllowMonitoringData   bool
-	HumanApprovalRequired bool
-	Enabled               bool
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	BaseURL   string
+	Enabled   bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

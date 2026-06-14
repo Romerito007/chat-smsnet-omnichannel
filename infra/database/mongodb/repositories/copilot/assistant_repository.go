@@ -41,12 +41,19 @@ func (r *AssistantRepository) Update(ctx context.Context, a *entity.Assistant) e
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"_id": a.ID, "tenant_id": tenantID},
 		bson.M{"$set": bson.M{
-			"name":           m.Name,
-			"channel_ids":    m.ChannelIDs,
-			"isp_profile_id": m.ISPProfileID,
-			"mcp_server_id":  m.MCPServerID,
-			"enabled":        m.Enabled,
-			"updated_at":     a.UpdatedAt,
+			"name":                    m.Name,
+			"channel_ids":             m.ChannelIDs,
+			"isp_profile_id":          m.ISPProfileID,
+			"mcp_server_id":           m.MCPServerID,
+			"allow_customer_data":     m.AllowCustomerData,
+			"allow_financial_data":    m.AllowFinancialData,
+			"allow_monitoring_data":   m.AllowMonitoringData,
+			"human_approval_required": m.HumanApprovalRequired,
+			"temperature":             m.Temperature,
+			"max_tokens":              m.MaxTokens,
+			"system_instructions":     m.SystemInstructions,
+			"enabled":                 m.Enabled,
+			"updated_at":              a.UpdatedAt,
 		}},
 	)
 	if err != nil {
@@ -133,11 +140,18 @@ func (r *AssistantRepository) CountByISPProfile(ctx context.Context, ispProfileI
 
 func toAssistantModel(a *entity.Assistant) models.Assistant {
 	m := models.Assistant{
-		Name:         a.Name,
-		ChannelIDs:   a.ChannelIDs,
-		ISPProfileID: a.ISPProfileID,
-		MCPServerID:  a.MCPServerID,
-		Enabled:      a.Enabled,
+		Name:                  a.Name,
+		ChannelIDs:            a.ChannelIDs,
+		ISPProfileID:          a.ISPProfileID,
+		MCPServerID:           a.MCPServerID,
+		AllowCustomerData:     a.AllowCustomerData,
+		AllowFinancialData:    a.AllowFinancialData,
+		AllowMonitoringData:   a.AllowMonitoringData,
+		HumanApprovalRequired: a.HumanApprovalRequired,
+		Temperature:           a.Temperature,
+		MaxTokens:             a.MaxTokens,
+		SystemInstructions:    a.SystemInstructions,
+		Enabled:               a.Enabled,
 	}
 	m.ID = a.ID
 	m.TenantID = a.TenantID
@@ -148,15 +162,22 @@ func toAssistantModel(a *entity.Assistant) models.Assistant {
 
 func toAssistantEntity(m *models.Assistant) *entity.Assistant {
 	return &entity.Assistant{
-		ID:           m.ID,
-		TenantID:     m.TenantID,
-		Name:         m.Name,
-		ChannelIDs:   m.ChannelIDs,
-		ISPProfileID: m.ISPProfileID,
-		MCPServerID:  m.MCPServerID,
-		Enabled:      m.Enabled,
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
+		ID:                    m.ID,
+		TenantID:              m.TenantID,
+		Name:                  m.Name,
+		ChannelIDs:            m.ChannelIDs,
+		ISPProfileID:          m.ISPProfileID,
+		MCPServerID:           m.MCPServerID,
+		AllowCustomerData:     m.AllowCustomerData,
+		AllowFinancialData:    m.AllowFinancialData,
+		AllowMonitoringData:   m.AllowMonitoringData,
+		HumanApprovalRequired: m.HumanApprovalRequired,
+		Temperature:           m.Temperature,
+		MaxTokens:             m.MaxTokens,
+		SystemInstructions:    m.SystemInstructions,
+		Enabled:               m.Enabled,
+		CreatedAt:             m.CreatedAt,
+		UpdatedAt:             m.UpdatedAt,
 	}
 }
 

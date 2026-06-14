@@ -65,7 +65,7 @@ func (g *Gemini) Infer(ctx context.Context, req contracts.Request) (contracts.Re
 	endpoint := base + "/v1beta/models/" + url.PathEscape(model) + ":generateContent?key=" + url.QueryEscape(req.APIKey)
 
 	payload := geminiRequest{
-		SystemInstruction: &geminiContent{Parts: []geminiPart{{Text: systemPrompt(req.Action)}}},
+		SystemInstruction: &geminiContent{Parts: []geminiPart{{Text: fullSystemPrompt(req)}}},
 		Contents:          []geminiContent{{Role: "user", Parts: []geminiPart{{Text: renderContext(req.Context)}}}},
 		GenerationConfig:  geminiGenConfig{Temperature: req.Temperature, MaxOutputTokens: maxTokensOr(req.MaxTokens, 0)},
 	}

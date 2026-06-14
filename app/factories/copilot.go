@@ -80,6 +80,9 @@ func CopilotService(c *container.Container) *cservice.Service {
 	// Wire the MCP tool broker so suggest_reply runs the agentic read-tool loop and
 	// proposes write actions for approval.
 	svc.SetToolBroker(MCPToolService(c))
+	// Resolve the conversation's assistant (by channel_id) to apply its behavior
+	// (privacy gates, sampling, persona). No assistant → conservative defaults.
+	svc.SetAssistantResolver(copilotrepo.NewAssistantRepository(c.Mongo.DB))
 	// Server-side logging of the real provider cause + env-default API keys used
 	// when a tenant has selected a provider but set no key of its own.
 	svc.SetLogger(c.Logger)

@@ -609,8 +609,11 @@ func (d *demoSeeder) seedIntegrations() error {
 	}
 	assistant := &cpentity.Assistant{
 		ID: shared.NewID(), TenantID: d.tenantID, Name: "Assistente Suporte",
-		ChannelIDs: chIDs, ISPProfileID: d.ispProfileID, Enabled: true,
-		CreatedAt: d.now, UpdatedAt: d.now,
+		ChannelIDs: chIDs, ISPProfileID: d.ispProfileID,
+		AllowCustomerData: true, HumanApprovalRequired: true,
+		Temperature: 0.3, MaxTokens: 1024,
+		SystemInstructions: "Você é o assistente de suporte do provedor. Seja objetivo e cordial.",
+		Enabled:            true, CreatedAt: d.now, UpdatedAt: d.now,
 	}
 	if err := cprepo.NewAssistantRepository(d.db).Create(d.ctx, assistant); err != nil {
 		return err
@@ -640,9 +643,7 @@ func (d *demoSeeder) seedIntegrations() error {
 		// is used as the fallback.
 		cfg := &cpentity.AIConfig{
 			ID: shared.NewID(), TenantID: d.tenantID, Provider: cpentity.ProviderOpenAI,
-			Model: "gpt-4o-mini", APIKey: "", Temperature: 0.3, MaxTokens: 1024,
-			AllowCustomerData: true, AllowFinancialData: false, AllowMonitoringData: false,
-			HumanApprovalRequired: true, Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
+			Model: "gpt-4o-mini", APIKey: "", Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
 		}
 		if err := cpRepo.Create(d.ctx, cfg); err != nil {
 			return err

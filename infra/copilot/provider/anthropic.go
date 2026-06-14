@@ -97,7 +97,7 @@ func (a *Anthropic) Infer(ctx context.Context, req contracts.Request) (contracts
 		Model:       orDefault(req.Model, a.defaultModel),
 		MaxTokens:   maxTokensOr(req.MaxTokens, 1024), // Messages API requires max_tokens
 		Temperature: req.Temperature,
-		System:      systemPrompt(req.Action),
+		System:      fullSystemPrompt(req),
 		Messages:    messages,
 		Tools:       toAnthropicTools(req.Tools),
 	}

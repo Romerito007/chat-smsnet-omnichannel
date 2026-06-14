@@ -35,28 +35,29 @@ func NewContextBuilder(
 	return &ContextBuilder{messages: messages, customer: customer, financial: financial, monitoring: monitoring}
 }
 
-// Build assembles the context, enforcing the tenant's privacy policies.
-func (b *ContextBuilder) Build(ctx context.Context, cfg *entity.AIConfig, conv *conventity.Conversation, instruction string) contracts.PromptContext {
+// Build assembles the context, enforcing the assistant's privacy gates (the
+// allow_*_data switches now live per-assistant in the resolved Behavior).
+func (b *ContextBuilder) Build(ctx context.Context, beh entity.Behavior, conv *conventity.Conversation, instruction string) contracts.PromptContext {
 	pc := contracts.PromptContext{
 		Channel:     conv.Channel,
 		Instruction: instruction,
 		Transcript:  b.transcript(ctx, conv.ID),
 	}
 
-	// Customer profile — only when the policy allows AND a source is wired.
-	if cfg.AllowCustomerData && b.customer != nil {
+	// Customer profile — only when the gate allows AND a source is wired.
+	if beh.AllowCustomerData && b.customer != nil {
 		if info, err := b.customer.Customer(ctx, conv.ContactID); err == nil {
 			pc.Customer = info
 		}
 	}
-	// Financial data — only when the policy allows.
-	if cfg.AllowFinancialData && b.financial != nil {
+	// Financial data — only when the gate allows.
+	if beh.AllowFinancialData && b.financial != nil {
 		if info, err := b.financial.Financial(ctx, conv.ContactID); err == nil {
 			pc.Financial = info
 		}
 	}
-	// Monitoring/technical status — only when the policy allows.
-	if cfg.AllowMonitoringData && b.monitoring != nil {
+	// Monitoring/technical status — only when the gate allows.
+	if beh.AllowMonitoringData && b.monitoring != nil {
 		if info, err := b.monitoring.Monitoring(ctx, conv.ID); err == nil {
 			pc.Monitoring = info
 		}
