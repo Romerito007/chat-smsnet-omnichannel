@@ -27,6 +27,7 @@ import (
 	iamentity "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/entity"
 	mcpentity "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/entity"
 	privacyentity "github.com/romerito007/chat-smsnet-omnichannel/domain/privacy/entity"
+	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
 	queueentity "github.com/romerito007/chat-smsnet-omnichannel/domain/queues/entity"
 	sectorentity "github.com/romerito007/chat-smsnet-omnichannel/domain/sectors/entity"
 	slaentity "github.com/romerito007/chat-smsnet-omnichannel/domain/sla/entity"
@@ -43,6 +44,7 @@ import (
 	iamrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/iam"
 	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/mcp"
 	privacyrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/privacy"
+	phrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/providerhub"
 	queuerepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/queues"
 	sectorrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/sectors"
 	slarepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/sla"
@@ -120,7 +122,8 @@ type demoSeeder struct {
 	agentIDs        []string            // demo agent user ids
 	agentBySec      map[string][]string // sector name -> agent ids
 	tagIDs          []string            // canonical tag ids (conversations/contacts store ids, never names)
-	channels        []string            // channel type slugs created
+	channels        []demoChannel       // channel connections created (type + id)
+	ispProfileID    string              // default ISP profile id
 	contactIDs      []string
 	closeReasn      []string // close reason names
 	surveyID        string
@@ -244,11 +247,14 @@ func (d *demoSeeder) run() error {
 		// agents end up with sector_ids: [""], which breaks sector assignment.
 		{"sectors_queues", d.seedSectorsQueues},
 		{"team", d.seedTeam},
-		{"business_hours", d.seedBusinessHours},
 		{"sla", d.seedSLAPolicy},
 		{"privacy", d.seedPrivacy},
 		{"taxonomy_csat", d.seedTaxonomyCSAT},
+		// integrations creates the channels (with per-channel business hours), the
+		// ISP profile and the assistant; holidays runs after it so a channel-scoped
+		// holiday can reference a real channel id.
 		{"integrations", d.seedIntegrations},
+		{"holidays", d.seedHolidays},
 		{"contacts", d.seedContacts},
 		{"conversations", d.seedConversations},
 		{"copilot_suggestions", d.seedCopilotApprovals},
@@ -353,39 +359,39 @@ func (d *demoSeeder) roleID(name string) (string, error) {
 	return doc.ID, err
 }
 
-// ── 4.3 business hours ──────────────────────────────────────────────────────────
+// ── 4.3 holidays ────────────────────────────────────────────────────────────────
 
-func (d *demoSeeder) seedBusinessHours() error {
-	// Schedule is stored on the Sector's business_hours map. Apply the same
-	// Mon–Fri 08–18 / Sat 08–12 / Sun closed (America/Sao_Paulo) to every sector.
-	hours := map[string]any{
-		"timezone": "America/Sao_Paulo",
-		"weekly": map[string]any{
-			"monday":    []any{map[string]any{"start": "08:00", "end": "18:00"}},
-			"tuesday":   []any{map[string]any{"start": "08:00", "end": "18:00"}},
-			"wednesday": []any{map[string]any{"start": "08:00", "end": "18:00"}},
-			"thursday":  []any{map[string]any{"start": "08:00", "end": "18:00"}},
-			"friday":    []any{map[string]any{"start": "08:00", "end": "18:00"}},
-			"saturday":  []any{map[string]any{"start": "08:00", "end": "12:00"}},
-		},
-	}
-	for _, id := range d.sectorIDs {
-		if _, err := d.db.Collection("sectors").UpdateOne(d.ctx,
-			bson.M{"_id": id, "tenant_id": d.tenantID},
-			bson.M{"$set": bson.M{"business_hours": hours, "updated_at": d.now}}); err != nil {
-			return err
-		}
-	}
-	// One demo holiday.
-	h := &bhentity.Holiday{
+// seedHolidays creates the tenant holidays. Business hours live on the channel
+// connections (set in seedIntegrations), not here. It seeds a global holiday plus
+// a channel-scoped one to exercise both scopes; the channel-scoped one references
+// a real channel id created earlier.
+func (d *demoSeeder) seedHolidays() error {
+	repo := bhrepo.NewHolidayRepository(d.db)
+
+	// Global holiday: closes every channel one month out.
+	global := &bhentity.Holiday{
 		ID: shared.NewID(), TenantID: d.tenantID, Date: d.now.AddDate(0, 1, 0).Format("2006-01-02"),
-		Name: "Feriado Demo", Scope: bhentity.ScopeAllChannels, Recurring: false,
+		Name: "Feriado Demo (todos os canais)", Scope: bhentity.ScopeAllChannels, Recurring: false,
 		CreatedAt: d.now, UpdatedAt: d.now,
 	}
-	if err := bhrepo.NewHolidayRepository(d.db).Create(d.ctx, h); err != nil {
+	if err := repo.Create(d.ctx, global); err != nil {
 		return err
 	}
-	d.mark("holidays", h.ID)
+	d.mark("holidays", global.ID)
+
+	// Channel-scoped holiday: closes only the first channel two months out.
+	if len(d.channels) > 0 {
+		scoped := &bhentity.Holiday{
+			ID: shared.NewID(), TenantID: d.tenantID, Date: d.now.AddDate(0, 2, 0).Format("2006-01-02"),
+			Name: "Manutenção (canal específico)", Scope: bhentity.ScopeChannels,
+			ChannelIDs: []string{d.channels[0].id}, Recurring: false,
+			CreatedAt: d.now, UpdatedAt: d.now,
+		}
+		if err := repo.Create(d.ctx, scoped); err != nil {
+			return err
+		}
+		d.mark("holidays", scoped.ID)
+	}
 	return nil
 }
 
@@ -501,6 +507,39 @@ func (d *demoSeeder) seedTaxonomyCSAT() error {
 
 // ── 4.7 integrations ────────────────────────────────────────────────────────────
 
+// demoChannel pairs a created channel connection's type and id so seeded
+// conversations can carry the SPECIFIC channel_id (not just the type).
+type demoChannel struct {
+	typ string
+	id  string
+}
+
+// weekdayHours builds a Mon–Fri single-window business_hours doc (new shape:
+// timezone + weekly list of {day, intervals}). Day numbering is 0=Sun..6=Sat.
+func weekdayHours(tz, start, end string) map[string]any {
+	window := []any{map[string]any{"start": start, "end": end}}
+	weekly := make([]any, 0, 5)
+	for day := 1; day <= 5; day++ {
+		weekly = append(weekly, map[string]any{"day": day, "intervals": window})
+	}
+	return map[string]any{"timezone": tz, "weekly": weekly}
+}
+
+// lunchHours builds Mon–Fri 09:00–12:00 + 13:00–18:00 (a lunch break) plus a
+// Saturday morning window, to exercise multi-interval days.
+func lunchHours(tz string) map[string]any {
+	weekday := []any{
+		map[string]any{"start": "09:00", "end": "12:00"},
+		map[string]any{"start": "13:00", "end": "18:00"},
+	}
+	weekly := make([]any, 0, 6)
+	for day := 1; day <= 5; day++ {
+		weekly = append(weekly, map[string]any{"day": day, "intervals": weekday})
+	}
+	weekly = append(weekly, map[string]any{"day": 6, "intervals": []any{map[string]any{"start": "09:00", "end": "13:00"}}})
+	return map[string]any{"timezone": tz, "weekly": weekly}
+}
+
 func (d *demoSeeder) seedIntegrations() error {
 	// MCP: one example server.
 	srv := &mcpentity.ServerConnection{
@@ -514,33 +553,68 @@ func (d *demoSeeder) seedIntegrations() error {
 	}
 	d.mark("mcp_servers", srv.ID)
 
-	// Channels: WhatsApp, API and a Custom "E-mail" (no native email type). The
-	// ConnectionService generates the inbound token (stored hashed); its plaintext
-	// is logged once at INFO so dev can inject inbound calls.
+	// Channels: WhatsApp, API and a Custom "E-mail" (no native email type), each
+	// with its OWN business hours on the connection (one with a lunch break, one
+	// 24/7). The ConnectionService generates the inbound token (stored hashed); its
+	// plaintext is logged once at INFO so dev can inject inbound calls.
 	connSvc := channelservice.NewConnectionService(
 		channelrepo.NewConnectionRepository(d.db, d.c.Cipher), nil, shared.SystemClock{})
 	suporteSec := d.sectorIDs["Suporte Técnico"]
 	chans := []struct {
-		name string
-		typ  chentity.Type
+		name  string
+		typ   chentity.Type
+		hours map[string]any
 	}{
-		{"WhatsApp Oficial", chentity.TypeWhatsApp},
-		{"API Genérica", chentity.TypeAPI},
-		{"E-mail", chentity.TypeCustom},
+		// Mon–Fri 08:00–18:00, straight.
+		{"WhatsApp Oficial", chentity.TypeWhatsApp, weekdayHours("America/Sao_Paulo", "08:00", "18:00")},
+		// Mon–Fri with a lunch break + Saturday morning.
+		{"API Genérica", chentity.TypeAPI, lunchHours("America/Sao_Paulo")},
+		// No hours set → always open (24/7).
+		{"E-mail", chentity.TypeCustom, nil},
 	}
 	for _, ch := range chans {
 		conn, err := connSvc.Create(d.ctx, chcontracts.CreateConnection{
 			Type: ch.typ, Name: ch.name, BaseURL: "https://gateway.demo.local/" + string(ch.typ),
-			AuthType: chentity.AuthToken, DefaultSectorID: suporteSec,
+			AuthType: chentity.AuthToken, DefaultSectorID: suporteSec, BusinessHours: ch.hours,
 		})
 		if err != nil {
 			return err
 		}
 		d.mark("channel_connections", conn.ID)
-		d.channels = append(d.channels, string(ch.typ))
+		d.channels = append(d.channels, demoChannel{typ: string(ch.typ), id: conn.ID})
 		d.c.Logger.Info("demo channel inbound token (dev only)",
 			"channel", conn.Name, "type", string(conn.Type), "inbound_token", conn.InboundToken)
 	}
+
+	// ISP profile (providerhub, NEW model — many per tenant): one default profile.
+	// The SMSNET gateway host/key are infra/env, not stored here.
+	profile := &phentity.ISPProfile{
+		ID: shared.NewID(), TenantID: d.tenantID, Label: "SGP Demo",
+		ISPType:     phentity.ISPSGPNet,
+		Credentials: map[string]string{"host": "https://isp.demo.local", "token": "demo-isp-token-PLACEHOLDER"},
+		IsDefault:   true, TimeoutMs: 8000, Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
+	}
+	if err := phrepo.NewProfileRepository(d.db, d.c.Cipher).Create(d.ctx, profile); err != nil {
+		return err
+	}
+	d.mark("isp_profiles", profile.ID)
+	d.ispProfileID = profile.ID
+
+	// Copilot assistant (NEW model): serves the specific channels by id and binds
+	// the ISP profile so its SMSNET tools resolve for those conversations.
+	chIDs := make([]string, 0, len(d.channels))
+	for _, c := range d.channels {
+		chIDs = append(chIDs, c.id)
+	}
+	assistant := &cpentity.Assistant{
+		ID: shared.NewID(), TenantID: d.tenantID, Name: "Assistente Suporte",
+		ChannelIDs: chIDs, ISPProfileID: d.ispProfileID, Enabled: true,
+		CreatedAt: d.now, UpdatedAt: d.now,
+	}
+	if err := cprepo.NewAssistantRepository(d.db).Create(d.ctx, assistant); err != nil {
+		return err
+	}
+	d.mark("copilot_assistants", assistant.ID)
 
 	// Webhooks: one example subscription.
 	enabled := true
@@ -701,7 +775,7 @@ func (d *demoSeeder) createConversation(status conventity.Status, assign, atRisk
 		queueID = qs[d.rng.Intn(len(qs))]
 	}
 	contactID := d.contactIDs[d.rng.Intn(len(d.contactIDs))]
-	channel := d.channels[d.rng.Intn(len(d.channels))]
+	ch := d.channels[d.rng.Intn(len(d.channels))]
 
 	assignee := ""
 	if assign {
@@ -745,7 +819,8 @@ func (d *demoSeeder) createConversation(status conventity.Status, assign, atRisk
 	}
 
 	conv := &conventity.Conversation{
-		ID: shared.NewID(), TenantID: d.tenantID, ContactID: contactID, Channel: channel,
+		ID: shared.NewID(), TenantID: d.tenantID, ContactID: contactID,
+		Channel: ch.typ, ChannelID: ch.id,
 		SectorID: sectorID, QueueID: queueID, Status: status, AssignedTo: assignee,
 		Priority: priority, Tags: tags, LastMessageAt: lastMsgAt,
 		CreatedAt: createdAt, UpdatedAt: lastMsgAt,
