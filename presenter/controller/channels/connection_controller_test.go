@@ -42,9 +42,6 @@ func (r *fakeConnRepo) List(ctx context.Context, _ shared.PageRequest) ([]*entit
 	}
 	return out, nil
 }
-func (r *fakeConnRepo) FindEnabledByType(context.Context, entity.Type) (*entity.ChannelConnection, error) {
-	return nil, apperror.NotFound("none")
-}
 func (r *fakeConnRepo) FindByInboundTokenHash(context.Context, string) (*entity.ChannelConnection, error) {
 	return nil, apperror.NotFound("none")
 }

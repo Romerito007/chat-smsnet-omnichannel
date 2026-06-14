@@ -16,19 +16,16 @@ const (
 	EventConversationTransferred = "conversation.transferred"
 	EventConversationEnqueued    = "conversation.enqueued"
 	EventConversationTagged      = "conversation.tagged"
-	EventAutomationDecision      = "automation.decision"
-	EventAutomationEscalated     = "automation.escalated"
 )
 
 // ActorType identifies who triggered a conversation event.
 type ActorType string
 
 const (
-	ActorAgent      ActorType = "agent"
-	ActorCustomer   ActorType = "customer"
-	ActorSystem     ActorType = "system"
-	ActorAutomation ActorType = "automation"
-	ActorCopilot    ActorType = "copilot"
+	ActorAgent    ActorType = "agent"
+	ActorCustomer ActorType = "customer"
+	ActorSystem   ActorType = "system"
+	ActorCopilot  ActorType = "copilot"
 )
 
 // ConversationEvent is an immutable audit/timeline record of something that

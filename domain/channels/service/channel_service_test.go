@@ -22,22 +22,17 @@ func (c fixedClock) Now() time.Time { return c.t }
 type fakeConnRepo struct {
 	byID    map[string]*chentity.ChannelConnection
 	byToken map[string]*chentity.ChannelConnection
-	byType  map[chentity.Type]*chentity.ChannelConnection
 }
 
 func newFakeConnRepo() *fakeConnRepo {
 	return &fakeConnRepo{
 		byID:    map[string]*chentity.ChannelConnection{},
 		byToken: map[string]*chentity.ChannelConnection{},
-		byType:  map[chentity.Type]*chentity.ChannelConnection{},
 	}
 }
 func (r *fakeConnRepo) put(c *chentity.ChannelConnection) {
 	r.byID[c.ID] = c
 	r.byToken[c.InboundTokenHash] = c
-	if c.Enabled {
-		r.byType[c.Type] = c
-	}
 }
 func (r *fakeConnRepo) Create(_ context.Context, c *chentity.ChannelConnection) error {
 	r.put(c)
@@ -50,12 +45,6 @@ func (r *fakeConnRepo) Update(_ context.Context, c *chentity.ChannelConnection) 
 func (r *fakeConnRepo) Delete(_ context.Context, id string) error { delete(r.byID, id); return nil }
 func (r *fakeConnRepo) FindByID(_ context.Context, id string) (*chentity.ChannelConnection, error) {
 	if c, ok := r.byID[id]; ok {
-		return c, nil
-	}
-	return nil, apperror.NotFound("nf")
-}
-func (r *fakeConnRepo) FindEnabledByType(_ context.Context, t chentity.Type) (*chentity.ChannelConnection, error) {
-	if c, ok := r.byType[t]; ok {
 		return c, nil
 	}
 	return nil, apperror.NotFound("nf")

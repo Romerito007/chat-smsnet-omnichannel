@@ -161,31 +161,6 @@ components:
                 user_agent:
                     type: string
             type: object
-        AutomationIntegration:
-            properties:
-                auth_type:
-                    type: string
-                base_url:
-                    type: string
-                created_at:
-                    format: date-time
-                    type: string
-                enabled:
-                    type: boolean
-                has_secret:
-                    type: boolean
-                id:
-                    type: string
-                name:
-                    type: string
-                tenant_id:
-                    type: string
-                timeout_ms:
-                    type: integer
-                updated_at:
-                    format: date-time
-                    type: string
-            type: object
         AutomationRule:
             properties:
                 actions:
@@ -263,35 +238,6 @@ components:
                 - field
                 - operator
                 - value
-            type: object
-        AutomationRun:
-            properties:
-                conversation_id:
-                    type: string
-                created_at:
-                    format: date-time
-                    type: string
-                error:
-                    type: string
-                external_run_id:
-                    type: string
-                id:
-                    type: string
-                input:
-                    additionalProperties: true
-                    type: object
-                message_id:
-                    type: string
-                output:
-                    additionalProperties: true
-                    type: object
-                status:
-                    type: string
-                tenant_id:
-                    type: string
-                updated_at:
-                    format: date-time
-                    type: string
             type: object
         AvatarUploadTarget:
             properties:
@@ -464,8 +410,6 @@ components:
             properties:
                 auth_type:
                     type: string
-                automation_enabled:
-                    type: boolean
                 base_url:
                     type: string
                 business_hours:
@@ -499,8 +443,6 @@ components:
             properties:
                 auth_type:
                     type: string
-                automation_enabled:
-                    type: boolean
                 base_url:
                     type: string
                 business_hours:
@@ -828,7 +770,6 @@ components:
                 status:
                     enum:
                         - new
-                        - automation
                         - queued
                         - assigned
                         - waiting_customer
@@ -860,7 +801,6 @@ components:
                         - agent
                         - customer
                         - system
-                        - automation
                         - copilot
                     type: string
                 conversation_id:
@@ -996,21 +936,6 @@ components:
                 tokens_output:
                     type: integer
             type: object
-        CreateAutomationRequest:
-            properties:
-                auth_type:
-                    type: string
-                base_url:
-                    type: string
-                name:
-                    type: string
-                secret:
-                    type: string
-                timeout_ms:
-                    type: integer
-            required:
-                - base_url
-            type: object
         CreateAutomationRuleRequest:
             properties:
                 actions:
@@ -1065,8 +990,6 @@ components:
             properties:
                 auth_type:
                     type: string
-                automation_enabled:
-                    type: boolean
                 base_url:
                     type: string
                 business_hours:
@@ -1418,8 +1341,6 @@ components:
                             - conversation_transferred
                             - message_created
                             - sla_breached
-                            - automation_completed
-                            - automation_failed
                         type: string
                     type: array
                 name:
@@ -2255,15 +2176,6 @@ components:
                         $ref: '#/components/schemas/AgentStat'
                     type: array
             type: object
-        ReportAutomation:
-            properties:
-                by_status:
-                    items:
-                        $ref: '#/components/schemas/Bucket'
-                    type: array
-                total:
-                    type: integer
-            type: object
         ReportCSAT:
             properties:
                 avg_score:
@@ -2795,21 +2707,6 @@ components:
                 sector_id:
                     type: string
             type: object
-        UpdateAutomationRequest:
-            properties:
-                auth_type:
-                    type: string
-                base_url:
-                    type: string
-                enabled:
-                    type: boolean
-                name:
-                    type: string
-                secret:
-                    type: string
-                timeout_ms:
-                    type: integer
-            type: object
         UpdateAutomationRuleRequest:
             properties:
                 actions:
@@ -2855,8 +2752,6 @@ components:
             properties:
                 auth_type:
                     type: string
-                automation_enabled:
-                    type: boolean
                 base_url:
                     type: string
                 business_hours:
@@ -2928,7 +2823,6 @@ components:
                 status:
                     enum:
                         - new
-                        - automation
                         - queued
                         - assigned
                         - waiting_customer
@@ -3189,8 +3083,6 @@ components:
                             - conversation_transferred
                             - message_created
                             - sla_breached
-                            - automation_completed
-                            - automation_failed
                         type: string
                     type: array
                 name:
@@ -3285,8 +3177,6 @@ components:
                             - conversation_transferred
                             - message_created
                             - sla_breached
-                            - automation_completed
-                            - automation_failed
                         type: string
                     type: array
                 has_secret:
@@ -3325,8 +3215,6 @@ components:
                             - conversation_transferred
                             - message_created
                             - sla_breached
-                            - automation_completed
-                            - automation_failed
                         type: string
                     type: array
                 has_secret:
@@ -3366,8 +3254,6 @@ components:
                         - conversation_transferred
                         - message_created
                         - sla_breached
-                        - automation_completed
-                        - automation_failed
                     type: string
                 id:
                     type: string
@@ -3402,8 +3288,6 @@ components:
                         - conversation_transferred
                         - message_created
                         - sla_breached
-                        - automation_completed
-                        - automation_failed
                     type: string
                 id:
                     type: string
@@ -4166,299 +4050,6 @@ paths:
             summary: List a rule's evaluation logs
             tags:
                 - automationrules
-    /v1/automation/callbacks/{tenant_id}:
-        post:
-            operationId: postAutomationCallbacksByTenantId
-            parameters:
-                - description: tenant id
-                  in: path
-                  name: tenant_id
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            additionalProperties: true
-                            type: object
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                additionalProperties: true
-                                type: object
-                    description: Accepted
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            security: []
-            summary: External automation callback (signed)
-            tags:
-                - automation
-    /v1/automation/integrations:
-        get:
-            operationId: getAutomationIntegrations
-            parameters:
-                - description: Page size (max 100).
-                  in: query
-                  name: limit
-                  required: false
-                  schema:
-                    maximum: 100
-                    minimum: 1
-                    type: integer
-                - description: Opaque keyset cursor from a previous page's next_cursor.
-                  in: query
-                  name: cursor
-                  required: false
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                properties:
-                                    data:
-                                        items:
-                                            $ref: '#/components/schemas/AutomationIntegration'
-                                        type: array
-                                    page:
-                                        $ref: '#/components/schemas/PageInfo'
-                                type: object
-                    description: automation integration page
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: List automation integration
-            tags:
-                - automation
-        post:
-            operationId: postAutomationIntegrations
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateAutomationRequest'
-                required: true
-            responses:
-                "201":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/AutomationIntegration'
-                    description: Created
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "409":
-                    $ref: '#/components/responses/Error409'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: Create automation integration
-            tags:
-                - automation
-    /v1/automation/integrations/{id}:
-        delete:
-            operationId: deleteAutomationIntegrationsById
-            parameters:
-                - description: automation integration id
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "204":
-                    description: Deleted
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "404":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-                    description: Not found.
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: Delete automation integration
-            tags:
-                - automation
-        get:
-            operationId: getAutomationIntegrationsById
-            parameters:
-                - description: automation integration id
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/AutomationIntegration'
-                    description: automation integration
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "404":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-                    description: Not found.
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: Get automation integration
-            tags:
-                - automation
-        patch:
-            operationId: patchAutomationIntegrationsById
-            parameters:
-                - description: automation integration id
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/UpdateAutomationRequest'
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/AutomationIntegration'
-                    description: Updated
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "404":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-                    description: Not found.
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: Update automation integration
-            tags:
-                - automation
-    /v1/automation/runs:
-        get:
-            operationId: getAutomationRuns
-            parameters:
-                - description: Page size (max 100).
-                  in: query
-                  name: limit
-                  required: false
-                  schema:
-                    maximum: 100
-                    minimum: 1
-                    type: integer
-                - description: Opaque keyset cursor from a previous page's next_cursor.
-                  in: query
-                  name: cursor
-                  required: false
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                properties:
-                                    data:
-                                        items:
-                                            $ref: '#/components/schemas/AutomationRun'
-                                        type: array
-                                    page:
-                                        $ref: '#/components/schemas/PageInfo'
-                                type: object
-                    description: Run page
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: List automation runs
-            tags:
-                - automation
-    /v1/automation/runs/{id}:
-        get:
-            operationId: getAutomationRunsById
-            parameters:
-                - description: run id
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/AutomationRun'
-                    description: Run
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: Get an automation run
-            tags:
-                - automation
     /v1/canned-responses:
         get:
             operationId: getCannedResponses
@@ -5308,7 +4899,6 @@ paths:
                   schema:
                     enum:
                         - new
-                        - automation
                         - queued
                         - assigned
                         - waiting_customer
@@ -8364,42 +7954,6 @@ paths:
             summary: Per-agent productivity
             tags:
                 - reports
-    /v1/reports/automation:
-        get:
-            operationId: getReportsAutomation
-            parameters:
-                - description: RFC3339 period start
-                  in: query
-                  name: from
-                  required: false
-                  schema:
-                    type: string
-                - description: RFC3339 period end
-                  in: query
-                  name: to
-                  required: false
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ReportAutomation'
-                    description: Report
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-            summary: Automation summary
-            tags:
-                - reports
     /v1/reports/conversations:
         get:
             operationId: getReportsConversations
@@ -10170,9 +9724,7 @@ tags:
       name: routing
     - description: Channel connections and inbound ingestion.
       name: channels
-    - description: External automation integrations and runs.
-      name: automation
-    - description: Trigger/condition/action rules (Chatwoot-style), distinct from the automation flow.
+    - description: Trigger/condition/action rules (Chatwoot-style).
       name: automationrules
     - description: smsnet-integrations config and on-demand external queries.
       name: providerhub

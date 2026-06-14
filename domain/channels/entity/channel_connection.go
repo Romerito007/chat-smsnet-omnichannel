@@ -73,9 +73,6 @@ type ChannelConnection struct {
 	// by businesshours/entity.ParseSchedule). Empty/absent = 24/7.
 	BusinessHours map[string]any
 	Enabled       bool
-	// AutomationEnabled routes brand-new inbound conversations to the external
-	// flow before a human.
-	AutomationEnabled bool
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }

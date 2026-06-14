@@ -62,7 +62,6 @@ func (r *ConnectionRepository) Update(ctx context.Context, c *entity.ChannelConn
 			"inbound_token_hash": c.InboundTokenHash,
 			"default_sector_id":  c.DefaultSectorID,
 			"enabled":            c.Enabled,
-			"automation_enabled": c.AutomationEnabled,
 			"updated_at":         c.UpdatedAt,
 		}},
 	)
@@ -97,18 +96,6 @@ func (r *ConnectionRepository) FindByID(ctx context.Context, id string) (*entity
 	}
 	var m models.ChannelConnection
 	if err := r.coll.FindOne(ctx, bson.M{"_id": id, "tenant_id": tenantID}).Decode(&m); err != nil {
-		return nil, mongodb.MapError(err)
-	}
-	return r.toEntity(&m)
-}
-
-func (r *ConnectionRepository) FindEnabledByType(ctx context.Context, t entity.Type) (*entity.ChannelConnection, error) {
-	tenantID, err := shared.RequireTenant(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var m models.ChannelConnection
-	if err := r.coll.FindOne(ctx, bson.M{"tenant_id": tenantID, "type": string(t), "enabled": true}).Decode(&m); err != nil {
 		return nil, mongodb.MapError(err)
 	}
 	return r.toEntity(&m)
@@ -161,17 +148,16 @@ func (r *ConnectionRepository) toModel(c *entity.ChannelConnection) (models.Chan
 		return models.ChannelConnection{}, err
 	}
 	m := models.ChannelConnection{
-		Type:              string(c.Type),
-		Name:              c.Name,
-		Status:            string(c.Status),
-		BaseURL:           c.BaseURL,
-		AuthType:          string(c.AuthType),
-		EncryptedSecret:   enc,
-		InboundTokenHash:  c.InboundTokenHash,
-		DefaultSectorID:   c.DefaultSectorID,
-		BusinessHours:     c.BusinessHours,
-		Enabled:           c.Enabled,
-		AutomationEnabled: c.AutomationEnabled,
+		Type:             string(c.Type),
+		Name:             c.Name,
+		Status:           string(c.Status),
+		BaseURL:          c.BaseURL,
+		AuthType:         string(c.AuthType),
+		EncryptedSecret:  enc,
+		InboundTokenHash: c.InboundTokenHash,
+		DefaultSectorID:  c.DefaultSectorID,
+		BusinessHours:    c.BusinessHours,
+		Enabled:          c.Enabled,
 	}
 	m.ID = c.ID
 	m.TenantID = c.TenantID
@@ -186,21 +172,20 @@ func (r *ConnectionRepository) toEntity(m *models.ChannelConnection) (*entity.Ch
 		return nil, apperror.Internal("decrypt secret").Wrap(err)
 	}
 	return &entity.ChannelConnection{
-		ID:                m.ID,
-		TenantID:          m.TenantID,
-		Type:              entity.Type(m.Type),
-		Name:              m.Name,
-		Status:            entity.Status(m.Status),
-		BaseURL:           m.BaseURL,
-		AuthType:          entity.AuthType(m.AuthType),
-		Secret:            secret,
-		InboundTokenHash:  m.InboundTokenHash,
-		DefaultSectorID:   m.DefaultSectorID,
-		BusinessHours:     m.BusinessHours,
-		Enabled:           m.Enabled,
-		AutomationEnabled: m.AutomationEnabled,
-		CreatedAt:         m.CreatedAt,
-		UpdatedAt:         m.UpdatedAt,
+		ID:               m.ID,
+		TenantID:         m.TenantID,
+		Type:             entity.Type(m.Type),
+		Name:             m.Name,
+		Status:           entity.Status(m.Status),
+		BaseURL:          m.BaseURL,
+		AuthType:         entity.AuthType(m.AuthType),
+		Secret:           secret,
+		InboundTokenHash: m.InboundTokenHash,
+		DefaultSectorID:  m.DefaultSectorID,
+		BusinessHours:    m.BusinessHours,
+		Enabled:          m.Enabled,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
 	}, nil
 }
 

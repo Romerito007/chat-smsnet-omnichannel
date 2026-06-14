@@ -115,7 +115,7 @@ func schemas() M {
 		}),
 		"ConversationEvent": object(M{
 			"id": str(), "conversation_id": str(), "type": str(),
-			"actor_type": enum("agent", "customer", "system", "automation", "copilot"),
+			"actor_type": enum("agent", "customer", "system", "copilot"),
 			"actor_id":   str(), "data": freeObject(), "created_at": dateTime(),
 		}),
 		"CreateConversationRequest": object(M{
@@ -153,27 +153,27 @@ func schemas() M {
 			"id": str(), "tenant_id": str(), "type": str(), "name": str(), "status": str(),
 			"base_url": str(), "auth_type": str(), "has_secret": boolean(), "has_inbound_token": boolean(),
 			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
-			"enabled": boolean(), "automation_enabled": boolean(),
+			"enabled":    boolean(),
 			"created_at": dateTime(), "updated_at": dateTime(),
 		}),
 		"ChannelCreated": object(M{
 			"id": str(), "tenant_id": str(), "type": str(), "name": str(), "status": str(),
 			"base_url": str(), "auth_type": str(), "has_secret": boolean(), "has_inbound_token": boolean(),
 			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
-			"enabled": boolean(), "automation_enabled": boolean(),
+			"enabled":    boolean(),
 			"created_at": dateTime(), "updated_at": dateTime(),
 			"inbound_token": str(), "outbound_secret": str(),
 		}),
 		"CreateChannelRequest": object(M{
 			"type": str(), "name": str(), "base_url": str(), "outbound_url": str(),
 			"auth_type": str(), "secret": str(), "outbound_secret": str(),
-			"default_sector_id": str(), "business_hours": ref("BusinessHours"), "automation_enabled": boolean(),
+			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
 		}, "type"),
 		"UpdateChannelRequest": object(M{
 			"name": str(), "status": str(), "base_url": str(), "outbound_url": str(),
 			"auth_type": str(), "secret": str(), "outbound_secret": str(),
 			"default_sector_id": str(), "business_hours": ref("BusinessHours"),
-			"enabled": boolean(), "automation_enabled": boolean(),
+			"enabled": boolean(),
 		}),
 		"InboundMessageRequest": object(M{
 			"inbound_token": str(), "tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
@@ -214,21 +214,7 @@ func schemas() M {
 		"RotatedInboundToken": object(M{"inbound_token": str()}, "inbound_token"),
 		"TestResult":          object(M{"ok": boolean(), "external_message_id": str(), "error": str()}),
 
-		// ── automation ─────────────────────────────────────────────────────────
-		"AutomationIntegration": object(M{
-			"id": str(), "tenant_id": str(), "name": str(), "base_url": str(), "auth_type": str(),
-			"has_secret": boolean(), "enabled": boolean(), "timeout_ms": integer(),
-			"created_at": dateTime(), "updated_at": dateTime(),
-		}),
-		"CreateAutomationRequest": object(M{"name": str(), "base_url": str(), "auth_type": str(), "secret": str(), "timeout_ms": integer()}, "base_url"),
-		"UpdateAutomationRequest": object(M{"name": str(), "base_url": str(), "auth_type": str(), "secret": str(), "enabled": boolean(), "timeout_ms": integer()}),
-		"AutomationRun": object(M{
-			"id": str(), "tenant_id": str(), "conversation_id": str(), "message_id": str(),
-			"external_run_id": str(), "status": str(), "input": freeObject(), "output": freeObject(),
-			"error": str(), "created_at": dateTime(), "updated_at": dateTime(),
-		}),
-
-		// ── automation rules (Chatwoot-style; distinct from the automation flow) ──
+		// ── automation rules (Chatwoot-style trigger/conditions/actions engine) ──
 		// An AutomationRule reacts to a conversation/message lifecycle event, matches
 		// AND-conditions against the conversation/contact, and runs actions (only
 		// send_webhook for now, referencing a registered webhook by id).
@@ -647,7 +633,6 @@ func schemas() M {
 		}),
 		"ReportAgents":       object(M{"agents": arr(ref("AgentStat"))}),
 		"ReportSectors":      object(M{"sectors": arr(ref("SectorStat"))}),
-		"ReportAutomation":   object(M{"total": integer(), "by_status": arr(ref("Bucket"))}),
 		"ReportCopilot":      object(M{"total_calls": integer(), "by_action": arr(ref("Bucket")), "tokens_input": integer(), "tokens_output": integer(), "estimated_cost": number()}),
 		"ReportSLA":          object(M{"tracked": integer(), "first_response_breached": integer(), "resolution_breached": integer(), "met": integer(), "first_response_breach_rate": number(), "resolution_breach_rate": number()}),
 		"ReportCSAT":         object(M{"sent": integer(), "responded": integer(), "expired": integer(), "avg_score": number(), "response_rate": number(), "by_score": arr(ref("Bucket"))}),

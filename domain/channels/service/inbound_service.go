@@ -22,15 +22,14 @@ const inboundLockTTL = 10 * time.Second
 
 // InboundService orchestrates an inbound channel message: idempotency, contact
 // upsert, conversation find/create, message persistence, initial routing
-// (automation or enqueue) and realtime — all fast; slow work is deferred to
-// Asynq.
+// (enqueue into the connection's default sector) and realtime — all fast; slow
+// work is deferred to Asynq.
 type InboundService struct {
 	contacts      *contactservice.Service
 	conversations convrepo.ConversationRepository
 	messages      convrepo.MessageRepository
 	events        convrepo.EventRepository
 	inbound       chrepo.InboundRepository
-	dispatcher    chcontracts.AutomationDispatcher
 	locker        shared.Locker
 	publisher     shared.EventPublisher
 	clock         shared.Clock
@@ -52,7 +51,6 @@ func NewInboundService(
 	messages convrepo.MessageRepository,
 	events convrepo.EventRepository,
 	inbound chrepo.InboundRepository,
-	dispatcher chcontracts.AutomationDispatcher,
 	locker shared.Locker,
 	publisher shared.EventPublisher,
 	clock shared.Clock,
@@ -68,7 +66,7 @@ func NewInboundService(
 	}
 	return &InboundService{
 		contacts: contacts, conversations: conversations, messages: messages,
-		events: events, inbound: inbound, dispatcher: dispatcher,
+		events: events, inbound: inbound,
 		locker: locker, publisher: publisher, clock: clock,
 	}
 }
@@ -270,30 +268,9 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	return message, nil
 }
 
-// routeNew applies the initial routing of a brand-new conversation: automation
-// (slow work deferred to Asynq) when enabled, otherwise enqueue into the
-// connection's default sector.
-func (s *InboundService) routeNew(ctx context.Context, conn *chentity.ChannelConnection, conv *conventity.Conversation, messageID string) error {
-	if conn.AutomationEnabled {
-		conv.Status = conventity.StatusAutomation
-		conv.UpdatedAt = s.clock.Now()
-		if err := s.conversations.Update(ctx, conv); err != nil {
-			return err
-		}
-		s.recordEvent(ctx, conv, conventity.EventConversationUpdated, map[string]any{"automation": true})
-		if s.dispatcher != nil {
-			_ = s.dispatcher.Dispatch(chcontracts.AutomationInvoke{
-				TenantID:       conv.TenantID,
-				IntegrationID:  conn.ID,
-				ConversationID: conv.ID,
-				MessageID:      messageID,
-			})
-		}
-		s.publishConversation(ctx, conv)
-		return nil
-	}
-
-	// No automation: enqueue into the connection's default sector.
+// routeNew applies the initial routing of a brand-new conversation: enqueue it
+// into the connection's default sector.
+func (s *InboundService) routeNew(ctx context.Context, conn *chentity.ChannelConnection, conv *conventity.Conversation, _ string) error {
 	conv.SectorID = conn.DefaultSectorID
 	conv.Status = conventity.StatusQueued
 	conv.UpdatedAt = s.clock.Now()

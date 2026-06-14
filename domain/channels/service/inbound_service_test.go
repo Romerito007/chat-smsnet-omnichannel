@@ -222,35 +222,29 @@ func (p *fakePublisher) has(event string) bool {
 	return false
 }
 
-type fakeDispatcher struct{ calls int }
-
-func (d *fakeDispatcher) Dispatch(chcontracts.AutomationInvoke) error { d.calls++; return nil }
-
 // ── inbound fixture/tests ────────────────────────────────────────────────────
 
 type inboundFixture struct {
-	svc      *InboundService
-	convs    *fakeConvRepo
-	msgs     *fakeMsgRepo
-	pub      *fakePublisher
-	dispatch *fakeDispatcher
+	svc   *InboundService
+	convs *fakeConvRepo
+	msgs  *fakeMsgRepo
+	pub   *fakePublisher
 }
 
 func newInboundFixture() inboundFixture {
 	cr := newFakeConvRepo()
 	mr := newFakeMsgRepo()
 	pub := &fakePublisher{}
-	dispatch := &fakeDispatcher{}
 	contacts := contactservice.New(newFakeContactRepo(), clockNow())
-	svc := NewInboundService(contacts, cr, mr, &fakeEventRepo{}, newFakeInbound(), dispatch,
+	svc := NewInboundService(contacts, cr, mr, &fakeEventRepo{}, newFakeInbound(),
 		shared.NoopLocker{}, pub, clockNow())
-	return inboundFixture{svc: svc, convs: cr, msgs: mr, pub: pub, dispatch: dispatch}
+	return inboundFixture{svc: svc, convs: cr, msgs: mr, pub: pub}
 }
 
-func conn(automation bool, sector string) *chentity.ChannelConnection {
+func conn(sector string) *chentity.ChannelConnection {
 	return &chentity.ChannelConnection{
 		ID: "conn1", TenantID: "t1", Type: chentity.TypeWhatsApp, Enabled: true,
-		AutomationEnabled: automation, DefaultSectorID: sector,
+		DefaultSectorID: sector,
 	}
 }
 
@@ -263,7 +257,7 @@ func inMsg(ext string) chcontracts.InboundMessage {
 
 func TestInbound_CreatesAndQueuesIntoDefaultSector(t *testing.T) {
 	fx := newInboundFixture()
-	res, err := fx.svc.Handle(tenantCtx(), conn(false, "sector-x"), inMsg("ext-1"))
+	res, err := fx.svc.Handle(tenantCtx(), conn("sector-x"), inMsg("ext-1"))
 	if err != nil {
 		t.Fatalf("handle: %v", err)
 	}
@@ -286,25 +280,11 @@ func TestInbound_CreatesAndQueuesIntoDefaultSector(t *testing.T) {
 	}
 }
 
-func TestInbound_AutomationChannel(t *testing.T) {
-	fx := newInboundFixture()
-	res, err := fx.svc.Handle(tenantCtx(), conn(true, ""), inMsg("ext-2"))
-	if err != nil {
-		t.Fatalf("handle: %v", err)
-	}
-	if res.Status != string(conventity.StatusAutomation) {
-		t.Errorf("status = %q, want automation", res.Status)
-	}
-	if fx.dispatch.calls != 1 {
-		t.Errorf("expected one automation dispatch, got %d", fx.dispatch.calls)
-	}
-}
-
 func TestInbound_IdempotentResend(t *testing.T) {
 	fx := newInboundFixture()
 	ctx := tenantCtx()
-	first, _ := fx.svc.Handle(ctx, conn(false, "s"), inMsg("dup"))
-	second, err := fx.svc.Handle(ctx, conn(false, "s"), inMsg("dup"))
+	first, _ := fx.svc.Handle(ctx, conn("s"), inMsg("dup"))
+	second, err := fx.svc.Handle(ctx, conn("s"), inMsg("dup"))
 	if err != nil {
 		t.Fatalf("resend: %v", err)
 	}
@@ -319,8 +299,8 @@ func TestInbound_IdempotentResend(t *testing.T) {
 func TestInbound_ReusesOpenConversation(t *testing.T) {
 	fx := newInboundFixture()
 	ctx := tenantCtx()
-	first, _ := fx.svc.Handle(ctx, conn(false, "s"), inMsg("m1"))
-	second, _ := fx.svc.Handle(ctx, conn(false, "s"), inMsg("m2"))
+	first, _ := fx.svc.Handle(ctx, conn("s"), inMsg("m1"))
+	second, _ := fx.svc.Handle(ctx, conn("s"), inMsg("m2"))
 	if second.ConversationID != first.ConversationID {
 		t.Error("second message should reuse the open conversation")
 	}

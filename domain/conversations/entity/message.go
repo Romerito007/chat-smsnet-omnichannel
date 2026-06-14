@@ -9,11 +9,10 @@ import (
 type SenderType string
 
 const (
-	SenderCustomer   SenderType = "customer"
-	SenderAgent      SenderType = "agent"
-	SenderSystem     SenderType = "system"
-	SenderAutomation SenderType = "automation"
-	SenderCopilot    SenderType = "copilot"
+	SenderCustomer SenderType = "customer"
+	SenderAgent    SenderType = "agent"
+	SenderSystem   SenderType = "system"
+	SenderCopilot  SenderType = "copilot"
 )
 
 // Direction is the flow of a message relative to the operation.

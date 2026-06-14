@@ -24,7 +24,6 @@ type Repository struct {
 	messages      *mongo.Collection
 	events        *mongo.Collection
 	slaTrackings  *mongo.Collection
-	automation    *mongo.Collection
 	copilot       *mongo.Collection
 	csat          *mongo.Collection
 }
@@ -36,7 +35,6 @@ func New(db *mongo.Database) *Repository {
 		messages:      db.Collection("messages"),
 		events:        db.Collection("conversation_events"),
 		slaTrackings:  db.Collection("sla_trackings"),
-		automation:    db.Collection("automation_runs"),
 		copilot:       db.Collection("copilot_logs"),
 		csat:          db.Collection("csat_responses"),
 	}
@@ -276,14 +274,6 @@ func (r *Repository) SectorStats(ctx context.Context, f contracts.Filter) ([]con
 		out = append(out, contracts.SectorStat{SectorID: b.Key, Conversations: b.Count})
 	}
 	return out, nil
-}
-
-func (r *Repository) AutomationByStatus(ctx context.Context, f contracts.Filter) ([]contracts.Bucket, error) {
-	tenant, err := shared.RequireTenant(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return r.groupCount(ctx, r.automation, bson.M{"tenant_id": tenant, "created_at": period(f)}, "$status")
 }
 
 func (r *Repository) CopilotUsage(ctx context.Context, f contracts.Filter) (contracts.CopilotReport, error) {

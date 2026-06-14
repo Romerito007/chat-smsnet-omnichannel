@@ -94,7 +94,7 @@ func contactIdentityChannelEnum() M {
 // GET /conversations ?status= filter, so a client can move a conversation to
 // exactly the values the list filter understands.
 func conversationStatusEnum() M {
-	return enum("new", "automation", "queued", "assigned", "waiting_customer",
+	return enum("new", "queued", "assigned", "waiting_customer",
 		"waiting_agent", "transferred", "resolved", "closed", "archived")
 }
 
@@ -105,7 +105,7 @@ func conversationStatusEnum() M {
 func webhookEventEnum() M {
 	return enum("conversation_created", "conversation_status_changed",
 		"conversation_assigned", "conversation_transferred", "message_created",
-		"sla_breached", "automation_completed", "automation_failed")
+		"sla_breached")
 }
 
 // automationRuleEventEnum is the closed set of lifecycle events an automation
@@ -357,8 +357,7 @@ func tags() []any {
 		{"contacts", "Read contacts (CRM-style profile)."},
 		{"routing", "Assignment, transfer and queue distribution."},
 		{"channels", "Channel connections and inbound ingestion."},
-		{"automation", "External automation integrations and runs."},
-		{"automationrules", "Trigger/condition/action rules (Chatwoot-style), distinct from the automation flow."},
+		{"automationrules", "Trigger/condition/action rules (Chatwoot-style)."},
 		{"providerhub", "smsnet-integrations config and on-demand external queries."},
 		{"webhooks", "Outbound webhook subscriptions and deliveries."},
 		{"copilot", "AI copilot configuration and inference (agentic tool loop)."},

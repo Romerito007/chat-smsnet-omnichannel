@@ -9,7 +9,6 @@ type Status string
 
 const (
 	StatusNew             Status = "new"
-	StatusAutomation      Status = "automation"
 	StatusQueued          Status = "queued"
 	StatusAssigned        Status = "assigned"
 	StatusWaitingCustomer Status = "waiting_customer"
@@ -23,7 +22,7 @@ const (
 // Valid reports whether s is a known status.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusNew, StatusAutomation, StatusQueued, StatusAssigned,
+	case StatusNew, StatusQueued, StatusAssigned,
 		StatusWaitingCustomer, StatusWaitingAgent, StatusTransferred,
 		StatusResolved, StatusClosed, StatusArchived:
 		return true

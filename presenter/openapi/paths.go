@@ -172,15 +172,6 @@ func registerChannels(p *paths) {
 }
 
 func registerIntegrations(p *paths) {
-	// automation
-	p.crud("/v1/automation/integrations", "automation", "automation integration", ref("AutomationIntegration"), ref("CreateAutomationRequest"), ref("UpdateAutomationRequest"))
-	p.add("GET", "/v1/automation/runs", op(opConfig{tag: "automation", summary: "List automation runs", params: paginationParams(),
-		responses: M{"200": jsonResp("Run page", pageOf(ref("AutomationRun")))}}))
-	p.add("GET", "/v1/automation/runs/{id}", op(opConfig{tag: "automation", summary: "Get an automation run",
-		params: []M{pathParam("id", "run id")}, responses: M{"200": jsonResp("Run", ref("AutomationRun"))}}))
-	p.add("POST", "/v1/automation/callbacks/{tenant_id}", op(opConfig{tag: "automation", summary: "External automation callback (signed)",
-		public: true, params: []M{pathParam("tenant_id", "tenant id")}, reqBody: body(freeObject()), responses: M{"200": jsonResp("Accepted", freeObject())}}))
-
 	// automation rules (Chatwoot-style trigger/conditions/actions engine)
 	p.add("GET", "/v1/automation-rules", op(opConfig{tag: "automationrules", summary: "List automation rules",
 		responses: M{"200": jsonResp("Rules", dataArr(ref("AutomationRule")))}}))
@@ -360,8 +351,6 @@ func registerInsights(p *paths) {
 		responses: M{"200": jsonResp("Report", ref("ReportAgents"))}}))
 	p.add("GET", "/v1/reports/sectors", op(opConfig{tag: "reports", summary: "Per-sector volume", params: q(),
 		responses: M{"200": jsonResp("Report", ref("ReportSectors"))}}))
-	p.add("GET", "/v1/reports/automation", op(opConfig{tag: "reports", summary: "Automation summary", params: q(),
-		responses: M{"200": jsonResp("Report", ref("ReportAutomation"))}}))
 	p.add("GET", "/v1/reports/copilot", op(opConfig{tag: "reports", summary: "Copilot usage", params: q(),
 		responses: M{"200": jsonResp("Report", ref("ReportCopilot"))}}))
 	p.add("GET", "/v1/reports/sla", op(opConfig{tag: "reports", summary: "SLA outcomes", params: q(),

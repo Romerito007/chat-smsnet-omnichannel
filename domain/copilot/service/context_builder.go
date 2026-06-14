@@ -88,9 +88,6 @@ func role(m *conventity.Message) string {
 	case conventity.DirectionInbound:
 		return "customer"
 	case conventity.DirectionOutbound:
-		if m.SenderType == conventity.SenderAutomation {
-			return "automation"
-		}
 		return "agent"
 	default:
 		return "system"

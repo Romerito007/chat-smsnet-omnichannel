@@ -32,7 +32,6 @@ type fakeRepo struct {
 	closedBy  []contracts.Bucket
 	agents    []contracts.AgentStat
 	sectors   []contracts.SectorStat
-	autom     []contracts.Bucket
 	copilot   contracts.CopilotReport
 }
 
@@ -70,9 +69,6 @@ func (r *fakeRepo) AgentStats(context.Context, contracts.Filter) ([]contracts.Ag
 }
 func (r *fakeRepo) SectorStats(context.Context, contracts.Filter) ([]contracts.SectorStat, error) {
 	return r.sectors, nil
-}
-func (r *fakeRepo) AutomationByStatus(context.Context, contracts.Filter) ([]contracts.Bucket, error) {
-	return r.autom, nil
 }
 func (r *fakeRepo) CopilotUsage(context.Context, contracts.Filter) (contracts.CopilotReport, error) {
 	return r.copilot, nil
@@ -184,18 +180,6 @@ func TestCSAT_DerivesAvgAndRate(t *testing.T) {
 	}
 	if len(r.ByScore) != 2 {
 		t.Errorf("score distribution lost")
-	}
-}
-
-func TestAutomation_SumsTotal(t *testing.T) {
-	repo := &fakeRepo{autom: []contracts.Bucket{{Key: "completed", Count: 7}, {Key: "failed", Count: 3}}}
-	svc := NewService(repo, clk(t))
-	r, err := svc.Automation(ctxT(), contracts.Filter{})
-	if err != nil {
-		t.Fatalf("automation: %v", err)
-	}
-	if r.Total != 10 {
-		t.Errorf("total = %d, want 10", r.Total)
 	}
 }
 

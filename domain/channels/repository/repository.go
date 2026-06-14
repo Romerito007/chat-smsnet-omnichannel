@@ -15,9 +15,6 @@ type ConnectionRepository interface {
 	Delete(ctx context.Context, id string) error
 	FindByID(ctx context.Context, id string) (*entity.ChannelConnection, error)
 	List(ctx context.Context, page shared.PageRequest) ([]*entity.ChannelConnection, error)
-	// FindEnabledByType returns the first enabled connection of a type within the
-	// tenant (used to resolve outbound delivery for a conversation).
-	FindEnabledByType(ctx context.Context, t entity.Type) (*entity.ChannelConnection, error)
 	// FindByInboundTokenHash resolves a connection pre-auth (inbound/receipts) by
 	// the SHA-256 hash of its integration token; not tenant-scoped — the matched
 	// record carries the tenant.

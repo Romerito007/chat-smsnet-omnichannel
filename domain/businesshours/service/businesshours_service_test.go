@@ -30,9 +30,6 @@ func (r *fakeChannelRepo) FindByID(_ context.Context, id string) (*chentity.Chan
 func (r *fakeChannelRepo) List(context.Context, shared.PageRequest) ([]*chentity.ChannelConnection, error) {
 	return nil, nil
 }
-func (r *fakeChannelRepo) FindEnabledByType(context.Context, chentity.Type) (*chentity.ChannelConnection, error) {
-	return nil, apperror.NotFound("nf")
-}
 func (r *fakeChannelRepo) FindByInboundTokenHash(context.Context, string) (*chentity.ChannelConnection, error) {
 	return nil, apperror.NotFound("nf")
 }

@@ -17,16 +17,15 @@ import (
 // these are accepted as aliases of base_url/secret. The inbound_token is always
 // generated server-side.
 type CreateConnectionRequest struct {
-	Type              string         `json:"type"`
-	Name              string         `json:"name"`
-	BaseURL           string         `json:"base_url"`
-	OutboundURL       string         `json:"outbound_url"`
-	AuthType          string         `json:"auth_type"`
-	Secret            string         `json:"secret"`
-	OutboundSecret    string         `json:"outbound_secret"`
-	DefaultSectorID   string         `json:"default_sector_id"`
-	BusinessHours     map[string]any `json:"business_hours"`
-	AutomationEnabled bool           `json:"automation_enabled"`
+	Type            string         `json:"type"`
+	Name            string         `json:"name"`
+	BaseURL         string         `json:"base_url"`
+	OutboundURL     string         `json:"outbound_url"`
+	AuthType        string         `json:"auth_type"`
+	Secret          string         `json:"secret"`
+	OutboundSecret  string         `json:"outbound_secret"`
+	DefaultSectorID string         `json:"default_sector_id"`
+	BusinessHours   map[string]any `json:"business_hours"`
 }
 
 // ToCommand maps to the service command, preferring the API-channel field names
@@ -41,30 +40,28 @@ func (r CreateConnectionRequest) ToCommand() chcontracts.CreateConnection {
 		secret = r.OutboundSecret
 	}
 	return chcontracts.CreateConnection{
-		Type:              chentity.Type(r.Type),
-		Name:              r.Name,
-		BaseURL:           baseURL,
-		AuthType:          chentity.AuthType(r.AuthType),
-		Secret:            secret,
-		DefaultSectorID:   r.DefaultSectorID,
-		BusinessHours:     r.BusinessHours,
-		AutomationEnabled: r.AutomationEnabled,
+		Type:            chentity.Type(r.Type),
+		Name:            r.Name,
+		BaseURL:         baseURL,
+		AuthType:        chentity.AuthType(r.AuthType),
+		Secret:          secret,
+		DefaultSectorID: r.DefaultSectorID,
+		BusinessHours:   r.BusinessHours,
 	}
 }
 
 // UpdateConnectionRequest is the body of PATCH /v1/channels/{id}.
 type UpdateConnectionRequest struct {
-	Name              *string         `json:"name"`
-	Status            *string         `json:"status"`
-	BaseURL           *string         `json:"base_url"`
-	OutboundURL       *string         `json:"outbound_url"`
-	AuthType          *string         `json:"auth_type"`
-	Secret            *string         `json:"secret"`
-	OutboundSecret    *string         `json:"outbound_secret"`
-	DefaultSectorID   *string         `json:"default_sector_id"`
-	BusinessHours     *map[string]any `json:"business_hours"`
-	Enabled           *bool           `json:"enabled"`
-	AutomationEnabled *bool           `json:"automation_enabled"`
+	Name            *string         `json:"name"`
+	Status          *string         `json:"status"`
+	BaseURL         *string         `json:"base_url"`
+	OutboundURL     *string         `json:"outbound_url"`
+	AuthType        *string         `json:"auth_type"`
+	Secret          *string         `json:"secret"`
+	OutboundSecret  *string         `json:"outbound_secret"`
+	DefaultSectorID *string         `json:"default_sector_id"`
+	BusinessHours   *map[string]any `json:"business_hours"`
+	Enabled         *bool           `json:"enabled"`
 }
 
 // ToCommand maps to the service command, accepting the API-channel field names
@@ -79,13 +76,12 @@ func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
 		secret = r.OutboundSecret
 	}
 	cmd := chcontracts.UpdateConnection{
-		Name:              r.Name,
-		BaseURL:           baseURL,
-		Secret:            secret,
-		DefaultSectorID:   r.DefaultSectorID,
-		BusinessHours:     r.BusinessHours,
-		Enabled:           r.Enabled,
-		AutomationEnabled: r.AutomationEnabled,
+		Name:            r.Name,
+		BaseURL:         baseURL,
+		Secret:          secret,
+		DefaultSectorID: r.DefaultSectorID,
+		BusinessHours:   r.BusinessHours,
+		Enabled:         r.Enabled,
 	}
 	if r.Status != nil {
 		st := chentity.Status(*r.Status)
@@ -102,41 +98,39 @@ func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
 // outbound secret nor the inbound token is ever returned here (only whether each
 // is set); both are revealed only once, on creation, via CreatedConnectionResponse.
 type ConnectionResponse struct {
-	ID                string         `json:"id"`
-	TenantID          string         `json:"tenant_id"`
-	Type              string         `json:"type"`
-	Name              string         `json:"name,omitempty"`
-	Status            string         `json:"status"`
-	BaseURL           string         `json:"base_url,omitempty"`
-	AuthType          string         `json:"auth_type,omitempty"`
-	HasSecret         bool           `json:"has_secret"`
-	HasInboundToken   bool           `json:"has_inbound_token"`
-	DefaultSectorID   string         `json:"default_sector_id,omitempty"`
-	BusinessHours     map[string]any `json:"business_hours,omitempty"`
-	Enabled           bool           `json:"enabled"`
-	AutomationEnabled bool           `json:"automation_enabled"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
+	ID              string         `json:"id"`
+	TenantID        string         `json:"tenant_id"`
+	Type            string         `json:"type"`
+	Name            string         `json:"name,omitempty"`
+	Status          string         `json:"status"`
+	BaseURL         string         `json:"base_url,omitempty"`
+	AuthType        string         `json:"auth_type,omitempty"`
+	HasSecret       bool           `json:"has_secret"`
+	HasInboundToken bool           `json:"has_inbound_token"`
+	DefaultSectorID string         `json:"default_sector_id,omitempty"`
+	BusinessHours   map[string]any `json:"business_hours,omitempty"`
+	Enabled         bool           `json:"enabled"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 // NewConnectionResponse maps a connection, masking both the secret and token.
 func NewConnectionResponse(c *chentity.ChannelConnection) ConnectionResponse {
 	return ConnectionResponse{
-		ID:                c.ID,
-		TenantID:          c.TenantID,
-		Type:              string(c.Type),
-		Name:              c.Name,
-		Status:            string(c.Status),
-		BaseURL:           c.BaseURL,
-		AuthType:          string(c.AuthType),
-		HasSecret:         c.Secret != "",
-		HasInboundToken:   c.InboundTokenHash != "",
-		DefaultSectorID:   c.DefaultSectorID,
-		BusinessHours:     c.BusinessHours,
-		Enabled:           c.Enabled,
-		AutomationEnabled: c.AutomationEnabled,
-		CreatedAt:         c.CreatedAt,
-		UpdatedAt:         c.UpdatedAt,
+		ID:              c.ID,
+		TenantID:        c.TenantID,
+		Type:            string(c.Type),
+		Name:            c.Name,
+		Status:          string(c.Status),
+		BaseURL:         c.BaseURL,
+		AuthType:        string(c.AuthType),
+		HasSecret:       c.Secret != "",
+		HasInboundToken: c.InboundTokenHash != "",
+		DefaultSectorID: c.DefaultSectorID,
+		BusinessHours:   c.BusinessHours,
+		Enabled:         c.Enabled,
+		CreatedAt:       c.CreatedAt,
+		UpdatedAt:       c.UpdatedAt,
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
-	autocontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automation/contracts"
 	arcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/automationrules/contracts"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	ccontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/contracts"
@@ -45,20 +44,6 @@ func runWorker(ctx context.Context, c *container.Container) error {
 // registerHandlers binds task types to their domain handlers. It is the single
 // place each domain registers its consumers.
 func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
-	// automation.invoke: slow, non-critical invocation of the external flow.
-	// The flow itself is external; this handler starts it and awaits the callback.
-	automation := factories.AutomationService(c)
-
-	// automation.invoke: start the external flow for a new conversation.
-	mux.HandleFunc(infraasynq.TaskAutomationInvoke, func(ctx context.Context, t *asynq.Task) error {
-		var p chcontracts.AutomationInvoke
-		if err := json.Unmarshal(t.Payload(), &p); err != nil {
-			return err
-		}
-		ctx = shared.WithTenant(ctx, p.TenantID)
-		return automation.StartConversationAutomation(ctx, p.ConversationID, p.MessageID)
-	})
-
 	// automationrule.evaluate: evaluate the tenant's automation rules for one
 	// conversation/message event and fire matching actions (send_webhook).
 	ruleEvaluator := factories.AutomationRuleEvaluator(c)
@@ -68,16 +53,6 @@ func registerHandlers(mux *asynq.ServeMux, c *container.Container) {
 			return err
 		}
 		return ruleEvaluator.Evaluate(ctx, p)
-	})
-
-	// automation.timeout: escalate a run still waiting for its callback.
-	mux.HandleFunc(infraasynq.TaskAutomationTimeout, func(ctx context.Context, t *asynq.Task) error {
-		var p autocontracts.TimeoutTask
-		if err := json.Unmarshal(t.Payload(), &p); err != nil {
-			return err
-		}
-		ctx = shared.WithTenant(ctx, p.TenantID)
-		return automation.HandleTimeout(ctx, p.RunID)
 	})
 
 	// channel.deliver / channel.retry: send an outbound message to the channel.

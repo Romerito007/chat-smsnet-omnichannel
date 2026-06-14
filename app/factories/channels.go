@@ -5,7 +5,6 @@ import (
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	channelservice "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/service"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
-	infraautomation "github.com/romerito007/chat-smsnet-omnichannel/infra/automation"
 	infrachannels "github.com/romerito007/chat-smsnet-omnichannel/infra/channels"
 	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/channels"
 	contactrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/contacts"
@@ -50,7 +49,6 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 		convrepo.NewMessageRepository(c.Mongo.DB),
 		convrepo.NewEventRepository(c.Mongo.DB),
 		channelrepo.NewInboundRepository(c.Mongo.DB),
-		infraautomation.NewDispatcher(c.AsynqClient),
 		c.Locker,
 		c.Events,
 		clock,

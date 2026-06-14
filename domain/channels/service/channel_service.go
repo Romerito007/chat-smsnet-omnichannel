@@ -115,22 +115,21 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 	now := s.clock.Now()
 	token := newInboundToken()
 	conn := &entity.ChannelConnection{
-		ID:                shared.NewID(),
-		TenantID:          tenantID,
-		Type:              cmd.Type,
-		Name:              strings.TrimSpace(cmd.Name),
-		Status:            entity.StatusDisconnected,
-		BaseURL:           strings.TrimSpace(cmd.BaseURL),
-		AuthType:          authType,
-		Secret:            secret,
-		InboundToken:      token,
-		InboundTokenHash:  hashInboundToken(token),
-		DefaultSectorID:   cmd.DefaultSectorID,
-		BusinessHours:     cmd.BusinessHours,
-		Enabled:           true,
-		AutomationEnabled: cmd.AutomationEnabled,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:               shared.NewID(),
+		TenantID:         tenantID,
+		Type:             cmd.Type,
+		Name:             strings.TrimSpace(cmd.Name),
+		Status:           entity.StatusDisconnected,
+		BaseURL:          strings.TrimSpace(cmd.BaseURL),
+		AuthType:         authType,
+		Secret:           secret,
+		InboundToken:     token,
+		InboundTokenHash: hashInboundToken(token),
+		DefaultSectorID:  cmd.DefaultSectorID,
+		BusinessHours:    cmd.BusinessHours,
+		Enabled:          true,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	if err := s.repo.Create(ctx, conn); err != nil {
 		return nil, err
@@ -203,9 +202,6 @@ func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts
 	}
 	if cmd.Enabled != nil {
 		conn.Enabled = *cmd.Enabled
-	}
-	if cmd.AutomationEnabled != nil {
-		conn.AutomationEnabled = *cmd.AutomationEnabled
 	}
 	conn.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, conn); err != nil {

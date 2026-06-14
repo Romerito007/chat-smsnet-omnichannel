@@ -39,9 +39,9 @@ func (r *fakeAssistantRepo) List(context.Context) ([]*centity.Assistant, error) 
 	}
 	return out, nil
 }
-func (r *fakeAssistantRepo) FindByChannelID(_ context.Context, ct string) (*centity.Assistant, error) {
+func (r *fakeAssistantRepo) FindByChannelID(_ context.Context, channelID string) (*centity.Assistant, error) {
 	for _, a := range r.byID {
-		if a.Enabled && a.ServesChannelID(ct) {
+		if a.Enabled && a.ServesChannelID(channelID) {
 			return a, nil
 		}
 	}

@@ -52,8 +52,6 @@ func (s *Service) reportPayload(ctx context.Context, report string, f contracts.
 		return s.Agents(ctx, f)
 	case "sectors":
 		return s.Sectors(ctx, f)
-	case "automation":
-		return s.Automation(ctx, f)
 	case "copilot":
 		return s.Copilot(ctx, f)
 	case "sla":
@@ -62,7 +60,7 @@ func (s *Service) reportPayload(ctx context.Context, report string, f contracts.
 		return s.CSAT(ctx, f)
 	default:
 		return nil, apperror.Validation("unknown report").
-			WithDetails(map[string]any{"report": "overview|conversations|agents|sectors|automation|copilot|sla|csat"})
+			WithDetails(map[string]any{"report": "overview|conversations|agents|sectors|copilot|sla|csat"})
 	}
 }
 

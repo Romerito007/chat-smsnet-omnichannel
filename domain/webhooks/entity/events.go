@@ -14,8 +14,6 @@ const (
 	EventConversationTransferred   = "conversation_transferred"    // ours
 	EventMessageCreated            = "message_created"             // Chatwoot ✓
 	EventSLABreached               = "sla_breached"                // ours
-	EventAutomationCompleted       = "automation_completed"        // ours
-	EventAutomationFailed          = "automation_failed"           // ours
 )
 
 // SupportedEvents is the closed set of wire events a subscription may register
@@ -27,8 +25,6 @@ var SupportedEvents = []string{
 	EventConversationTransferred,
 	EventMessageCreated,
 	EventSLABreached,
-	EventAutomationCompleted,
-	EventAutomationFailed,
 }
 
 // internalToWire maps the internal event keys emitted by domain services (dot
@@ -42,8 +38,6 @@ var internalToWire = map[string]string{
 	"conversation.transferred": EventConversationTransferred,
 	"message.created":          EventMessageCreated,
 	"sla.breached":             EventSLABreached,
-	"automation.completed":     EventAutomationCompleted,
-	"automation.failed":        EventAutomationFailed,
 }
 
 // WireEvent maps an internal event key to its webhook wire name; ok is false when

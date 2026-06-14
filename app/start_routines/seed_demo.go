@@ -548,7 +548,7 @@ func (d *demoSeeder) seedIntegrations() error {
 	for _, ch := range chans {
 		conn, err := connSvc.Create(d.ctx, chcontracts.CreateConnection{
 			Type: ch.typ, Name: ch.name, BaseURL: "https://gateway.demo.local/" + string(ch.typ),
-			AuthType: chentity.AuthToken, DefaultSectorID: suporteSec, AutomationEnabled: false,
+			AuthType: chentity.AuthToken, DefaultSectorID: suporteSec,
 		})
 		if err != nil {
 			return err
@@ -699,10 +699,9 @@ func (d *demoSeeder) seedConversations() error {
 		{4, conventity.StatusAssigned, true, true, false},
 		{24, conventity.StatusResolved, true, false, true},
 	}
-	automationLeft := 1 // attach one automation event to the first conversation
 	for _, sp := range specs {
 		for i := 0; i < sp.count; i++ {
-			if err := d.createConversation(sp.status, sp.assign, sp.atRisk, sp.resolved, &automationLeft); err != nil {
+			if err := d.createConversation(sp.status, sp.assign, sp.atRisk, sp.resolved); err != nil {
 				return err
 			}
 		}
@@ -710,7 +709,7 @@ func (d *demoSeeder) seedConversations() error {
 	return nil
 }
 
-func (d *demoSeeder) createConversation(status conventity.Status, assign, atRisk, resolved bool, automationLeft *int) error {
+func (d *demoSeeder) createConversation(status conventity.Status, assign, atRisk, resolved bool) error {
 	sectorNames := []string{"Suporte Técnico", "Financeiro", "Comercial", "Retenção"}
 	sectorName := sectorNames[d.rng.Intn(len(sectorNames))]
 	sectorID := d.sectorIDs[sectorName]
@@ -786,7 +785,7 @@ func (d *demoSeeder) createConversation(status conventity.Status, assign, atRisk
 	if err := d.createMessages(conv, assignee, resolved); err != nil {
 		return err
 	}
-	if err := d.createEvents(conv, assignee, resolved, automationLeft); err != nil {
+	if err := d.createEvents(conv, assignee, resolved); err != nil {
 		return err
 	}
 	if err := d.createTracking(conv, sectorID, atRisk, resolved, assign); err != nil {
@@ -883,7 +882,7 @@ func (d *demoSeeder) createMessages(conv *conventity.Conversation, assignee stri
 	return nil
 }
 
-func (d *demoSeeder) createEvents(conv *conventity.Conversation, assignee string, resolved bool, automationLeft *int) error {
+func (d *demoSeeder) createEvents(conv *conventity.Conversation, assignee string, resolved bool) error {
 	repo := convrepo.NewEventRepository(d.db)
 	add := func(typ string, at time.Time, actorType conventity.ActorType, actorID string, data map[string]any) error {
 		e := &conventity.ConversationEvent{
@@ -898,13 +897,6 @@ func (d *demoSeeder) createEvents(conv *conventity.Conversation, assignee string
 	}
 	if err := add(conventity.EventConversationCreated, conv.CreatedAt, conventity.ActorSystem, "system", nil); err != nil {
 		return err
-	}
-	if automationLeft != nil && *automationLeft > 0 {
-		*automationLeft--
-		if err := add(conventity.EventAutomationDecision, conv.CreatedAt.Add(time.Second*5),
-			conventity.ActorAutomation, "automation", map[string]any{"decision": "route_to_human"}); err != nil {
-			return err
-		}
 	}
 	if assignee != "" {
 		if err := add(conventity.EventConversationAssigned, conv.CreatedAt.Add(time.Minute),

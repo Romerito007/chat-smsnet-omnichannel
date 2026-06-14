@@ -212,23 +212,6 @@ func (s *Service) Sectors(ctx context.Context, f contracts.Filter) (contracts.Se
 	return contracts.SectorsReport{Sectors: sectors}, nil
 }
 
-// Automation summarizes automation runs.
-func (s *Service) Automation(ctx context.Context, f contracts.Filter) (contracts.AutomationReport, error) {
-	if err := s.guard(ctx); err != nil {
-		return contracts.AutomationReport{}, err
-	}
-	f = s.normalize(f)
-	by, err := s.repo.AutomationByStatus(ctx, f)
-	if err != nil {
-		return contracts.AutomationReport{}, err
-	}
-	total := 0
-	for _, b := range by {
-		total += b.Count
-	}
-	return contracts.AutomationReport{Total: total, ByStatus: by}, nil
-}
-
 // Copilot summarizes AI copilot usage.
 func (s *Service) Copilot(ctx context.Context, f contracts.Filter) (contracts.CopilotReport, error) {
 	if err := s.guard(ctx); err != nil {

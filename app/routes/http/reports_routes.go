@@ -23,7 +23,6 @@ func registerReportRoutes(r chi.Router, c *container.Container) {
 		p.Get("/reports/conversations", ctl.Conversations)
 		p.Get("/reports/agents", ctl.Agents)
 		p.Get("/reports/sectors", ctl.Sectors)
-		p.Get("/reports/automation", ctl.Automation)
 		p.Get("/reports/copilot", ctl.Copilot)
 		p.Get("/reports/sla", ctl.SLA)
 		p.Get("/reports/csat", ctl.CSAT)

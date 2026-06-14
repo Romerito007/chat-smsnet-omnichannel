@@ -294,7 +294,7 @@ func TestListEvents_ReturnsTimeline(t *testing.T) {
 	cr.items["conv1"] = &entity.Conversation{ID: "conv1", TenantID: "t1", SectorID: "s1"}
 	er.items = []*entity.ConversationEvent{
 		{ID: "e1", TenantID: "t1", ConversationID: "conv1", Type: entity.EventConversationAssigned},
-		{ID: "e2", TenantID: "t1", ConversationID: "conv1", Type: entity.EventAutomationDecision},
+		{ID: "e2", TenantID: "t1", ConversationID: "conv1", Type: entity.EventConversationEnqueued},
 	}
 	events, err := svc.ListEvents(adminCtx(), "conv1", shared.PageRequest{})
 	if err != nil {

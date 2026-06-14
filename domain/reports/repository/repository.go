@@ -34,7 +34,6 @@ type Repository interface {
 	ResolutionAvgSeconds(ctx context.Context, f contracts.Filter) (float64, error)
 	AgentStats(ctx context.Context, f contracts.Filter) ([]contracts.AgentStat, error)
 	SectorStats(ctx context.Context, f contracts.Filter) ([]contracts.SectorStat, error)
-	AutomationByStatus(ctx context.Context, f contracts.Filter) ([]contracts.Bucket, error)
 	CopilotUsage(ctx context.Context, f contracts.Filter) (contracts.CopilotReport, error)
 	// SLACounts returns the raw tracking counts (rates derived by the service).
 	SLACounts(ctx context.Context, f contracts.Filter) (contracts.SLAReport, error)

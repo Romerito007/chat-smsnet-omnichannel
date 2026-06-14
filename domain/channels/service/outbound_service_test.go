@@ -98,7 +98,7 @@ func seedMessage(fx outboundFixture, text string) (msgID, deliveryID string) {
 
 func TestDispatch_CreatesDeliveryAndEnqueues(t *testing.T) {
 	fx := newOutboundFixture()
-	conv := &conventity.Conversation{ID: "conv1", TenantID: "t1", Channel: "custom"}
+	conv := &conventity.Conversation{ID: "conv1", TenantID: "t1", Channel: "custom", ChannelID: "conn1"}
 	msg := &conventity.Message{ID: "m9", TenantID: "t1", ConversationID: "conv1", Direction: conventity.DirectionOutbound, Text: "hi"}
 
 	fx.svc.Dispatch(tenantCtx(), conv, msg)

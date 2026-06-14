@@ -78,12 +78,6 @@ type SectorsReport struct {
 	Sectors []SectorStat `json:"sectors"`
 }
 
-// AutomationReport summarizes automation runs.
-type AutomationReport struct {
-	Total    int      `json:"total"`
-	ByStatus []Bucket `json:"by_status"`
-}
-
 // CopilotReport summarizes AI copilot usage.
 type CopilotReport struct {
 	TotalCalls    int      `json:"total_calls"`
@@ -140,7 +134,6 @@ type ReportService interface {
 	Conversations(ctx context.Context, f Filter) (ConversationsReport, error)
 	Agents(ctx context.Context, f Filter) (AgentsReport, error)
 	Sectors(ctx context.Context, f Filter) (SectorsReport, error)
-	Automation(ctx context.Context, f Filter) (AutomationReport, error)
 	Copilot(ctx context.Context, f Filter) (CopilotReport, error)
 	SLA(ctx context.Context, f Filter) (SLAReport, error)
 	CSAT(ctx context.Context, f Filter) (CSATReport, error)
