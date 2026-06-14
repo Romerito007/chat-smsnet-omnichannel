@@ -24,6 +24,7 @@ type Assistant struct {
 	Name         string   `bson:"name"`
 	ChannelIDs   []string `bson:"channel_ids,omitempty"`
 	ISPProfileID string   `bson:"isp_profile_id,omitempty"`
+	MCPServerID  string   `bson:"mcp_server_id,omitempty"`
 	Enabled      bool     `bson:"enabled"`
 }
 

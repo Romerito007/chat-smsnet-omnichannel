@@ -14,6 +14,7 @@ type AssistantResponse struct {
 	Name         string    `json:"name"`
 	ChannelIDs   []string  `json:"channel_ids"`
 	ISPProfileID string    `json:"isp_profile_id,omitempty"`
+	MCPServerID  string    `json:"mcp_server_id,omitempty"`
 	Enabled      bool      `json:"enabled"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -31,6 +32,7 @@ func NewAssistantResponse(a *centity.Assistant) AssistantResponse {
 		Name:         a.Name,
 		ChannelIDs:   channels,
 		ISPProfileID: a.ISPProfileID,
+		MCPServerID:  a.MCPServerID,
 		Enabled:      a.Enabled,
 		CreatedAt:    a.CreatedAt,
 		UpdatedAt:    a.UpdatedAt,
@@ -51,6 +53,7 @@ type CreateAssistantRequest struct {
 	Name         string   `json:"name"`
 	ChannelIDs   []string `json:"channel_ids"`
 	ISPProfileID string   `json:"isp_profile_id"`
+	MCPServerID  string   `json:"mcp_server_id"`
 	Enabled      *bool    `json:"enabled"`
 }
 
@@ -60,6 +63,7 @@ func (r CreateAssistantRequest) ToCommand() cservice.CreateAssistant {
 		Name:         r.Name,
 		ChannelIDs:   r.ChannelIDs,
 		ISPProfileID: r.ISPProfileID,
+		MCPServerID:  r.MCPServerID,
 		Enabled:      r.Enabled,
 	}
 }
@@ -69,6 +73,7 @@ type UpdateAssistantRequest struct {
 	Name         *string   `json:"name"`
 	ChannelIDs   *[]string `json:"channel_ids"`
 	ISPProfileID *string   `json:"isp_profile_id"`
+	MCPServerID  *string   `json:"mcp_server_id"`
 	Enabled      *bool     `json:"enabled"`
 }
 
@@ -78,6 +83,7 @@ func (r UpdateAssistantRequest) ToCommand() cservice.UpdateAssistant {
 		Name:         r.Name,
 		ChannelIDs:   r.ChannelIDs,
 		ISPProfileID: r.ISPProfileID,
+		MCPServerID:  r.MCPServerID,
 		Enabled:      r.Enabled,
 	}
 }

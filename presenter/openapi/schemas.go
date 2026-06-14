@@ -545,23 +545,28 @@ func schemas() M {
 		}),
 		// CopilotAssistant is a named assistant (many per tenant). It reuses the
 		// tenant CopilotConfig for provider/key/policies and adds routing: the
-		// channel types it serves and an optional pinned ISP profile. With an ISP
-		// profile the backend exposes the SMSNET tools to the model and injects the
-		// ISP config server-side; without one, no ISP tools are offered.
+		// channels it serves and its EXTERNAL TOOL SOURCE — a pinned ISP profile
+		// (SMSNET tools, injected server-side) XOR a custom MCP server (its tools
+		// only), never both. With neither, no external tools are offered.
 		"CopilotAssistant": object(M{
 			"id": str(), "tenant_id": str(), "name": str(),
 			"channel_ids":    describedArr(str(), "Ids of the specific ChannelConnections this assistant serves (not types)."),
-			"isp_profile_id": describedStr("Pinned providerhub ISP profile id, or empty for no ISP tools."),
+			"isp_profile_id": describedStr("Pinned providerhub ISP profile id (SMSNET tools). Mutually exclusive with mcp_server_id; empty for none."),
+			"mcp_server_id":  describedStr("Pinned tenant MCP server id (its tools only). Mutually exclusive with isp_profile_id; empty for none. A server referenced here is the ONLY way it reaches the copilot."),
 			"enabled":        boolean(),
 			"created_at":     dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateCopilotAssistantRequest": object(M{
 			"name": str(), "channel_ids": withDesc(arr(str()), "Ids of ChannelConnections to serve; each must exist for the tenant."),
-			"isp_profile_id": describedStr("Optional providerhub ISP profile id to pin; must exist."),
+			"isp_profile_id": describedStr("Optional providerhub ISP profile id to pin; must exist. Mutually exclusive with mcp_server_id (both set → 422)."),
+			"mcp_server_id":  describedStr("Optional tenant MCP server id to pin; must exist. Mutually exclusive with isp_profile_id (both set → 422)."),
 			"enabled":        describedBool("Defaults to true when omitted."),
 		}, "name"),
 		"UpdateCopilotAssistantRequest": object(M{
-			"name": str(), "channel_ids": arr(str()), "isp_profile_id": str(), "enabled": boolean(),
+			"name": str(), "channel_ids": arr(str()),
+			"isp_profile_id": describedStr("Mutually exclusive with mcp_server_id."),
+			"mcp_server_id":  describedStr("Mutually exclusive with isp_profile_id."),
+			"enabled":        boolean(),
 		}),
 		"SuggestReplyRequest": object(M{"conversation_id": str(), "instruction": str()}, "conversation_id"),
 		"SummarizeRequest":    object(M{"conversation_id": str()}, "conversation_id"),

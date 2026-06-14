@@ -73,24 +73,37 @@ ISP nunca passam por camada de decisão de IA — o config é montado na borda.
 
 `CopilotAssistant` (coleção `copilot_assistants`, vários por tenant) reusa o
 `AIConfig` do tenant (provider/key/políticas) e adiciona roteamento: `ChannelIDs[]`
-(ids de ChannelConnection específicas, casados com `conv.channel_id`), `ISPProfileID`
-**opcional** e `Enabled`. CRUD em `/v1/copilot/assistants` (`copilot.configure`),
-validando que os `channel_ids` existem no tenant. **Sem** ISP → não expõe tools de
-ISP. **Com** ISP → o backend expõe as tools SMSNET ao modelo e **injeta o
-`config{type+creds}` server-side**. Conversa com `channel_id` vazio → nenhum
-assistente resolve (sem fallback por tipo).
+(ids de ChannelConnection específicas, casados com `conv.channel_id`) + a **FONTE DE
+TOOLS EXTERNAS**, que é `ISPProfileID` **XOR** `MCPServerID` — **mutuamente
+exclusivos** (ambos preenchidos → **422** "choose an ISP profile OR an MCP server,
+not both"); os dois vazios = sem tools externas. CRUD em `/v1/copilot/assistants`
+(`copilot.configure`), validando que `channel_ids`, o perfil e o servidor MCP
+existem. Conversa com `channel_id` vazio → nenhum assistente resolve (sem fallback
+por tipo).
 
-**Ponto único de injeção:** `mcp/service.ToolService.invoke` — o único lugar que
-despacha `client.CallTool`. Toda a credencial entra ali, **depois** que a IA decidiu
-chamar a tool, via `ISPToolBridge` (resolve `conv.channel_id → assistente → perfil`):
-`args["config"]` é **sobrescrito** (o modelo nunca fornece nem vê credencial). Em
-write, `args["idempotency_key"]` recebe o `approval.ID`. Filtragem (coarse, por
-servidor) no `OpenToolSession`: sem perfil → nenhuma tool SMSNET; servidor de escrita
-(OPERACOES) só se o perfil suporta liberacao/chamado.
+**Fonte de tools no `OpenToolSession`** (caminho do copiloto), decidida pelo
+assistente da conversa (`ISPToolBridge.ToolSource(channel_id)`):
+- **ISP** (`isp_profile_id`): comportamento de sempre — tools **SMSNET** liberadas
+  (gate por servidor: read sempre; write OPERACOES só se o perfil suporta
+  liberacao/chamado) + `config{type+creds}` injetado server-side em
+  `ToolService.invoke` (o modelo nunca vê credencial; em write, `idempotency_key` =
+  `approval.ID`).
+- **MCP** (`mcp_server_id`): o copiloto vê as tools **só daquele** servidor MCP do
+  tenant, respeitando o `Kind` read/write (read executa; write cria `mcp_approval` /
+  exige aprovação — mesmo gating).
+- **nenhum**: sem tools externas.
+
+> **Mudança de comportamento:** um servidor MCP registrado pelo tenant **só é
+> exposto ao copiloto se um assistente o referenciar** via `mcp_server_id`. Servidor
+> cadastrado e **não vinculado** a nenhum assistente **não aparece** para o copiloto
+> (antes somava globalmente na união de tools). A lista **manual** do agente
+> (`GET /v1/conversations/{id}/mcp/tools`) segue agregando todos os servidores
+> habilitados — a mudança é escopada ao copiloto.
 
 > **Integridade referencial:** deletar um perfil de ISP **vinculado a um
-> CopilotAssistant** é **bloqueado** (409 "ISP em uso pelo assistente X") — nunca
-> anula `ISPProfileID` silenciosamente.
+> CopilotAssistant** é **bloqueado** (409 "ISP em uso pelo assistente X"); deletar um
+> **servidor MCP vinculado** é **bloqueado** (409 "servidor MCP em uso pelo
+> assistente X") — nunca anula o vínculo silenciosamente.
 
 > **Roadmap (F4):** a **automação** (transporte HTTP :8085, seleção de
 > `isp_config_id` na regra, efeito colateral com idempotency key, estilo Chatwoot)

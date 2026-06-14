@@ -221,40 +221,89 @@ func (s *ToolService) Decide(ctx context.Context, conversationID, approvalID str
 
 // ── copilot ToolBroker ───────────────────────────────────────────────────────
 
-// OpenToolSession implements copilotcontracts.ToolBroker: it discovers the
-// tenant's tools and returns a session bound to the conversation. Read tools are
-// callable by the model; write tools are offered but only ever proposed.
+// OpenToolSession implements copilotcontracts.ToolBroker: it returns a session
+// bound to the conversation whose tools come from the conversation's assistant
+// EXTERNAL TOOL SOURCE — the pinned ISP profile (SMSNET) OR a single custom MCP
+// server, or none. A registered MCP server that no assistant references is NOT
+// exposed to the copilot (unlike the manual agent tool list, which aggregates all
+// enabled servers). Read tools are callable by the model; write tools are only ever
+// proposed.
 func (s *ToolService) OpenToolSession(ctx context.Context, conversationID string) (copilotcontracts.ToolSession, error) {
 	conv, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	tools, err := s.aggregate(ctx)
+	servers, isISP, err := s.sessionServers(ctx, conv)
 	if err != nil {
 		return nil, err
 	}
-	byName := make(map[string]toolRef, len(tools))
-	defs := make([]copilotcontracts.ToolDefinition, 0, len(tools))
-	for _, t := range tools {
-		ref, err := s.servers.FindByID(ctx, t.ServerID)
-		if err != nil {
-			continue
+	byName := make(map[string]toolRef)
+	defs := make([]copilotcontracts.ToolDefinition, 0)
+	for _, conn := range servers {
+		specs, lerr := s.client.ListTools(ctx, conn)
+		if lerr != nil {
+			continue // a single unreachable server must not break the session
 		}
-		// SMSNET tools are gated by the conversation's assistant ISP profile: hide
-		// them when no profile is pinned, and hide the write (OPERACOES) tools when
-		// the profile supports neither liberacao nor chamado.
-		if s.ispBridge != nil && entity.IsSMSNETServer(ref.Name) {
-			allowed, aerr := s.ispBridge.AllowServer(ctx, conv.ChannelID, ref.Name, t.Write)
-			if aerr != nil || !allowed {
-				continue
+		for _, t := range annotate(conn, specs) {
+			// For the ISP source, SMSNET tools are still gated per kind by the
+			// profile: read always; write only when the profile supports a write.
+			if isISP && s.ispBridge != nil && entity.IsSMSNETServer(conn.Name) {
+				allowed, aerr := s.ispBridge.AllowServer(ctx, conv.ChannelID, conn.Name, t.Write)
+				if aerr != nil || !allowed {
+					continue
+				}
 			}
+			byName[t.Name] = toolRef{conn: conn, write: t.Write}
+			defs = append(defs, copilotcontracts.ToolDefinition{
+				Name: t.Name, Description: t.Description, Schema: t.Schema, ReadOnly: !t.Write,
+			})
 		}
-		byName[t.Name] = toolRef{conn: ref, write: t.Write}
-		defs = append(defs, copilotcontracts.ToolDefinition{
-			Name: t.Name, Description: t.Description, Schema: t.Schema, ReadOnly: !t.Write,
-		})
 	}
 	return &toolSession{svc: s, conv: conv, byName: byName, defs: defs}, nil
+}
+
+// sessionServers returns the servers whose tools the copilot may use for this
+// conversation, decided by the assistant's tool source, plus isISP (so the caller
+// keeps the SMSNET per-kind gating only for the ISP source):
+//   - MCP source  → that one server (when it exists and is enabled).
+//   - ISP source  → the SMSNET servers (env defaults / tenant overrides).
+//   - none / no bridge → no external tools.
+func (s *ToolService) sessionServers(ctx context.Context, conv *convEntityRef) ([]*entity.ServerConnection, bool, error) {
+	if s.ispBridge == nil {
+		return nil, false, nil
+	}
+	src, err := s.ispBridge.ToolSource(ctx, conv.ChannelID)
+	if err != nil {
+		return nil, false, err
+	}
+	switch src.Kind {
+	case contracts.ToolSourceMCP:
+		conn, ferr := s.servers.FindByID(ctx, src.MCPServerID)
+		if ferr != nil {
+			if apperror.From(ferr).Code == apperror.CodeNotFound {
+				return nil, false, nil // referenced server gone → no tools (defensive)
+			}
+			return nil, false, ferr
+		}
+		if !conn.Enabled {
+			return nil, false, nil
+		}
+		return []*entity.ServerConnection{conn}, false, nil
+	case contracts.ToolSourceISP:
+		all, aerr := s.servers.ListEnabled(ctx)
+		if aerr != nil {
+			return nil, false, aerr
+		}
+		out := make([]*entity.ServerConnection, 0, len(all))
+		for _, c := range all {
+			if entity.IsSMSNETServer(c.Name) {
+				out = append(out, c)
+			}
+		}
+		return out, true, nil
+	default:
+		return nil, false, nil
+	}
 }
 
 type toolRef struct {

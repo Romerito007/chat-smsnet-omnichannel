@@ -25,6 +25,30 @@ func NewISPToolBridge(assistants repository.AssistantRepository, profiles phrepo
 	return &ISPToolBridge{assistants: assistants, profiles: profiles}
 }
 
+// ToolSource resolves the channel's assistant external tool source: a custom MCP
+// server wins when set; else the pinned ISP profile (SMSNET); else none. No
+// assistant for the channel → none. Mutual exclusivity is enforced at write time,
+// so at most one of the two is set.
+func (b *ISPToolBridge) ToolSource(ctx context.Context, channelID string) (mcpcontracts.ToolSource, error) {
+	if channelID == "" {
+		return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceNone}, nil
+	}
+	assistant, err := b.assistants.FindByChannelID(ctx, channelID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceNone}, nil
+		}
+		return mcpcontracts.ToolSource{}, err
+	}
+	if assistant.MCPServerID != "" {
+		return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceMCP, MCPServerID: assistant.MCPServerID}, nil
+	}
+	if assistant.ISPProfileID != "" {
+		return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceISP}, nil
+	}
+	return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceNone}, nil
+}
+
 // AllowServer gates a SMSNET server for the conversation's channel: no
 // assistant/profile → false; read → true; write → only when the profile supports
 // liberacao or chamado.

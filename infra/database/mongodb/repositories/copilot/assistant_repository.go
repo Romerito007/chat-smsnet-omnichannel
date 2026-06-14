@@ -44,6 +44,7 @@ func (r *AssistantRepository) Update(ctx context.Context, a *entity.Assistant) e
 			"name":           m.Name,
 			"channel_ids":    m.ChannelIDs,
 			"isp_profile_id": m.ISPProfileID,
+			"mcp_server_id":  m.MCPServerID,
 			"enabled":        m.Enabled,
 			"updated_at":     a.UpdatedAt,
 		}},
@@ -135,6 +136,7 @@ func toAssistantModel(a *entity.Assistant) models.Assistant {
 		Name:         a.Name,
 		ChannelIDs:   a.ChannelIDs,
 		ISPProfileID: a.ISPProfileID,
+		MCPServerID:  a.MCPServerID,
 		Enabled:      a.Enabled,
 	}
 	m.ID = a.ID
@@ -151,6 +153,7 @@ func toAssistantEntity(m *models.Assistant) *entity.Assistant {
 		Name:         m.Name,
 		ChannelIDs:   m.ChannelIDs,
 		ISPProfileID: m.ISPProfileID,
+		MCPServerID:  m.MCPServerID,
 		Enabled:      m.Enabled,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,

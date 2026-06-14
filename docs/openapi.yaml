@@ -940,7 +940,10 @@ components:
                 id:
                     type: string
                 isp_profile_id:
-                    description: Pinned providerhub ISP profile id, or empty for no ISP tools.
+                    description: Pinned providerhub ISP profile id (SMSNET tools). Mutually exclusive with mcp_server_id; empty for none.
+                    type: string
+                mcp_server_id:
+                    description: Pinned tenant MCP server id (its tools only). Mutually exclusive with isp_profile_id; empty for none. A server referenced here is the ONLY way it reaches the copilot.
                     type: string
                 name:
                     type: string
@@ -1176,7 +1179,10 @@ components:
                     description: Defaults to true when omitted.
                     type: boolean
                 isp_profile_id:
-                    description: Optional providerhub ISP profile id to pin; must exist.
+                    description: Optional providerhub ISP profile id to pin; must exist. Mutually exclusive with mcp_server_id (both set → 422).
+                    type: string
+                mcp_server_id:
+                    description: Optional tenant MCP server id to pin; must exist. Mutually exclusive with isp_profile_id (both set → 422).
                     type: string
                 name:
                     type: string
@@ -3126,6 +3132,10 @@ components:
                 enabled:
                     type: boolean
                 isp_profile_id:
+                    description: Mutually exclusive with mcp_server_id.
+                    type: string
+                mcp_server_id:
+                    description: Mutually exclusive with isp_profile_id.
                     type: string
                 name:
                     type: string

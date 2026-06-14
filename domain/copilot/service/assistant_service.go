@@ -8,6 +8,7 @@ import (
 	chrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/repository"
+	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/repository"
 	phrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
@@ -17,6 +18,7 @@ type CreateAssistant struct {
 	Name         string
 	ChannelIDs   []string
 	ISPProfileID string
+	MCPServerID  string
 	Enabled      *bool // nil → true
 }
 
@@ -25,25 +27,29 @@ type UpdateAssistant struct {
 	Name         *string
 	ChannelIDs   *[]string
 	ISPProfileID *string
+	MCPServerID  *string
 	Enabled      *bool
 }
 
 // AssistantService manages copilot assistants (many per tenant). It validates that
-// the pinned ISP profile and the served channels exist, and answers whether a
-// profile is in use (so providerhub can block deleting a referenced profile).
+// the served channels exist and that the assistant's external tool source — the
+// pinned ISP profile OR the custom MCP server (mutually exclusive) — exists. It
+// also answers whether a profile / MCP server is in use (so providerhub / the MCP
+// admin can block deleting a referenced one).
 type AssistantService struct {
 	repo     repository.AssistantRepository
 	profiles phrepo.ProfileRepository
 	channels chrepo.ConnectionRepository
+	servers  mcprepo.ServerRepository
 	clock    shared.Clock
 }
 
 // NewAssistantService builds the service.
-func NewAssistantService(repo repository.AssistantRepository, profiles phrepo.ProfileRepository, channels chrepo.ConnectionRepository, clock shared.Clock) *AssistantService {
+func NewAssistantService(repo repository.AssistantRepository, profiles phrepo.ProfileRepository, channels chrepo.ConnectionRepository, servers mcprepo.ServerRepository, clock shared.Clock) *AssistantService {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &AssistantService{repo: repo, profiles: profiles, channels: channels, clock: clock}
+	return &AssistantService{repo: repo, profiles: profiles, channels: channels, servers: servers, clock: clock}
 }
 
 // List returns the tenant's assistants.
@@ -73,7 +79,8 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 		return nil, apperror.Validation("name is required")
 	}
 	ispProfileID := strings.TrimSpace(cmd.ISPProfileID)
-	if err := s.validateProfile(ctx, ispProfileID); err != nil {
+	mcpServerID := strings.TrimSpace(cmd.MCPServerID)
+	if err := s.validateToolSource(ctx, ispProfileID, mcpServerID); err != nil {
 		return nil, err
 	}
 	if err := s.validateChannels(ctx, cmd.ChannelIDs); err != nil {
@@ -90,6 +97,7 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 		Name:         name,
 		ChannelIDs:   cmd.ChannelIDs,
 		ISPProfileID: ispProfileID,
+		MCPServerID:  mcpServerID,
 		Enabled:      enabled,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -121,9 +129,16 @@ func (s *AssistantService) Update(ctx context.Context, id string, cmd UpdateAssi
 		}
 		a.ChannelIDs = *cmd.ChannelIDs
 	}
+	// The tool source (ISP profile XOR MCP server) is validated on the RESULTING
+	// state, so a PATCH that sets one must clear/keep the other consistently.
 	if cmd.ISPProfileID != nil {
 		a.ISPProfileID = strings.TrimSpace(*cmd.ISPProfileID)
-		if err := s.validateProfile(ctx, a.ISPProfileID); err != nil {
+	}
+	if cmd.MCPServerID != nil {
+		a.MCPServerID = strings.TrimSpace(*cmd.MCPServerID)
+	}
+	if cmd.ISPProfileID != nil || cmd.MCPServerID != nil {
+		if err := s.validateToolSource(ctx, a.ISPProfileID, a.MCPServerID); err != nil {
 			return nil, err
 		}
 	}
@@ -164,6 +179,39 @@ func (s *AssistantService) IsISPProfileInUse(ctx context.Context, ispProfileID s
 	return false, "", nil
 }
 
+// IsMCPServerInUse reports whether any assistant references the MCP server, and the
+// name of one such assistant (for a clear "in use" message). Implements the MCP
+// ServerUsageChecker port so a server delete can be blocked with 409.
+func (s *AssistantService) IsMCPServerInUse(ctx context.Context, mcpServerID string) (bool, string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return false, "", err
+	}
+	all, err := s.repo.List(ctx)
+	if err != nil {
+		return false, "", err
+	}
+	for _, a := range all {
+		if a.MCPServerID == mcpServerID {
+			return true, a.Name, nil
+		}
+	}
+	return false, "", nil
+}
+
+// validateToolSource enforces that the external tool source is an ISP profile XOR a
+// custom MCP server (never both), and that whichever is set exists for the tenant.
+// Both empty is allowed (no external tools).
+func (s *AssistantService) validateToolSource(ctx context.Context, ispProfileID, mcpServerID string) error {
+	if ispProfileID != "" && mcpServerID != "" {
+		return apperror.Validation("choose an ISP profile OR an MCP server, not both").
+			WithDetails(map[string]any{"isp_profile_id": "mutually exclusive with mcp_server_id"})
+	}
+	if err := s.validateProfile(ctx, ispProfileID); err != nil {
+		return err
+	}
+	return s.validateMCPServer(ctx, mcpServerID)
+}
+
 // validateProfile ensures a pinned ISP profile exists for the tenant (empty = no
 // ISP, allowed).
 func (s *AssistantService) validateProfile(ctx context.Context, ispProfileID string) error {
@@ -173,6 +221,24 @@ func (s *AssistantService) validateProfile(ctx context.Context, ispProfileID str
 	if _, err := s.profiles.FindByID(ctx, ispProfileID); err != nil {
 		if apperror.From(err).Code == apperror.CodeNotFound {
 			return apperror.Validation("unknown isp_profile_id")
+		}
+		return err
+	}
+	return nil
+}
+
+// validateMCPServer ensures the referenced MCP server exists for the tenant (empty
+// = no MCP server, allowed).
+func (s *AssistantService) validateMCPServer(ctx context.Context, mcpServerID string) error {
+	if mcpServerID == "" {
+		return nil
+	}
+	if s.servers == nil {
+		return nil
+	}
+	if _, err := s.servers.FindByID(ctx, mcpServerID); err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return apperror.Validation("unknown mcp_server_id")
 		}
 		return err
 	}

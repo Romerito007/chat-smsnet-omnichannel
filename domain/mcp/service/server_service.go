@@ -14,6 +14,12 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
+// ServerUsageChecker reports whether an MCP server is referenced by a consumer (a
+// copilot assistant), so deletion can be blocked with a clear 409 message.
+type ServerUsageChecker interface {
+	IsMCPServerInUse(ctx context.Context, serverID string) (inUse bool, usedBy string, err error)
+}
+
 // ServerService manages per-tenant MCP server registrations and discovers their
 // tools dynamically (never hard-coding any tool name).
 type ServerService struct {
@@ -21,7 +27,12 @@ type ServerService struct {
 	client  contracts.Client
 	clock   shared.Clock
 	auditor shared.Auditor
+	usage   ServerUsageChecker
 }
+
+// SetUsageChecker wires the referential-integrity checker used to block deleting an
+// MCP server referenced by an assistant. Optional.
+func (s *ServerService) SetUsageChecker(c ServerUsageChecker) { s.usage = c }
 
 // NewServerService builds the service.
 func NewServerService(repo repository.ServerRepository, client contracts.Client, clock shared.Clock) *ServerService {
@@ -125,10 +136,21 @@ func (s *ServerService) Update(ctx context.Context, id string, cmd contracts.Upd
 	return conn, nil
 }
 
-// Delete removes a server.
+// Delete removes a server, unless a copilot assistant references it (409).
 func (s *ServerService) Delete(ctx context.Context, id string) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
+	}
+	// Referential integrity: refuse to delete a server an assistant points at, with
+	// a clear message — never silently break the assistant's tool source.
+	if s.usage != nil {
+		inUse, usedBy, err := s.usage.IsMCPServerInUse(ctx, id)
+		if err != nil {
+			return err
+		}
+		if inUse {
+			return apperror.Conflict("servidor MCP em uso pelo assistente " + usedBy)
+		}
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err

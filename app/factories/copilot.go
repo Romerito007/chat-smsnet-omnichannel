@@ -10,17 +10,20 @@ import (
 	contactrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/contacts"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	copilotrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/copilot"
+	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/mcp"
 	providerhubrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/providerhub"
 	copilotctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/copilot"
 )
 
 // CopilotAssistantService builds the assistant service (many per tenant). It
-// validates pinned ISP profiles against the providerhub profiles.
+// validates the served channels and the assistant's external tool source — the
+// pinned ISP profile (providerhub) XOR a tenant MCP server — and exists.
 func CopilotAssistantService(c *container.Container) *cservice.AssistantService {
 	return cservice.NewAssistantService(
 		copilotrepo.NewAssistantRepository(c.Mongo.DB),
 		providerhubrepo.NewProfileRepository(c.Mongo.DB, c.Cipher),
 		channelrepo.NewConnectionRepository(c.Mongo.DB, c.Cipher),
+		mcprepo.NewServerRepository(c.Mongo.DB, c.Cipher),
 		clock,
 	)
 }
