@@ -47,7 +47,7 @@ func attachmentStorage(c *container.Container) (acontracts.Storage, attachctl.Lo
 func AttachmentService(c *container.Container) *aservice.Service {
 	store, _ := attachmentStorage(c)
 	cfg := c.Config.Attachments
-	return aservice.NewService(
+	svc := aservice.NewService(
 		attachrepo.New(c.Mongo.DB),
 		store,
 		convrepo.NewConversationRepository(c.Mongo.DB),
@@ -64,6 +64,9 @@ func AttachmentService(c *container.Container) *aservice.Service {
 			SigningSecret:       cfg.SigningSecret,
 		},
 	)
+	// Log the concrete cause of an inbound-storage failure (provider/key/cause).
+	svc.SetLogger(c.Logger)
+	return svc
 }
 
 // AttachmentController builds the attachments controller, wiring the local blob

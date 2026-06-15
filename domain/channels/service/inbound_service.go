@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -40,6 +41,15 @@ type InboundService struct {
 	webhooks      shared.WebhookEmitter
 	enricher      convcontracts.WebhookEnricher
 	media         shared.IntegrationMediaResolver
+	logger        shared.Logger
+}
+
+// SetLogger wires the structured logger used to record an inbound attachment
+// storage failure with its routing context. Optional: defaults to slog.Default().
+func (s *InboundService) SetLogger(l shared.Logger) {
+	if l != nil {
+		s.logger = l
+	}
 }
 
 // SetAttachmentStore wires the persister for raw (multipart) inbound attachments.
@@ -128,6 +138,7 @@ func NewInboundService(
 		events: events, protocols: protocols, inbound: inbound,
 		locker: locker, publisher: publisher, clock: clock,
 		webhooks: shared.NoopWebhookEmitter{},
+		logger:   slog.Default(),
 	}
 }
 
@@ -375,6 +386,14 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	for _, f := range in.RawAttachments {
 		att, err := s.attachments.StoreInbound(ctx, conv.ID, f.Filename, f.ContentType, f.Data)
 		if err != nil {
+			// Enrich the storage failure with the inbound routing context (the
+			// attachments service already logged provider/key/cause) before it
+			// surfaces as the 5xx the gateway sees.
+			shared.LoggerFrom(ctx, s.logger).Error("inbound attachment storage failed",
+				"channel_id", conv.ChannelID, "conversation_id", conv.ID,
+				"external_message_id", in.ExternalMessageID, "field_name", "attachments[]",
+				"file_count", len(in.RawAttachments), "filename", f.Filename,
+				"content_type", f.ContentType, "size", len(f.Data), "cause", err.Error())
 			return nil, err
 		}
 		attachments = append(attachments, att)

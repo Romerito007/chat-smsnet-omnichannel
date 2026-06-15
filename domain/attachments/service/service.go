@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"path"
 	"strconv"
 	"strings"
@@ -53,6 +54,16 @@ type Service struct {
 	messages      convrepo.MessageRepository
 	clock         shared.Clock
 	cfg           Config
+	logger        shared.Logger
+}
+
+// SetLogger wires the structured logger used to record the concrete cause of an
+// inbound-storage failure (provider/key/size/cause) for diagnosis. Optional:
+// defaults to slog.Default().
+func (s *Service) SetLogger(l shared.Logger) {
+	if l != nil {
+		s.logger = l
+	}
 }
 
 // NewService builds the service applying sane defaults.
@@ -78,7 +89,7 @@ func NewService(repo repository.Repository, storage contracts.Storage, conversat
 	if cfg.AvatarURLTTL <= 0 {
 		cfg.AvatarURLTTL = 15 * time.Minute
 	}
-	return &Service{repo: repo, storage: storage, conversations: conversations, messages: messages, clock: clock, cfg: cfg}
+	return &Service{repo: repo, storage: storage, conversations: conversations, messages: messages, clock: clock, cfg: cfg, logger: slog.Default()}
 }
 
 // ── integration rail: signed, JWT-less channel-media URL ───────────────────────
@@ -369,6 +380,11 @@ func (s *Service) StoreInbound(ctx context.Context, conversationID, filename, co
 	id := shared.NewID()
 	key := fmt.Sprintf("attachments/%s/%s/%s/%s", tenantID, conversationID, id, filename)
 	if err := s.storage.Put(key, contentType, data); err != nil {
+		// Log the concrete cause (request_id/tenant_id come from ctx) so an inbound
+		// storage failure is diagnosable — the client only sees the generic 5xx.
+		shared.LoggerFrom(ctx, s.logger).Error("could not store inbound attachment",
+			"conversation_id", conversationID, "filename", filename, "content_type", contentType,
+			"size", size, "storage_provider", s.storage.Provider(), "storage_key", key, "cause", err.Error())
 		return conventity.Attachment{}, apperror.Internal("could not store inbound attachment").Wrap(err)
 	}
 
@@ -386,6 +402,9 @@ func (s *Service) StoreInbound(ctx context.Context, conversationID, filename, co
 		CreatedAt:       s.clock.Now(),
 	}
 	if err := s.repo.Create(ctx, att); err != nil {
+		shared.LoggerFrom(ctx, s.logger).Error("could not persist inbound attachment record",
+			"conversation_id", conversationID, "attachment_id", id, "filename", filename,
+			"storage_provider", s.storage.Provider(), "storage_key", key, "cause", err.Error())
 		return conventity.Attachment{}, err
 	}
 	return conventity.Attachment{

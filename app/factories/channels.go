@@ -74,6 +74,8 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 	// resolved lazily — only when a subscription matches the event.
 	svc.SetWebhookEnricher(WebhookEnricher(c))
 	svc.SetIntegrationMediaResolver(AttachmentService(c))
+	// Record an inbound attachment storage failure with its routing context.
+	svc.SetLogger(c.Logger)
 	return svc
 }
 

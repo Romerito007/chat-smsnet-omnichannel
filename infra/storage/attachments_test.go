@@ -248,3 +248,30 @@ func TestS3Attachment_EndToEnd_MockServer(t *testing.T) {
 		t.Errorf("downloaded %q, want %q", got, "hello")
 	}
 }
+
+// TestS3Attachment_PutUploadsServerSide is the regression for the inbound media 500:
+// the S3 backend's Put used to be a stub that always errored ("direct put is not
+// supported"), so every inbound multipart attachment (gateway → API → S3) failed
+// with "could not store inbound attachment". Put must now upload the bytes
+// server-side (there is no client to presign for on the inbound rail).
+func TestS3Attachment_PutUploadsServerSide(t *testing.T) {
+	srv, objects := mockS3(t)
+	s, err := NewS3AttachmentStorage(S3Config{
+		Endpoint: srv.URL, Region: "us-east-1", Bucket: "bucket",
+		AccessKey: "test", SecretKey: "test", ForcePathStyle: true,
+	})
+	if err != nil {
+		t.Fatalf("new s3: %v", err)
+	}
+	key := "attachments/t1/cv1/a1/photo.jpg"
+	if err := s.Put(key, "image/jpeg", []byte("\xff\xd8\xff\xe0jpegbytes")); err != nil {
+		t.Fatalf("Put must upload server-side, got: %v", err)
+	}
+	if got, ok := objects["/bucket/"+key]; !ok || string(got) != "\xff\xd8\xff\xe0jpegbytes" {
+		t.Fatalf("object not stored in the bucket: ok=%v bytes=%q", ok, got)
+	}
+	// The object is now visible to the confirm-time existence check.
+	if ok, err := s.Exists(key); err != nil || !ok {
+		t.Fatalf("exists after Put = %v, %v; want true", ok, err)
+	}
+}

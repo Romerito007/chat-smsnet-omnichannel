@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -154,9 +155,23 @@ func (s *S3AttachmentStorage) Download(key, filename string, ttl time.Duration) 
 	return contracts.DownloadResult{RedirectURL: req.URL}, nil
 }
 
-// Put is not supported: S3 uploads go directly from the client to the bucket.
-func (s *S3AttachmentStorage) Put(string, string, []byte) error {
-	return apperror.Internal("direct put is not supported by the s3 backend")
+// Put uploads bytes to the bucket server-side. Browser uploads use presigned PUTs
+// (bytes never proxy through the API), but the INBOUND rail receives raw media in
+// the request body (Chatwoot multipart from the channel gateway), so the API must
+// store those bytes itself — there is no client to presign for.
+func (s *S3AttachmentStorage) Put(key, contentType string, data []byte) error {
+	in := &s3.PutObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(data),
+	}
+	if contentType != "" {
+		in.ContentType = aws.String(contentType)
+	}
+	if _, err := s.client.PutObject(context.Background(), in); err != nil {
+		return apperror.Integration("could not upload object to s3").Wrap(err)
+	}
+	return nil
 }
 
 // Exists reports whether the object was actually uploaded (HeadObject). A missing
