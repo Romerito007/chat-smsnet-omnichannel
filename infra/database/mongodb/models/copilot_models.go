@@ -21,8 +21,6 @@ type Assistant struct {
 	ISPProfileID          string   `bson:"isp_profile_id,omitempty"`
 	MCPServerID           string   `bson:"mcp_server_id,omitempty"`
 	AllowCustomerData     bool     `bson:"allow_customer_data"`
-	AllowFinancialData    bool     `bson:"allow_financial_data"`
-	AllowMonitoringData   bool     `bson:"allow_monitoring_data"`
 	HumanApprovalRequired bool     `bson:"human_approval_required"`
 	Temperature           float64  `bson:"temperature"`
 	MaxTokens             int      `bson:"max_tokens"`

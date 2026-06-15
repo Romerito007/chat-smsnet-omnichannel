@@ -18,12 +18,11 @@ type Assistant struct {
 	//   - both empty       → no external tools.
 	ISPProfileID string
 	MCPServerID  string
-	// Behavior (per assistant): the privacy gates, the human-approval switch,
+	// Behavior (per assistant): the customer-data gate, the human-approval switch,
 	// sampling, and free-text persona/conduct instructions. The AI infra
-	// (provider/model/key/base_url) stays global in AIConfig.
+	// (provider/model/key/base_url) stays global in AIConfig. Financial/monitoring
+	// data are consulted on demand via ISP tools, not gated/pre-injected here.
 	AllowCustomerData     bool
-	AllowFinancialData    bool
-	AllowMonitoringData   bool
 	HumanApprovalRequired bool
 	Temperature           float64
 	MaxTokens             int

@@ -928,13 +928,7 @@ components:
         CopilotAssistant:
             properties:
                 allow_customer_data:
-                    description: 'Behavior gate: let the customer profile enter the prompt.'
-                    type: boolean
-                allow_financial_data:
-                    description: 'Behavior gate: let financial data enter the prompt.'
-                    type: boolean
-                allow_monitoring_data:
-                    description: 'Behavior gate: let monitoring/technical status enter the prompt.'
+                    description: 'Behavior gate: let the customer profile enter the prompt. (Financial/monitoring data are consulted on demand via ISP tools, never pre-injected — no gate.)'
                     type: boolean
                 channel_ids:
                     description: Ids of the specific ChannelConnections this assistant serves (not types).
@@ -1180,12 +1174,6 @@ components:
         CreateCopilotAssistantRequest:
             properties:
                 allow_customer_data:
-                    description: Default false.
-                    type: boolean
-                allow_financial_data:
-                    description: Default false.
-                    type: boolean
-                allow_monitoring_data:
                     description: Default false.
                     type: boolean
                 channel_ids:
@@ -3145,10 +3133,6 @@ components:
         UpdateCopilotAssistantRequest:
             properties:
                 allow_customer_data:
-                    type: boolean
-                allow_financial_data:
-                    type: boolean
-                allow_monitoring_data:
                     type: boolean
                 channel_ids:
                     items:

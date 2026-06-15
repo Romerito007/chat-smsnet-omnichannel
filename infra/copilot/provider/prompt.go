@@ -50,16 +50,6 @@ func renderContext(pc contracts.PromptContext) string {
 		b.WriteString(strings.TrimSpace(pc.Customer.Name + " " + pc.Customer.Phone + " " + pc.Customer.Document))
 		b.WriteString("\n")
 	}
-	if pc.Financial != nil {
-		b.WriteString("Financial: ")
-		b.WriteString(pc.Financial.Summary)
-		b.WriteString("\n")
-	}
-	if pc.Monitoring != nil {
-		b.WriteString("Monitoring: ")
-		b.WriteString(pc.Monitoring.Summary)
-		b.WriteString("\n")
-	}
 	b.WriteString("Transcript:\n")
 	b.WriteString(renderTranscript(pc))
 	if pc.Instruction != "" {

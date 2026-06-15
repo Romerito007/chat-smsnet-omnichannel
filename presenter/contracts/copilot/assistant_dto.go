@@ -16,8 +16,6 @@ type AssistantResponse struct {
 	ISPProfileID          string    `json:"isp_profile_id,omitempty"`
 	MCPServerID           string    `json:"mcp_server_id,omitempty"`
 	AllowCustomerData     bool      `json:"allow_customer_data"`
-	AllowFinancialData    bool      `json:"allow_financial_data"`
-	AllowMonitoringData   bool      `json:"allow_monitoring_data"`
 	HumanApprovalRequired bool      `json:"human_approval_required"`
 	Temperature           float64   `json:"temperature"`
 	MaxTokens             int       `json:"max_tokens"`
@@ -41,8 +39,6 @@ func NewAssistantResponse(a *centity.Assistant) AssistantResponse {
 		ISPProfileID:          a.ISPProfileID,
 		MCPServerID:           a.MCPServerID,
 		AllowCustomerData:     a.AllowCustomerData,
-		AllowFinancialData:    a.AllowFinancialData,
-		AllowMonitoringData:   a.AllowMonitoringData,
 		HumanApprovalRequired: a.HumanApprovalRequired,
 		Temperature:           a.Temperature,
 		MaxTokens:             a.MaxTokens,
@@ -69,8 +65,6 @@ type CreateAssistantRequest struct {
 	ISPProfileID          string   `json:"isp_profile_id"`
 	MCPServerID           string   `json:"mcp_server_id"`
 	AllowCustomerData     *bool    `json:"allow_customer_data"`
-	AllowFinancialData    *bool    `json:"allow_financial_data"`
-	AllowMonitoringData   *bool    `json:"allow_monitoring_data"`
 	HumanApprovalRequired *bool    `json:"human_approval_required"`
 	Temperature           *float64 `json:"temperature"`
 	MaxTokens             *int     `json:"max_tokens"`
@@ -86,8 +80,6 @@ func (r CreateAssistantRequest) ToCommand() cservice.CreateAssistant {
 		ISPProfileID:          r.ISPProfileID,
 		MCPServerID:           r.MCPServerID,
 		AllowCustomerData:     r.AllowCustomerData,
-		AllowFinancialData:    r.AllowFinancialData,
-		AllowMonitoringData:   r.AllowMonitoringData,
 		HumanApprovalRequired: r.HumanApprovalRequired,
 		Temperature:           r.Temperature,
 		MaxTokens:             r.MaxTokens,
@@ -103,8 +95,6 @@ type UpdateAssistantRequest struct {
 	ISPProfileID          *string   `json:"isp_profile_id"`
 	MCPServerID           *string   `json:"mcp_server_id"`
 	AllowCustomerData     *bool     `json:"allow_customer_data"`
-	AllowFinancialData    *bool     `json:"allow_financial_data"`
-	AllowMonitoringData   *bool     `json:"allow_monitoring_data"`
 	HumanApprovalRequired *bool     `json:"human_approval_required"`
 	Temperature           *float64  `json:"temperature"`
 	MaxTokens             *int      `json:"max_tokens"`
@@ -120,8 +110,6 @@ func (r UpdateAssistantRequest) ToCommand() cservice.UpdateAssistant {
 		ISPProfileID:          r.ISPProfileID,
 		MCPServerID:           r.MCPServerID,
 		AllowCustomerData:     r.AllowCustomerData,
-		AllowFinancialData:    r.AllowFinancialData,
-		AllowMonitoringData:   r.AllowMonitoringData,
 		HumanApprovalRequired: r.HumanApprovalRequired,
 		Temperature:           r.Temperature,
 		MaxTokens:             r.MaxTokens,

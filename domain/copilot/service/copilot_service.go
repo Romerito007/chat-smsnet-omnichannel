@@ -350,8 +350,7 @@ func (s *Service) publish(ctx context.Context, conv *conventity.Conversation, re
 // inputSummary records which policy-gated sections were eligible, without any
 // raw data — an audit trail of what the model could see.
 func inputSummary(beh entity.Behavior, action entity.Action) string {
-	return fmt.Sprintf("action=%s customer=%t financial=%t monitoring=%t",
-		action, beh.AllowCustomerData, beh.AllowFinancialData, beh.AllowMonitoringData)
+	return fmt.Sprintf("action=%s customer=%t", action, beh.AllowCustomerData)
 }
 
 func outputSummary(resp contracts.Response) string {

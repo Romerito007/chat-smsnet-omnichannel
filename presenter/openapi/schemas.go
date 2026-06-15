@@ -543,7 +543,7 @@ func schemas() M {
 			"base_url": str(), "enabled": boolean(),
 		}),
 		// CopilotAssistant is a named assistant (many per tenant). It reuses the
-		// tenant CopilotConfig for provider/key/policies and adds routing: the
+		// tenant CopilotConfig for provider/model/key/base_url and adds routing: the
 		// channels it serves and its EXTERNAL TOOL SOURCE — a pinned ISP profile
 		// (SMSNET tools, injected server-side) XOR a custom MCP server (its tools
 		// only), never both. With neither, no external tools are offered.
@@ -552,9 +552,7 @@ func schemas() M {
 			"channel_ids":             describedArr(str(), "Ids of the specific ChannelConnections this assistant serves (not types)."),
 			"isp_profile_id":          describedStr("Pinned providerhub ISP profile id (SMSNET tools). Mutually exclusive with mcp_server_id; empty for none."),
 			"mcp_server_id":           describedStr("Pinned tenant MCP server id (its tools only). Mutually exclusive with isp_profile_id; empty for none. A server referenced here is the ONLY way it reaches the copilot."),
-			"allow_customer_data":     describedBool("Behavior gate: let the customer profile enter the prompt."),
-			"allow_financial_data":    describedBool("Behavior gate: let financial data enter the prompt."),
-			"allow_monitoring_data":   describedBool("Behavior gate: let monitoring/technical status enter the prompt."),
+			"allow_customer_data":     describedBool("Behavior gate: let the customer profile enter the prompt. (Financial/monitoring data are consulted on demand via ISP tools, never pre-injected — no gate.)"),
 			"human_approval_required": describedBool("Require human approval for write tools (a proposed write always requires approval regardless)."),
 			"temperature":             describedNumber("Sampling temperature 0–2."),
 			"max_tokens":              describedInt("Max output tokens (>0)."),
@@ -567,8 +565,6 @@ func schemas() M {
 			"isp_profile_id":          describedStr("Optional providerhub ISP profile id to pin; must exist. Mutually exclusive with mcp_server_id (both set → 422)."),
 			"mcp_server_id":           describedStr("Optional tenant MCP server id to pin; must exist. Mutually exclusive with isp_profile_id (both set → 422)."),
 			"allow_customer_data":     describedBool("Default false."),
-			"allow_financial_data":    describedBool("Default false."),
-			"allow_monitoring_data":   describedBool("Default false."),
 			"human_approval_required": describedBool("Default false."),
 			"temperature":             describedNumber("0–2; default 0.7 when omitted."),
 			"max_tokens":              describedInt(">0; default 512 when omitted."),
@@ -577,9 +573,9 @@ func schemas() M {
 		}, "name"),
 		"UpdateCopilotAssistantRequest": object(M{
 			"name": str(), "channel_ids": arr(str()),
-			"isp_profile_id":      describedStr("Mutually exclusive with mcp_server_id."),
-			"mcp_server_id":       describedStr("Mutually exclusive with isp_profile_id."),
-			"allow_customer_data": boolean(), "allow_financial_data": boolean(), "allow_monitoring_data": boolean(),
+			"isp_profile_id":          describedStr("Mutually exclusive with mcp_server_id."),
+			"mcp_server_id":           describedStr("Mutually exclusive with isp_profile_id."),
+			"allow_customer_data":     boolean(),
 			"human_approval_required": boolean(), "temperature": describedNumber("0–2."), "max_tokens": describedInt(">0."),
 			"system_instructions": str(), "enabled": boolean(),
 		}),

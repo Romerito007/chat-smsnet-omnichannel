@@ -14,29 +14,22 @@ import (
 const transcriptLimit = 30
 
 // ContextBuilder assembles the policy-filtered PromptContext for a conversation.
-// It is the single place the allow_*_data switches are enforced: a data section
-// is fetched only when its policy permits, so disallowed data never reaches a
-// provider.
+// The only pre-injected data section is the customer profile, gated by
+// allow_customer_data; financial/monitoring data are consulted on demand via ISP
+// tools, never pre-injected here.
 type ContextBuilder struct {
-	messages   convrepo.MessageRepository
-	customer   contracts.CustomerDataSource
-	financial  contracts.FinancialDataSource
-	monitoring contracts.MonitoringDataSource
+	messages convrepo.MessageRepository
+	customer contracts.CustomerDataSource
 }
 
-// NewContextBuilder builds the builder. The data sources are optional (nil means
+// NewContextBuilder builds the builder. The customer source is optional (nil means
 // the enrichment is unavailable).
-func NewContextBuilder(
-	messages convrepo.MessageRepository,
-	customer contracts.CustomerDataSource,
-	financial contracts.FinancialDataSource,
-	monitoring contracts.MonitoringDataSource,
-) *ContextBuilder {
-	return &ContextBuilder{messages: messages, customer: customer, financial: financial, monitoring: monitoring}
+func NewContextBuilder(messages convrepo.MessageRepository, customer contracts.CustomerDataSource) *ContextBuilder {
+	return &ContextBuilder{messages: messages, customer: customer}
 }
 
-// Build assembles the context, enforcing the assistant's privacy gates (the
-// allow_*_data switches now live per-assistant in the resolved Behavior).
+// Build assembles the context, enforcing the assistant's customer-data gate (from
+// the resolved Behavior).
 func (b *ContextBuilder) Build(ctx context.Context, beh entity.Behavior, conv *conventity.Conversation, instruction string) contracts.PromptContext {
 	pc := contracts.PromptContext{
 		Channel:     conv.Channel,
@@ -48,18 +41,6 @@ func (b *ContextBuilder) Build(ctx context.Context, beh entity.Behavior, conv *c
 	if beh.AllowCustomerData && b.customer != nil {
 		if info, err := b.customer.Customer(ctx, conv.ContactID); err == nil {
 			pc.Customer = info
-		}
-	}
-	// Financial data — only when the gate allows.
-	if beh.AllowFinancialData && b.financial != nil {
-		if info, err := b.financial.Financial(ctx, conv.ContactID); err == nil {
-			pc.Financial = info
-		}
-	}
-	// Monitoring/technical status — only when the gate allows.
-	if beh.AllowMonitoringData && b.monitoring != nil {
-		if info, err := b.monitoring.Monitoring(ctx, conv.ID); err == nil {
-			pc.Monitoring = info
 		}
 	}
 	return pc

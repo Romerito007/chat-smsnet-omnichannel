@@ -65,8 +65,6 @@ func CopilotService(c *container.Container) *cservice.Service {
 	builder := cservice.NewContextBuilder(
 		convrepo.NewMessageRepository(c.Mongo.DB),
 		infracopilot.NewCustomerSource(contactrepo.New(c.Mongo.DB)),
-		nil, // financial source: unwired in MVP
-		nil, // monitoring source: unwired in MVP
 	)
 	svc := cservice.NewService(
 		CopilotConfigService(c),

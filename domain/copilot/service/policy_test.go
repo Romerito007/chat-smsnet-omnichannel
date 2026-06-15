@@ -104,18 +104,6 @@ func (allowAllCustomer) Customer(context.Context, string) (*contracts.CustomerIn
 	return &contracts.CustomerInfo{Name: "Jane Doe", Document: "12345678900", Phone: "5511"}, nil
 }
 
-type allowAllFinancial struct{}
-
-func (allowAllFinancial) Financial(context.Context, string) (*contracts.FinancialInfo, error) {
-	return &contracts.FinancialInfo{Summary: "overdue invoice R$120"}, nil
-}
-
-type allowAllMonitoring struct{}
-
-func (allowAllMonitoring) Monitoring(context.Context, string) (*contracts.MonitoringInfo, error) {
-	return &contracts.MonitoringInfo{Summary: "offline since 09:00"}, nil
-}
-
 // spyProvider captures the request it was asked to infer over.
 type spyProvider struct {
 	got    contracts.PromptContext
@@ -136,7 +124,7 @@ func (r spyResolver) Resolve(entity.Provider) (contracts.AIProvider, error) { re
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func builderWithAllSources(msgs *fakeMessages) *ContextBuilder {
-	return NewContextBuilder(msgs, allowAllCustomer{}, allowAllFinancial{}, allowAllMonitoring{})
+	return NewContextBuilder(msgs, allowAllCustomer{})
 }
 
 func sampleMessages() *fakeMessages {
@@ -161,12 +149,6 @@ func TestContext_AllPoliciesDisabled_NoEnrichment(t *testing.T) {
 	if pc.Customer != nil {
 		t.Errorf("customer data leaked despite allow_customer_data=false: %+v", pc.Customer)
 	}
-	if pc.Financial != nil {
-		t.Errorf("financial data leaked despite allow_financial_data=false: %+v", pc.Financial)
-	}
-	if pc.Monitoring != nil {
-		t.Errorf("monitoring data leaked despite allow_monitoring_data=false: %+v", pc.Monitoring)
-	}
 	// Transcript is always present, but internal notes must be excluded.
 	if len(pc.Transcript) != 2 {
 		t.Fatalf("expected 2 non-internal turns, got %d", len(pc.Transcript))
@@ -182,39 +164,22 @@ func TestContext_AllPoliciesDisabled_NoEnrichment(t *testing.T) {
 	}
 }
 
-func TestContext_FinancialGated(t *testing.T) {
+func TestContext_CustomerEnrichmentWhenAllowed(t *testing.T) {
 	b := builderWithAllSources(sampleMessages())
-	// customer + monitoring allowed, financial NOT.
-	beh := entity.Behavior{AllowCustomerData: true, AllowMonitoringData: true}
+	beh := entity.Behavior{AllowCustomerData: true}
 	pc := b.Build(context.Background(), beh, conv(), "")
-
 	if pc.Customer == nil {
-		t.Errorf("customer should be present when allowed")
-	}
-	if pc.Monitoring == nil {
-		t.Errorf("monitoring should be present when allowed")
-	}
-	if pc.Financial != nil {
-		t.Errorf("financial must be excluded when allow_financial_data=false")
-	}
-}
-
-func TestContext_AllPoliciesEnabled_FullEnrichment(t *testing.T) {
-	b := builderWithAllSources(sampleMessages())
-	beh := entity.Behavior{AllowCustomerData: true, AllowFinancialData: true, AllowMonitoringData: true}
-	pc := b.Build(context.Background(), beh, conv(), "")
-	if pc.Customer == nil || pc.Financial == nil || pc.Monitoring == nil {
-		t.Errorf("all sections should be present when all policies enabled: %+v", pc)
+		t.Errorf("customer should be present when allow_customer_data is on: %+v", pc)
 	}
 }
 
 func TestContext_NilSourcesAreSafe(t *testing.T) {
-	// Policies enabled but no sources wired → no data, no panic.
-	b := NewContextBuilder(sampleMessages(), nil, nil, nil)
-	beh := entity.Behavior{AllowCustomerData: true, AllowFinancialData: true, AllowMonitoringData: true}
+	// Gate on but no source wired → no data, no panic.
+	b := NewContextBuilder(sampleMessages(), nil)
+	beh := entity.Behavior{AllowCustomerData: true}
 	pc := b.Build(context.Background(), beh, conv(), "")
-	if pc.Customer != nil || pc.Financial != nil || pc.Monitoring != nil {
-		t.Errorf("nil sources should yield no enrichment")
+	if pc.Customer != nil {
+		t.Errorf("nil source should yield no enrichment")
 	}
 }
 
@@ -254,7 +219,7 @@ func TestService_SuggestReply_PersistsLogAndRespectsPolicy(t *testing.T) {
 		t.Errorf("unexpected result: %+v", res)
 	}
 	// The provider must NOT have received financial data (policy false).
-	if spy.got.Financial != nil || spy.got.Customer != nil {
+	if spy.got.Customer != nil {
 		t.Errorf("provider received disallowed data: %+v", spy.got)
 	}
 	// AILog persisted.
@@ -328,9 +293,6 @@ func TestService_AssistantGatesEnrichPrompt(t *testing.T) {
 	if spy.got.Customer == nil {
 		t.Error("the assistant's allow_customer_data gate must let customer data into the prompt")
 	}
-	if spy.got.Financial != nil {
-		t.Error("financial must stay gated (assistant gate false)")
-	}
 	if spy.gotReq.Temperature != 1.2 || spy.gotReq.MaxTokens != 700 {
 		t.Errorf("the assistant's sampling must be applied, got temp=%v max=%d", spy.gotReq.Temperature, spy.gotReq.MaxTokens)
 	}
@@ -347,7 +309,7 @@ func TestService_NoAssistantUsesConservativeDefault(t *testing.T) {
 		t.Fatalf("summarize: %v", err)
 	}
 	// All data gates OFF, no persona, default sampling.
-	if spy.got.Customer != nil || spy.got.Financial != nil || spy.got.Monitoring != nil {
+	if spy.got.Customer != nil {
 		t.Errorf("no assistant must gate ALL data, got %+v", spy.got)
 	}
 	if spy.gotReq.SystemInstructions != "" {

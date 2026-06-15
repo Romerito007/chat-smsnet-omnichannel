@@ -87,16 +87,14 @@ type ToolCall struct {
 	Arguments string // raw JSON arguments as produced by the model
 }
 
-// PromptContext is the policy-filtered context handed to a provider. Sections
-// gated by an allow_*_data flag are nil when the policy forbids them, so a
-// provider can never receive disallowed data.
+// PromptContext is the policy-filtered context handed to a provider. The customer
+// profile is gated by allow_customer_data (nil when forbidden); financial and
+// monitoring data are consulted on demand via ISP tools, never pre-injected.
 type PromptContext struct {
 	Channel     string
 	Transcript  []Turn
-	Instruction string          // action-specific guidance (e.g. classify categories)
-	Customer    *CustomerInfo   // nil unless allow_customer_data
-	Financial   *FinancialInfo  // nil unless allow_financial_data
-	Monitoring  *MonitoringInfo // nil unless allow_monitoring_data
+	Instruction string        // action-specific guidance (e.g. classify categories)
+	Customer    *CustomerInfo // nil unless allow_customer_data
 }
 
 // Turn is one message in the conversation transcript.
@@ -110,14 +108,4 @@ type CustomerInfo struct {
 	Name     string
 	Document string
 	Phone    string
-}
-
-// FinancialInfo is a financial summary (gated by allow_financial_data).
-type FinancialInfo struct {
-	Summary string
-}
-
-// MonitoringInfo is a technical-status summary (gated by allow_monitoring_data).
-type MonitoringInfo struct {
-	Summary string
 }

@@ -63,9 +63,6 @@ func (e *Echo) suggestReply(pc contracts.PromptContext) string {
 	} else {
 		b.WriteString("How can we help you today?")
 	}
-	if pc.Monitoring != nil && pc.Monitoring.Summary != "" {
-		b.WriteString(" (status: " + pc.Monitoring.Summary + ")")
-	}
 	if pc.Instruction != "" {
 		b.WriteString(" [" + pc.Instruction + "]")
 	}
@@ -91,9 +88,6 @@ func (e *Echo) summarize(pc contracts.PromptContext) string {
 	if first := firstCustomerTurn(pc); first != "" {
 		parts = append(parts, "Opened with: "+truncate(first, 100))
 	}
-	if pc.Financial != nil && pc.Financial.Summary != "" {
-		parts = append(parts, "Financial: "+pc.Financial.Summary)
-	}
 	return strings.Join(parts, " ")
 }
 
@@ -115,12 +109,6 @@ func (e *Echo) classify(pc contracts.PromptContext) []string {
 }
 
 func (e *Echo) nextAction(pc contracts.PromptContext) string {
-	if pc.Monitoring != nil && strings.Contains(strings.ToLower(pc.Monitoring.Summary), "offline") {
-		return "Open a technical incident: the customer's connection appears offline."
-	}
-	if pc.Financial != nil && pc.Financial.Summary != "" {
-		return "Review the customer's financial status before proceeding."
-	}
 	if lastCustomerTurn(pc) != "" {
 		return "Reply to the customer's last message and confirm resolution."
 	}

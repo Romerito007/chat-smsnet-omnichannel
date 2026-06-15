@@ -145,11 +145,12 @@ IA compartilhada**: `provider`, `model`, `api_key`, `base_url`, `enabled`. Uma
 **única chave** serve todos os segmentos.
 
 O **comportamento** desceu para o **`CopilotAssistant`** (por assistente/canal):
-`allow_customer_data`, `allow_financial_data`, `allow_monitoring_data`,
-`human_approval_required`, `temperature` (0–2), `max_tokens` (>0) e
-`system_instructions` (persona/conduta, texto livre). Assim canais diferentes
-(ex.: WhatsApp de ISP vs. de loja) têm gates, persona e temperatura próprios sem
-replicar a chave de IA.
+`allow_customer_data` (único gate de pré-injeção), `human_approval_required`,
+`temperature` (0–2), `max_tokens` (>0) e `system_instructions` (persona/conduta,
+texto livre). Dados financeiros/monitoramento **não têm gate** — são consultados
+sob demanda via **tool do ISP**, nunca pré-injetados. Assim canais diferentes (ex.:
+WhatsApp de ISP vs. de loja) têm gate, persona e temperatura próprios sem replicar
+a chave de IA.
 
 **Resolução na inferência** (`Service.run`): resolve o assistente pela
 `conv.channel_id` (`FindByChannelID`) e monta o `Request` com **provider/model/key

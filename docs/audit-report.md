@@ -79,7 +79,7 @@ verde garante ausência de **símbolos não-exportados** mortos; símbolos
 | L-1 | Middleware `TenantContext` + `HeaderTenantID` confiando no header `X-Tenant-Id` | `presenter/middleware/tenant_context.go:9-25` | Middleware legado / código morto (0 chamadores) | **Médio** | Remover o arquivo. O comentário ("until real auth is wired") é da fundação; o auth real (`auth_context.go`) já substituiu. Perigoso se religado: permitiria spoof de tenant via header. |
 | L-2 | `X-Tenant-Id` ainda na allow-list de CORS | `presenter/middleware/cors.go:33` | Config legada | **Baixo** | Remover `"X-Tenant-Id"` dos `AllowedHeaders` (o tenant vem do JWT). |
 | L-3 | Env `MONITORING_RATE_PER_MINUTE=60` sem leitor no código | `.env.example:66` | Config legada (domínio monitoring removido) | **Médio** | Remover do `.env.example` (nenhum `getString/getInt` lê essa chave em `app/config/config.go`). |
-| L-4 | Superfície de copilot "monitoring"/"financial" desconectada: sources `nil` no factory, porém gate `allow_monitoring_data`/`allow_financial_data` + campo `Monitoring` no prompt permanecem | `app/factories/copilot.go:36-37`; `presenter/contracts/copilot/dto.go:21,56`; `infra/copilot/provider/prompt.go:46-48`; `infra/database/mongodb/models/copilot_models.go:16`; `presenter/openapi/schemas.go:282,289` | Superfície morta / forward-looking | **Baixo-Médio** | Decidir: ou conectar as fontes, ou remover o gate `allow_monitoring_data` e o ramo `Monitoring` do prompt. (`allow_financial_data` pode ser intencional, já que faturas vêm do providerhub/Customer360 por outra via — confirmar com produto.) |
+| L-4 | ✅ **RESOLVIDO** — superfície morta de pré-injeção `financial`/`monitoring` removida (gates `allow_financial_data`/`allow_monitoring_data`, campos `PromptContext.Financial/Monitoring`, ramos do `renderContext`, contracts `FinancialDataSource`/`MonitoringDataSource` + `FinancialInfo`/`MonitoringInfo`). Decisão de produto: o copiloto consulta financeiro/monitoramento **sob demanda via tool do ISP**, não por pré-injeção. Sobrou só `allow_customer_data` (com fonte real). | (resolvido) | — | Nada a fazer. |
 | L-5 | Comentário "future OLT/monitoring" | `infra/mcp/client.go:4` | Comentário (menção a sistema futuro) | **Info** | Opcional: remover a menção para não sugerir domínio inexistente. |
 
 ### Itens verificados e considerados **legítimos** (não-legado)
@@ -199,8 +199,10 @@ verde garante ausência de **símbolos não-exportados** mortos; símbolos
   `allow_*_data` aplicados **antes do provider** no ponto único
   (`context_builder.go:17,47`); `AILog` guarda só resumo, **nunca prompt/raw**
   (`copilot/entity/log.go:26`, `copilot_models.go:22`); `echo` só em testes.
-- **Achado (baixo):** ver L-4 — gate `allow_monitoring_data` (e `financial`) é
-  **inerte** porque as fontes estão `nil` no factory.
+- **Achado (baixo):** ver L-4 — ✅ **RESOLVIDO**: os gates inertes
+  `allow_financial_data`/`allow_monitoring_data` e toda a pré-injeção
+  financeiro/monitoramento foram removidos (consulta agora é sob demanda via tool
+  do ISP). Sobrou só `allow_customer_data`, com fonte real.
 
 ### Eixo 10 — contacts (CRM)
 - **OK:** `GET/POST/PATCH /v1/contacts` tenant-scoped (`contacts_routes.go`,

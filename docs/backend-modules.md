@@ -177,14 +177,17 @@ expõe (REST / WS / jobs).
   tenant viajam na requisição. O `echo` é mock **só para testes** — fora do
   wiring de produção. Suporte ao loop de **tool calling** (ferramentas vêm do
   registry MCP; leitura a IA chama, escrita só PROPÕE).
-- **Config por tenant (`AIConfig`):** `provider`, `model`, `temperature`,
-  `max_tokens`, `api_key` **cifrada (AES-GCM, nunca retornada — só `has_key`)**,
-  `base_url` opcional, `enabled`, gates `allow_*_data`, `human_approval_required`.
-- **Privacidade:** os gates `allow_*_data` filtram o contexto **antes** do
-  provider (dado bloqueado nunca é enviado); o `AILog` guarda só flags + tokens +
-  custo estimado + status, **sem dado bruto**. Falha do provider vira erro
-  amigável (não derruba a rota).
-- **Entidades:** `AIConfig`, `AILog` (auditável).
+- **Config por tenant (`AIConfig`) — só infra de IA:** `provider`, `model`,
+  `api_key` **cifrada (AES-GCM, nunca retornada — só `has_key`)**, `base_url`
+  opcional, `enabled`. O **comportamento** (gate `allow_customer_data`,
+  `human_approval_required`, `temperature`, `max_tokens`, `system_instructions`)
+  vive **por assistente** no `CopilotAssistant`, resolvido por `channel_id`.
+- **Privacidade:** o gate `allow_customer_data` filtra o perfil do cliente **antes**
+  do provider (dado bloqueado nunca é enviado); dados financeiros/monitoramento são
+  consultados **sob demanda via tool do ISP**, nunca pré-injetados. O `AILog` guarda
+  só flags + tokens + custo + status, **sem dado bruto**. Falha do provider vira
+  erro amigável (não derruba a rota).
+- **Entidades:** `AIConfig` (infra), `CopilotAssistant` (comportamento), `AILog`.
 - **Depende de:** `conversations`, `infra/copilot/provider`, `infra/secrets`.
 - **Expõe:** REST (`/copilot/*`); jobs (`ai.suggest`, `ai.summarize`,
   `ai.classify`); WS (`copilot.suggestion`).

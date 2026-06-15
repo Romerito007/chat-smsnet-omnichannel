@@ -21,8 +21,6 @@ type CreateAssistant struct {
 	ISPProfileID          string
 	MCPServerID           string
 	AllowCustomerData     *bool
-	AllowFinancialData    *bool
-	AllowMonitoringData   *bool
 	HumanApprovalRequired *bool
 	Temperature           *float64
 	MaxTokens             *int
@@ -37,8 +35,6 @@ type UpdateAssistant struct {
 	ISPProfileID          *string
 	MCPServerID           *string
 	AllowCustomerData     *bool
-	AllowFinancialData    *bool
-	AllowMonitoringData   *bool
 	HumanApprovalRequired *bool
 	Temperature           *float64
 	MaxTokens             *int
@@ -114,8 +110,6 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 		ISPProfileID:          ispProfileID,
 		MCPServerID:           mcpServerID,
 		AllowCustomerData:     boolOr(cmd.AllowCustomerData, false),
-		AllowFinancialData:    boolOr(cmd.AllowFinancialData, false),
-		AllowMonitoringData:   boolOr(cmd.AllowMonitoringData, false),
 		HumanApprovalRequired: boolOr(cmd.HumanApprovalRequired, false),
 		Temperature:           floatOr(cmd.Temperature, entity.DefaultTemperature),
 		MaxTokens:             intOr(cmd.MaxTokens, entity.DefaultMaxTokens),
@@ -169,12 +163,6 @@ func (s *AssistantService) Update(ctx context.Context, id string, cmd UpdateAssi
 	}
 	if cmd.AllowCustomerData != nil {
 		a.AllowCustomerData = *cmd.AllowCustomerData
-	}
-	if cmd.AllowFinancialData != nil {
-		a.AllowFinancialData = *cmd.AllowFinancialData
-	}
-	if cmd.AllowMonitoringData != nil {
-		a.AllowMonitoringData = *cmd.AllowMonitoringData
 	}
 	if cmd.HumanApprovalRequired != nil {
 		a.HumanApprovalRequired = *cmd.HumanApprovalRequired
