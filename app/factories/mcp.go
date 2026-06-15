@@ -17,6 +17,8 @@ func mcpClient() *inframcp.Client { return inframcp.NewClient() }
 func MCPServerService(c *container.Container) *mcpservice.ServerService {
 	svc := mcpservice.NewServerService(mcprepo.NewServerRepository(c.Mongo.DB, c.Cipher), mcpClient(), clock)
 	svc.SetAuditor(AuditService(c))
+	// Log the concrete cause of a discovery failure (Test) for diagnosis.
+	svc.SetLogger(c.Logger)
 	// Block deleting a server an assistant points at (409), mirroring the
 	// webhook-in-use-by-rule and ISP-profile-in-use-by-assistant guards.
 	svc.SetUsageChecker(CopilotAssistantService(c))

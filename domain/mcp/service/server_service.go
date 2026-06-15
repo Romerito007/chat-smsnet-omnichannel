@@ -28,11 +28,20 @@ type ServerService struct {
 	clock   shared.Clock
 	auditor shared.Auditor
 	usage   ServerUsageChecker
+	logger  shared.Logger
 }
 
 // SetUsageChecker wires the referential-integrity checker used to block deleting an
 // MCP server referenced by an assistant. Optional.
 func (s *ServerService) SetUsageChecker(c ServerUsageChecker) { s.usage = c }
+
+// SetLogger wires a server-side logger so a discovery failure (Test) records its
+// concrete cause (e.g. 404 on the wrong path, handshake, timeout). Optional.
+func (s *ServerService) SetLogger(l shared.Logger) {
+	if l != nil {
+		s.logger = l
+	}
+}
 
 // NewServerService builds the service.
 func NewServerService(repo repository.ServerRepository, client contracts.Client, clock shared.Clock) *ServerService {
@@ -185,6 +194,14 @@ func (s *ServerService) Test(ctx context.Context, id string) ([]entity.Tool, err
 	}
 	specs, err := s.client.ListTools(ctx, conn)
 	if err != nil {
+		// Surface the concrete cause server-side (the client's friendly 502 hides it):
+		// path 404, handshake mismatch, timeout, connection refused, etc.
+		if s.logger != nil {
+			tenantID, _ := shared.TenantFrom(ctx)
+			s.logger.Error("mcp tools/list failed",
+				"tenant_id", tenantID, "server_id", conn.ID, "server_name", conn.Name,
+				"transport", string(conn.Transport), "base_url", conn.BaseURL, "cause", err.Error())
+		}
 		return nil, apperror.Integration("could not list tools from the MCP server").Wrap(err)
 	}
 	return annotate(conn, specs), nil

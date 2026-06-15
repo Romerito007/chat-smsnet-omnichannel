@@ -117,6 +117,15 @@ assistente da conversa (`ISPToolBridge.ToolSource(channel_id)`):
     `POST /v1/conversations/{id}/copilot/approvals/{id}` (gate
     `integration.execute_action`), **auditado**.
 
+> **Path do endpoint MCP (streamable_http):** o transporte Streamable HTTP serve em
+> **`/mcp`** por convenção (default do `NewStreamableHTTPServer` do mark3labs). O
+> cliente do backend **acrescenta `/mcp` automaticamente** quando a `base_url` não
+> tem path (ex.: `http://127.0.0.1:8086` → `…:8086/mcp`); se a `base_url` já incluir
+> um path (ex.: `…/mcp` ou um mount custom), ele é respeitado como está. Uma falha de
+> descoberta (`tools/list`) registra a **causa concreta** (status/path/handshake) no
+> log `mcp tools/list failed` (server_id/name/base_url/cause), mesmo que o cliente
+> devolva o 502 amigável "could not list tools".
+
 ## Segurança / deploy
 
 - Os hosts SMSNET (ex.: portas **8085/8086/8087**) ficam em **rede privada** e

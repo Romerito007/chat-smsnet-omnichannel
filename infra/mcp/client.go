@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -131,7 +132,7 @@ func (c *Client) do(ctx context.Context, conn *entity.ServerConnection, session,
 	if err != nil {
 		return nil, "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, conn.BaseURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL(conn.BaseURL), bytes.NewReader(body))
 	if err != nil {
 		return nil, "", err
 	}
@@ -146,12 +147,13 @@ func (c *Client) do(ctx context.Context, conn *entity.ServerConnection, session,
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, "", fmt.Errorf("mcp: call %s: %w", method, err)
+		return nil, "", fmt.Errorf("mcp: %s POST %s: %w", method, endpointURL(conn.BaseURL), err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("mcp: %s returned %d", method, resp.StatusCode)
+		return nil, "", fmt.Errorf("mcp: %s POST %s returned %d: %s",
+			method, endpointURL(conn.BaseURL), resp.StatusCode, truncateBody(raw))
 	}
 	newSession := resp.Header.Get("Mcp-Session-Id")
 	if newSession == "" {
@@ -171,6 +173,34 @@ func (c *Client) do(ctx context.Context, conn *entity.ServerConnection, session,
 		return nil, "", fmt.Errorf("mcp: %s error %d: %s", method, rpc.Error.Code, rpc.Error.Message)
 	}
 	return rpc.Result, newSession, nil
+}
+
+// endpointURL resolves the MCP HTTP endpoint from a configured base URL. The
+// Streamable HTTP convention (and mark3labs' NewStreamableHTTPServer default) is to
+// serve at "/mcp", so a base URL WITHOUT an explicit path (e.g.
+// "http://host:8086") is routed to ".../mcp"; a base URL that already carries a
+// path (e.g. ".../mcp" or a custom mount) is used as-is. Falls back to the raw base
+// URL when it cannot be parsed.
+func endpointURL(baseURL string) string {
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || u.Host == "" {
+		return baseURL
+	}
+	if u.Path == "" || u.Path == "/" {
+		u.Path = "/mcp"
+	}
+	return u.String()
+}
+
+// truncateBody returns a short, single-line snippet of an error response body for
+// diagnostics (e.g. a 404 page), bounded so logs stay readable.
+func truncateBody(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	return s
 }
 
 // extractJSON returns the JSON-RPC payload from a JSON body, or — for an SSE
