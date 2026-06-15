@@ -126,9 +126,7 @@ func (s *Service) IntegrationMediaURL(ctx context.Context, attachmentID string) 
 	if att.Status != entity.StatusReady {
 		return "", apperror.Conflict("attachment upload not confirmed")
 	}
-	exp := s.clock.Now().Add(s.cfg.MediaURLTTL).UnixMilli()
-	token := s.signMediaToken(att.StorageKey, att.ContentType, att.Filename, exp)
-	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token, nil
+	return s.mediaURL(att.StorageKey, att.ContentType, att.Filename), nil
 }
 
 // SignedAvatarURLs batch-resolves avatar attachment ids to short-lived, JWT-less
@@ -349,7 +347,7 @@ func (s *Service) Confirm(ctx context.Context, cmd contracts.ConfirmUpload) (*en
 		att.ContentType = "application/octet-stream"
 	}
 	att.Status = entity.StatusReady
-	att.SignedURL = s.downloadURL(att.ID)
+	att.SignedURL = s.mediaURL(att.StorageKey, att.ContentType, att.Filename)
 	if err := s.repo.Update(ctx, att); err != nil {
 		return nil, err
 	}
@@ -398,7 +396,7 @@ func (s *Service) StoreInbound(ctx context.Context, conversationID, filename, co
 		StorageProvider: s.storage.Provider(),
 		StorageKey:      key,
 		Status:          entity.StatusReady,
-		SignedURL:       s.downloadURL(id),
+		SignedURL:       s.mediaURL(key, contentType, filename),
 		CreatedAt:       s.clock.Now(),
 	}
 	if err := s.repo.Create(ctx, att); err != nil {
@@ -453,6 +451,11 @@ func (s *Service) Get(ctx context.Context, id string) (*entity.Attachment, error
 	}
 	if err := s.authorizeAttachment(ctx, att); err != nil {
 		return nil, err
+	}
+	// Refresh the signed media URL so a detail read never returns a stale/expired
+	// token (the persisted value is just a cache).
+	if att.Status == entity.StatusReady {
+		att.SignedURL = s.mediaURL(att.StorageKey, att.ContentType, att.Filename)
 	}
 	return att, nil
 }
@@ -557,7 +560,7 @@ func (s *Service) HydrateAttachments(ctx context.Context, ids []string) (map[str
 	for _, att := range found {
 		out[att.ID] = conventity.Attachment{
 			ID:          att.ID,
-			URL:         s.downloadURL(att.ID),
+			URL:         s.mediaURL(att.StorageKey, att.ContentType, att.Filename),
 			ContentType: att.ContentType,
 			Filename:    att.Filename,
 			Size:        att.Size,
@@ -635,8 +638,17 @@ func (s *Service) contentTypeAllowed(ct string) bool {
 	return false
 }
 
-func (s *Service) downloadURL(id string) string {
-	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/attachments/" + id + "/download"
+// mediaURL builds a signed, JWT-less channel-media URL for an attachment so the
+// dashboard renders it directly in <img>/<audio>/<video> src — the SAME mechanism
+// used for webhook media and avatars (GET /v1/channel-media/{token}, served by
+// DownloadSigned, no Authorization, no per-image access check). Generation is pure
+// local HMAC over data already in hand (no DB/network), so it stays free even when
+// hydrating a whole page of messages. The token is time-boxed (MediaURLTTL) and
+// bearer: it grants access to that one object until it expires.
+func (s *Service) mediaURL(storageKey, contentType, filename string) string {
+	exp := s.clock.Now().Add(s.cfg.MediaURLTTL).UnixMilli()
+	token := s.signMediaToken(storageKey, contentType, filename, exp)
+	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token
 }
 
 // authorizeAttachment enforces access to an already-loaded attachment. Avatar

@@ -209,8 +209,10 @@ func TestHydrateAndValidateMessageAttachments(t *testing.T) {
 		t.Fatalf("hydrate: %v", err)
 	}
 	a1 := got["a1"]
-	if a1.URL != "http://api/v1/attachments/a1/download" || a1.ContentType != "image/jpeg" || a1.Filename != "p.jpg" || a1.Size != 1200 {
-		t.Errorf("a1 not hydrated: %+v", a1)
+	// The rendered URL is the signed, JWT-less channel-media URL so the dashboard
+	// loads it directly in <img src> (no Authorization, no per-image access check).
+	if !strings.HasPrefix(a1.URL, "http://api/v1/channel-media/") || a1.ContentType != "image/jpeg" || a1.Filename != "p.jpg" || a1.Size != 1200 {
+		t.Errorf("a1 not hydrated with a signed media URL: %+v", a1)
 	}
 	if _, ok := got["missing"]; ok {
 		t.Errorf("missing id should be absent from the map")
@@ -423,8 +425,8 @@ func TestConfirm_LinksMessageAndMarksReady(t *testing.T) {
 	if att.MessageID != "m1" {
 		t.Errorf("message not linked: %q", att.MessageID)
 	}
-	if att.SignedURL != "http://api/v1/attachments/a1/download" {
-		t.Errorf("unexpected download url: %q", att.SignedURL)
+	if !strings.HasPrefix(att.SignedURL, "http://api/v1/channel-media/") {
+		t.Errorf("confirm must return a signed, renderable media URL, got: %q", att.SignedURL)
 	}
 }
 
@@ -526,5 +528,31 @@ func TestRequireTenant(t *testing.T) {
 	_, err := svc.Get(context.Background(), "a1")
 	if apperror.From(err).Code != apperror.CodeForbidden {
 		t.Errorf("expected forbidden without tenant, got %v", err)
+	}
+}
+
+// TestStoreInbound_ReturnsSignedRenderableURL is the A2 round trip: an inbound
+// media attachment is returned with a signed, JWT-less channel-media URL (so the
+// dashboard renders it directly in <img>/<audio> src), and that URL opens via
+// DownloadSigned WITHOUT any JWT or tenant context (bearer token).
+func TestStoreInbound_ReturnsSignedRenderableURL(t *testing.T) {
+	repo := newRepo()
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, &fakeStorage{provider: "s3"},
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t"})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	att, err := svc.StoreInbound(ctx, "cv1", "3EB0.jpg", "image/jpeg", []byte("\xff\xd8\xff\xe0jpeg"))
+	if err != nil {
+		t.Fatalf("store inbound: %v", err)
+	}
+	const prefix = "http://api/v1/channel-media/"
+	if !strings.HasPrefix(att.URL, prefix) {
+		t.Fatalf("inbound media URL must be the signed channel-media URL, got %q", att.URL)
+	}
+	// The token opens with NO JWT / NO tenant context (bearer), like the webhook rail.
+	token := strings.TrimPrefix(att.URL, prefix)
+	if _, err := svc.DownloadSigned(token); err != nil {
+		t.Errorf("signed media URL must open without a JWT, got: %v", err)
 	}
 }

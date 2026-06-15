@@ -151,7 +151,7 @@ func schemas() M {
 			"priority": str(), "tags": tagIDArray(),
 			"custom_attributes": customAttributesObject(),
 		}),
-		"Attachment": object(M{"id": str(), "url": str(), "content_type": str(), "filename": str(), "size": integer()}),
+		"Attachment": object(M{"id": str(), "url": describedStr("Signed, time-boxed channel-media URL (GET /v1/channel-media/{token}) loadable DIRECTLY in <img>/<audio>/<video> src — no Authorization header, no per-image access check. It is a bearer URL (the token grants access to that one object until it expires) and is regenerated on each read; for an access-checked download use GET /v1/attachments/{id}/download."), "content_type": str(), "filename": str(), "size": integer()}),
 		"Message": object(M{
 			"id": str(), "conversation_id": str(), "sender_type": str(), "sender_id": str(),
 			"direction": str(), "message_type": str(), "text": str(),
@@ -839,7 +839,9 @@ func schemas() M {
 		"ConfirmAttachmentRequest": object(M{"attachment_id": str(), "message_id": str()}, "attachment_id"),
 		"AttachmentRecord": object(M{
 			"id": str(), "conversation_id": str(), "message_id": str(), "filename": str(), "content_type": str(),
-			"size": integer(), "storage_provider": str(), "status": str(), "download_url": str(), "created_at": dateTime(),
+			"size": integer(), "storage_provider": str(), "status": str(),
+			"download_url": describedStr("Signed, JWT-less channel-media URL (GET /v1/channel-media/{token}) renderable directly in <img>/<audio>/<video> src. Time-boxed bearer token, regenerated on each read."),
+			"created_at":   dateTime(),
 		}),
 	}
 }

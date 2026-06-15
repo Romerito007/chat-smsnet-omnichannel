@@ -110,6 +110,7 @@ components:
                 size:
                     type: integer
                 url:
+                    description: Signed, time-boxed channel-media URL (GET /v1/channel-media/{token}) loadable DIRECTLY in <img>/<audio>/<video> src — no Authorization header, no per-image access check. It is a bearer URL (the token grants access to that one object until it expires) and is regenerated on each read; for an access-checked download use GET /v1/attachments/{id}/download.
                     type: string
             type: object
         AttachmentRecord:
@@ -122,6 +123,7 @@ components:
                     format: date-time
                     type: string
                 download_url:
+                    description: Signed, JWT-less channel-media URL (GET /v1/channel-media/{token}) renderable directly in <img>/<audio>/<video> src. Time-boxed bearer token, regenerated on each read.
                     type: string
                 filename:
                     type: string

@@ -26,8 +26,12 @@ em `POST /v1/conversations/{id}/messages` (tudo **JWT**).
   `audio/ogg` (opus), `audio/webm`, `audio/mp4`/`audio/m4a`, `audio/wav` — além de
   imagem/vídeo/documento. Se você ativar `ATTACHMENTS_ALLOWED_CONTENT_TYPES`,
   inclua `audio/*` (e `image/*`, `video/*`).
-- A `Message` resultante expõe `content_type` (`audio/*`) e `url` = **download
-  JWT-gated** (`/v1/attachments/{id}/download`) para o player do nosso front.
+- A `Message` resultante expõe `content_type` (`audio/*`) e `url` = **URL de mídia
+  assinada SEM JWT** (`/v1/channel-media/{token}`, mesmo mecanismo HMAC do webhook/
+  avatar): carrega direto em `<img>/<audio>/<video> src`, sem header Authorization e
+  sem access-check por imagem. É um token portador, time-boxed (`MediaURLTTL`, ~24h),
+  regenerado a cada leitura/realtime. Para download access-checked por permissão,
+  continua existindo `GET /v1/attachments/{id}/download` (JWT).
 - O endpoint interno **não** vira endpoint de integração; a conversão Chatwoot
   ocorre só na entrega do canal (abaixo).
 
