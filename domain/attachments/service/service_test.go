@@ -556,3 +556,7 @@ func TestStoreInbound_ReturnsSignedRenderableURL(t *testing.T) {
 		t.Errorf("signed media URL must open without a JWT, got: %v", err)
 	}
 }
+
+func (r *fakeMsgRepo) FindByExternalMessageID(context.Context, string, string) (*conventity.Message, error) {
+	return nil, apperror.NotFound("nf")
+}

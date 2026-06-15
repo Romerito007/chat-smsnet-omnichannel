@@ -187,3 +187,36 @@ func TestInbound_Location_InvalidRejected(t *testing.T) {
 		t.Fatalf("expected validation error for bad location, got %v", err)
 	}
 }
+
+// TestInbound_InteractiveReply: a customer's menu choice is typed interactive_reply,
+// mirrors title to text, and resolves context_external_id to the internal menu id.
+func TestInbound_InteractiveReply(t *testing.T) {
+	fx := newInboundFixture()
+	// Seed the menu message we "sent" (outbound) with a known external id (wamid).
+	res0, err := fx.svc.Handle(tenantCtx(), conn(""), inMsg("seed")) // opens the conversation
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	convID := res0.ConversationID
+	menu := &conventity.Message{ID: "menu1", TenantID: "t1", ConversationID: convID, ExternalMessageID: "wamid.menu", MessageType: conventity.MessageInteractive}
+	_ = fx.msgs.Create(tenantCtx(), menu)
+
+	m := inMsg("ext-reply")
+	m.Text = ""
+	m.InteractiveReply = &chcontracts.InboundInteractiveReply{
+		Kind: "button", ID: "fatura", Title: "2ª via fatura", ContextExternalID: "wamid.menu",
+	}
+	if _, err := fx.svc.Handle(tenantCtx(), conn(""), m); err != nil {
+		t.Fatalf("inbound reply: %v", err)
+	}
+	msg := fx.msgs.items[lastMessageID(fx)]
+	if msg.MessageType != conventity.MessageInteractiveReply || msg.InteractiveReply == nil {
+		t.Fatalf("reply not typed/stored: %+v", msg)
+	}
+	if msg.InteractiveReply.ID != "fatura" || msg.Text != "2ª via fatura" {
+		t.Errorf("reply id/title mirror wrong: %+v text=%q", msg.InteractiveReply, msg.Text)
+	}
+	if msg.InteractiveReply.ContextMessageID != "menu1" {
+		t.Errorf("context must resolve to the internal menu id, got %q", msg.InteractiveReply.ContextMessageID)
+	}
+}

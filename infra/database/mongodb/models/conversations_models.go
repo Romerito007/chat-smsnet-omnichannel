@@ -45,27 +45,29 @@ type Attachment struct {
 
 // Message is the BSON document for a message. Edits/deletes are soft.
 type Message struct {
-	ID                string           `bson:"_id"`
-	TenantID          string           `bson:"tenant_id"`
-	ConversationID    string           `bson:"conversation_id"`
-	SenderType        string           `bson:"sender_type"`
-	SenderID          string           `bson:"sender_id,omitempty"`
-	Direction         string           `bson:"direction"`
-	MessageType       string           `bson:"message_type"`
-	Text              string           `bson:"text"`
-	Attachments       []Attachment     `bson:"attachments,omitempty"`
-	Template          *MessageTemplate `bson:"template,omitempty"`
-	Contacts          []MessageContact `bson:"contacts,omitempty"`
-	Location          *MessageLocation `bson:"location,omitempty"`
-	Metadata          map[string]any   `bson:"metadata,omitempty"`
-	CreatedAt         time.Time        `bson:"created_at"`
-	DeliveryStatus    string           `bson:"delivery_status,omitempty"`
-	DeliveryError     string           `bson:"delivery_error,omitempty"`
-	ExternalMessageID string           `bson:"external_message_id,omitempty"`
-	DeliveredAt       *time.Time       `bson:"delivered_at,omitempty"`
-	ReadAt            *time.Time       `bson:"read_at,omitempty"`
-	EditedAt          *time.Time       `bson:"edited_at,omitempty"`
-	DeletedAt         *time.Time       `bson:"deleted_at,omitempty"`
+	ID                string                   `bson:"_id"`
+	TenantID          string                   `bson:"tenant_id"`
+	ConversationID    string                   `bson:"conversation_id"`
+	SenderType        string                   `bson:"sender_type"`
+	SenderID          string                   `bson:"sender_id,omitempty"`
+	Direction         string                   `bson:"direction"`
+	MessageType       string                   `bson:"message_type"`
+	Text              string                   `bson:"text"`
+	Attachments       []Attachment             `bson:"attachments,omitempty"`
+	Template          *MessageTemplate         `bson:"template,omitempty"`
+	Contacts          []MessageContact         `bson:"contacts,omitempty"`
+	Location          *MessageLocation         `bson:"location,omitempty"`
+	Interactive       *MessageInteractive      `bson:"interactive,omitempty"`
+	InteractiveReply  *MessageInteractiveReply `bson:"interactive_reply,omitempty"`
+	Metadata          map[string]any           `bson:"metadata,omitempty"`
+	CreatedAt         time.Time                `bson:"created_at"`
+	DeliveryStatus    string                   `bson:"delivery_status,omitempty"`
+	DeliveryError     string                   `bson:"delivery_error,omitempty"`
+	ExternalMessageID string                   `bson:"external_message_id,omitempty"`
+	DeliveredAt       *time.Time               `bson:"delivered_at,omitempty"`
+	ReadAt            *time.Time               `bson:"read_at,omitempty"`
+	EditedAt          *time.Time               `bson:"edited_at,omitempty"`
+	DeletedAt         *time.Time               `bson:"deleted_at,omitempty"`
 }
 
 // ConversationEvent is the BSON document for a conversation timeline event.
@@ -121,4 +123,37 @@ type MessageLocation struct {
 	Longitude float64 `bson:"longitude"`
 	Name      string  `bson:"name,omitempty"`
 	Address   string  `bson:"address,omitempty"`
+}
+
+// MessageInteractive is the BSON sub-document for an outbound interactive menu.
+type MessageInteractive struct {
+	Kind     string          `bson:"kind"`
+	Header   string          `bson:"header,omitempty"`
+	Body     string          `bson:"body"`
+	Footer   string          `bson:"footer,omitempty"`
+	Buttons  []MsgIntButton  `bson:"buttons,omitempty"`
+	Button   string          `bson:"button,omitempty"`
+	Sections []MsgIntSection `bson:"sections,omitempty"`
+}
+type MsgIntButton struct {
+	ID    string `bson:"id"`
+	Title string `bson:"title"`
+}
+type MsgIntSection struct {
+	Title string      `bson:"title,omitempty"`
+	Rows  []MsgIntRow `bson:"rows"`
+}
+type MsgIntRow struct {
+	ID          string `bson:"id"`
+	Title       string `bson:"title"`
+	Description string `bson:"description,omitempty"`
+}
+
+// MessageInteractiveReply is the BSON sub-document for an inbound interactive reply.
+type MessageInteractiveReply struct {
+	Kind             string `bson:"kind"`
+	ID               string `bson:"id"`
+	Title            string `bson:"title"`
+	Description      string `bson:"description,omitempty"`
+	ContextMessageID string `bson:"context_message_id,omitempty"`
 }

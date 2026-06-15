@@ -1898,6 +1898,24 @@ components:
                     type: string
                 integration_key:
                     type: string
+                interactive_reply:
+                    description: Set when the customer answers an interactive menu (message_type=interactive_reply).
+                    properties:
+                        context_external_id:
+                            description: Meta context.id — the external id of the menu message the chat sent; resolved to the internal menu id.
+                            type: string
+                        description:
+                            type: string
+                        id:
+                            type: string
+                        kind:
+                            description: '''button'' or ''list''.'
+                            type: string
+                        title:
+                            type: string
+                    required:
+                        - id
+                    type: object
                 location:
                     $ref: '#/components/schemas/MessageLocation'
                     description: Set when the customer shares a location (message_type=location).
@@ -2176,6 +2194,10 @@ components:
                     type: string
                 id:
                     type: string
+                interactive:
+                    $ref: '#/components/schemas/MessageInteractive'
+                interactive_reply:
+                    $ref: '#/components/schemas/MessageInteractiveReply'
                 location:
                     $ref: '#/components/schemas/MessageLocation'
                 message_type:
@@ -2263,6 +2285,90 @@ components:
                     type: string
                 text:
                     type: string
+            type: object
+        MessageInteractive:
+            properties:
+                body:
+                    description: Required. ≤1024 for buttons, ≤4096 for list.
+                    type: string
+                button:
+                    description: List open-label (kind=list, required, ≤20).
+                    type: string
+                buttons:
+                    description: Reply buttons when kind=buttons (max 3).
+                    items:
+                        properties:
+                            id:
+                                description: Stable, unique within the message (≤256).
+                                type: string
+                            title:
+                                description: ≤20 chars.
+                                type: string
+                        required:
+                            - id
+                            - title
+                        type: object
+                    type: array
+                footer:
+                    description: Optional (≤60).
+                    type: string
+                header:
+                    description: Optional text header (≤60 chars; v1 is text-only).
+                    type: string
+                kind:
+                    description: '''buttons'' or ''list''.'
+                    type: string
+                sections:
+                    description: List sections when kind=list (max 10 sections, ≤10 rows total).
+                    items:
+                        properties:
+                            rows:
+                                description: Section rows.
+                                items:
+                                    properties:
+                                        description:
+                                            description: Optional (≤72).
+                                            type: string
+                                        id:
+                                            description: Stable, unique within the message (≤200).
+                                            type: string
+                                        title:
+                                            description: ≤24 chars.
+                                            type: string
+                                    required:
+                                        - id
+                                        - title
+                                    type: object
+                                type: array
+                            title:
+                                description: Optional section title (≤24).
+                                type: string
+                        required:
+                            - rows
+                        type: object
+                    type: array
+            required:
+                - kind
+                - body
+            type: object
+        MessageInteractiveReply:
+            properties:
+                context_message_id:
+                    description: Internal id of the menu message this reply answers (resolved from Meta context.id).
+                    type: string
+                description:
+                    description: Only for list replies.
+                    type: string
+                id:
+                    description: The chosen button/row id (stable — branch automations on this).
+                    type: string
+                kind:
+                    description: '''button'' or ''list''.'
+                    type: string
+                title:
+                    type: string
+            required:
+                - id
             type: object
         MessageLocation:
             properties:
@@ -2929,6 +3035,9 @@ components:
                     items:
                         $ref: '#/components/schemas/MessageContact'
                     type: array
+                interactive:
+                    $ref: '#/components/schemas/MessageInteractive'
+                    description: Required when message_type=interactive (outbound menu).
                 location:
                     $ref: '#/components/schemas/MessageLocation'
                     description: Required when message_type=location.

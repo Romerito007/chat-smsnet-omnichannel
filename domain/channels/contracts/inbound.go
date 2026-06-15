@@ -22,10 +22,25 @@ type InboundMessage struct {
 	RawAttachments    []RawFile           // raw bytes (multipart mode), persisted on Handle
 	// Contacts (customer shared vCard[s]) and Location (customer shared a location)
 	// are the typed structured inbound payloads, when the gateway forwards them.
-	Contacts  []entity.ContactCard
-	Location  *entity.Location
-	Metadata  map[string]any
-	Timestamp int64 // epoch millis; 0 means "now"
+	Contacts []entity.ContactCard
+	Location *entity.Location
+	// InteractiveReply is the customer's choice on an interactive menu we sent
+	// (message_type=interactive_reply).
+	InteractiveReply *InboundInteractiveReply
+	Metadata         map[string]any
+	Timestamp        int64 // epoch millis; 0 means "now"
+}
+
+// InboundInteractiveReply is the gateway's normalized form of a WhatsApp
+// interactive button_reply/list_reply: the chosen id+title (+description for list)
+// and ContextExternalID (Meta context.id — the external id of the menu message we
+// sent), which the chat resolves to the internal menu message id.
+type InboundInteractiveReply struct {
+	Kind              string // "button" | "list"
+	ID                string
+	Title             string
+	Description       string
+	ContextExternalID string
 }
 
 // RawFile is a raw inbound attachment (Chatwoot multipart/form-data): the bytes

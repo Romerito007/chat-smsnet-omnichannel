@@ -223,8 +223,20 @@ type InboundRequest struct {
 	Attachments        []AttachmentItem         `json:"attachments"`
 	Contacts           []conventity.ContactCard `json:"contacts"`
 	Location           *conventity.Location     `json:"location"`
+	InteractiveReply   *InteractiveReplyItem    `json:"interactive_reply"`
 	Metadata           map[string]any           `json:"metadata"`
 	Timestamp          int64                    `json:"timestamp"`
+}
+
+// InteractiveReplyItem is the inbound interactive reply on the wire: the chosen
+// button/list id+title (+description for list) and the menu's context id (Meta
+// context.id, i.e. the external id of the menu message the chat sent).
+type InteractiveReplyItem struct {
+	Kind              string `json:"kind"` // "button" | "list"
+	ID                string `json:"id"`
+	Title             string `json:"title"`
+	Description       string `json:"description"`
+	ContextExternalID string `json:"context_external_id"`
 }
 
 // Token returns the integration token from the body, preferring the canonical
@@ -259,8 +271,18 @@ func (r InboundRequest) ToMessage(channel string) chcontracts.InboundMessage {
 		Attachments:       atts,
 		Contacts:          r.Contacts,
 		Location:          r.Location,
+		InteractiveReply:  r.InteractiveReply.toContract(),
 		Metadata:          r.Metadata,
 		Timestamp:         r.Timestamp,
+	}
+}
+
+func (r *InteractiveReplyItem) toContract() *chcontracts.InboundInteractiveReply {
+	if r == nil {
+		return nil
+	}
+	return &chcontracts.InboundInteractiveReply{
+		Kind: r.Kind, ID: r.ID, Title: r.Title, Description: r.Description, ContextExternalID: r.ContextExternalID,
 	}
 }
 

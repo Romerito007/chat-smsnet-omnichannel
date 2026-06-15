@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
@@ -229,6 +230,46 @@ func (s *Service) SendAutomationAttachment(ctx context.Context, conversationID, 
 		return err
 	}
 	return nil
+}
+
+// SendAutomationInteractive injects an outbound interactive menu authored by an
+// automation rule. The menu is passed as a JSON object (the conversations
+// Interactive shape) so it fits the flat action-param model; it is parsed and
+// validated against the same WhatsApp limits as a normal interactive send.
+func (s *Service) SendAutomationInteractive(ctx context.Context, conversationID, ruleID, interactiveJSON string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	if strings.TrimSpace(interactiveJSON) == "" {
+		return apperror.Validation("interactive is required")
+	}
+	var iv entity.Interactive
+	if err := json.Unmarshal([]byte(interactiveJSON), &iv); err != nil {
+		return apperror.Validation("interactive must be a valid JSON object")
+	}
+	if msg := iv.Validate(); msg != "" {
+		return apperror.Validation(msg).WithDetails(map[string]any{"interactive": msg})
+	}
+	conv, err := s.conversations.FindByID(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	now := s.clock.Now()
+	msg := &entity.Message{
+		ID:             shared.NewID(),
+		TenantID:       conv.TenantID,
+		ConversationID: conv.ID,
+		SenderType:     entity.SenderAutomation,
+		SenderID:       ruleID,
+		Direction:      entity.DirectionOutbound,
+		MessageType:    entity.MessageInteractive,
+		Text:           iv.Body, // mirror the body for inbox preview / search
+		Interactive:    &iv,
+		CreatedAt:      now,
+		DeliveryStatus: entity.DeliveryPending,
+	}
+	_, err = s.persistMessage(ctx, conv, msg, entity.EventMessageCreated)
+	return err
 }
 
 // ensureAgentExists returns not_found when the agent id is unknown (soft ref). It

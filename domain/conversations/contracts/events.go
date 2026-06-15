@@ -134,6 +134,10 @@ type MessagePayload struct {
 	// typed structured payloads, mirroring the WhatsApp contacts[]/location blocks.
 	Contacts []entity.ContactCard `json:"contacts,omitempty"`
 	Location *entity.Location     `json:"location,omitempty"`
+	// Interactive is the outbound menu (message_type=interactive); InteractiveReply
+	// is the inbound customer choice (message_type=interactive_reply).
+	Interactive      *entity.Interactive      `json:"interactive,omitempty"`
+	InteractiveReply *entity.InteractiveReply `json:"interactive_reply,omitempty"`
 	// Template carries the integrator template id + filled params for a template
 	// message, so an outbound-webhook receiver can render/send it. Nil otherwise.
 	Template       *MessageTemplatePayload `json:"template,omitempty"`
@@ -160,20 +164,22 @@ type MessageTemplatePayload struct {
 // NewMessagePayload builds the payload from a message entity.
 func NewMessagePayload(m *entity.Message) MessagePayload {
 	p := MessagePayload{
-		ID:             m.ID,
-		ConversationID: m.ConversationID,
-		SenderType:     string(m.SenderType),
-		SenderID:       m.SenderID,
-		Direction:      string(m.Direction),
-		MessageType:    string(m.MessageType),
-		Text:           m.Text,
-		Attachments:    m.Attachments,
-		Contacts:       m.Contacts,
-		Location:       m.Location,
-		Internal:       m.Direction == entity.DirectionInternal,
-		DeliveryStatus: string(m.DeliveryStatus),
-		CreatedAt:      m.CreatedAt,
-		EditedAt:       m.EditedAt,
+		ID:               m.ID,
+		ConversationID:   m.ConversationID,
+		SenderType:       string(m.SenderType),
+		SenderID:         m.SenderID,
+		Direction:        string(m.Direction),
+		MessageType:      string(m.MessageType),
+		Text:             m.Text,
+		Attachments:      m.Attachments,
+		Contacts:         m.Contacts,
+		Location:         m.Location,
+		Interactive:      m.Interactive,
+		InteractiveReply: m.InteractiveReply,
+		Internal:         m.Direction == entity.DirectionInternal,
+		DeliveryStatus:   string(m.DeliveryStatus),
+		CreatedAt:        m.CreatedAt,
+		EditedAt:         m.EditedAt,
 	}
 	if m.Template != nil {
 		p.Template = &MessageTemplatePayload{ID: m.Template.TemplateID, Params: m.Template.Params}

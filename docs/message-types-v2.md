@@ -1,7 +1,8 @@
-# Message Types v2 — `contact` & `location` (Phase 1)
+# Message Types v2 — `contact`, `location` (Phase 1) + `interactive` / `interactive_reply` (Phase 2)
 
-Status: **contract approved, Phase 1**. Phase 2 (`interactive` buttons/list + `interactive_reply`)
-is designed but deferred — not in this document.
+Status: **contract approved**. Phase 1 (`contact`, `location`) and Phase 2
+(`interactive`, `interactive_reply`) are both implemented. v1 of `interactive`
+supports a **text-only header** (media header is future work).
 
 This describes two new `message_type`s — **`contact`** and **`location`** — added to the
 existing set (`text | image | audio | video | file | template | system`). The Chat never
@@ -108,16 +109,120 @@ Static map thumbnail or an "open in maps" link (`https://maps.google.com/?q=lat,
 
 ---
 
+## 2b. `interactive` — outbound menu (buttons / list)
+
+An **OUTBOUND** menu the business sends; the customer's choice comes back as
+`interactive_reply` (§2c). Built by **both** the agent (manual) and automation (rule),
+via the same contract.
+
+### Wire shape — reply buttons (`message_type=interactive`)
+```json
+{
+  "message_type": "interactive",
+  "text": "Como posso ajudar?",
+  "interactive": {
+    "kind": "buttons",
+    "header": "Suporte",
+    "body": "Como posso ajudar?",
+    "footer": "Equipe ACME",
+    "buttons": [
+      { "id": "fatura",   "title": "2ª via fatura" },
+      { "id": "suporte",  "title": "Falar com suporte" },
+      { "id": "cancelar", "title": "Cancelar plano" }
+    ]
+  }
+}
+```
+
+### Wire shape — list (`kind: "list"`)
+```json
+{
+  "message_type": "interactive",
+  "interactive": {
+    "kind": "list",
+    "body": "Escolha um serviço",
+    "button": "Ver opções",
+    "sections": [
+      { "title": "Financeiro", "rows": [
+          { "id": "fatura", "title": "2ª via", "description": "Boleto/PIX" },
+          { "id": "neg",    "title": "Negociar dívida" } ] },
+      { "title": "Técnico", "rows": [
+          { "id": "lento", "title": "Internet lenta" } ] }
+    ]
+  }
+}
+```
+
+### Validation (Chat-enforced; 422 per field)
+- **buttons**: max **3**; `title` ≤ 20; `id` ≤ 256, **unique** within the message;
+  `body` ≤ 1024; `header` ≤ 60; `footer` ≤ 60.
+- **list**: `button` (label) ≤ 20; max **10** sections; **≤10 rows total**;
+  `section.title` ≤ 24; `row.title` ≤ 24; `row.description` ≤ 72; `row.id` ≤ 200,
+  **unique**; `body` ≤ 4096; `header` ≤ 60; `footer` ≤ 60.
+- `kind` must be `buttons` or `list`. `body` is required.
+
+### Storage / rendering / text
+`Message.Interactive *Interactive`. `text` mirrors `body` (inbox preview / search).
+The agent history renders the menu read-only (as the customer sees it).
+
+### Meta mapping (gateway, OUTBOUND)
+- buttons → `{"type":"interactive","interactive":{"type":"button","header":{"type":"text","text":<header>},"body":{"text":<body>},"footer":{"text":<footer>},"action":{"buttons":[{"type":"reply","reply":{"id":<id>,"title":<title>}}]}}}`
+- list → `{"type":"interactive","interactive":{"type":"list","header":…,"body":{"text":<body>},"footer":…,"action":{"button":<button>,"sections":[{"title":<title>,"rows":[{"id":<id>,"title":<title>,"description":<description>}]}]}}}`
+
+## 2c. `interactive_reply` — inbound customer choice
+
+**INBOUND-only** (never created via SendMessage). The customer picked a button/row;
+the reply carries the **stable id** (branch automations on `id`, not the title), the
+title, an optional description (list), and `context_message_id` = the internal id of
+the menu message the chat sent.
+
+### Wire shape (inbound, gateway → Chat)
+```json
+{
+  "external_message_id": "wamid.reply", "external_contact_id": "5511…",
+  "contact_phone": "+5511…", "message_type": "interactive_reply",
+  "interactive_reply": {
+    "kind": "button",
+    "id": "fatura",
+    "title": "2ª via fatura",
+    "description": "Boleto/PIX",
+    "context_external_id": "wamid.menu"
+  }
+}
+```
+`context_external_id` is the Meta `context.id` (the wamid of the menu message we
+sent). The Chat resolves it to the internal menu message id and stores it as
+`interactive_reply.context_message_id` (best-effort: empty if the menu isn't found).
+`text` is set to the chosen `title` so search/keyword automations keep working.
+
+### Meta mapping (gateway, INBOUND)
+Meta delivers `messages[].interactive.button_reply{id,title}` or
+`list_reply{id,title,description}` plus `messages[].context.id`. The gateway maps:
+- `button_reply` → `interactive_reply.kind="button"`, `id`, `title`.
+- `list_reply` → `interactive_reply.kind="list"`, `id`, `title`, `description`.
+- `context.id` → `interactive_reply.context_external_id`.
+
+## 2d. Automation — `send_interactive` action
+
+`interactive` is a third "send" action alongside `send_message` (text) and
+`send_attachment` (attachment_id): a new rule action **`send_interactive`** whose
+`interactive` param is a **JSON object** matching the `Interactive` shape above.
+Rationale: the menu is structured and does not fit `send_message`'s flat `text`
+param; a dedicated action keeps each "send" type's validation and shape clean.
+At rule-create the param is checked for presence + valid JSON; the full WhatsApp
+limits are enforced when the action runs (same validators as a manual send). The
+emitted message is `SenderType=automation`, `message_type=interactive`.
+
 ## 3. Where each field appears (the five surfaces)
 
 | Surface | Carrier | Notes |
 |---|---|---|
-| **Storage** | `entity.Message.Contacts` / `.Location` | typed BSON sub-docs |
-| **REST** | `MessageResponse.contacts` / `.location` | `GET /v1/conversations/{id}/messages` |
-| **Realtime** | `MessagePayload.contacts` / `.location` | WS event `message.created` (and `.updated`) |
-| **Creation** | `SendMessageRequest.contacts` / `.location` | `POST /v1/conversations/{id}/messages` (agent) and automation actions |
+| **Storage** | `entity.Message.{Contacts,Location,Interactive,InteractiveReply}` | typed BSON sub-docs |
+| **REST** | `MessageResponse.{contacts,location,interactive,interactive_reply}` | `GET /v1/conversations/{id}/messages` |
+| **Realtime** | `MessagePayload.{contacts,location,interactive,interactive_reply}` | WS event `message.created` (and `.updated`) |
+| **Creation** | `SendMessageRequest.{contacts,location,interactive}` | `POST /v1/conversations/{id}/messages` (agent) and automation (`send_interactive`). `interactive_reply` is inbound-only. |
 | **Webhook (out)** | `NewIntegrationMessagePayload` (built on `MessagePayload`) | delivered to the gateway `outbound_url`; the gateway translates to Meta |
-| **Inbound (in)** | `InboundMessageRequest.contacts` / `.location` | gateway → `POST /v1/inbound/channel/{channel}/messages` |
+| **Inbound (in)** | `InboundMessageRequest.{contacts,location,interactive_reply}` | gateway → `POST /v1/inbound/channel/{channel}/messages` |
 
 `text` is optional for both types (a short human-readable fallback for inbox preview/search);
 the structured field is authoritative.
@@ -151,8 +256,11 @@ For **each** type, both directions:
 - **contact** ⇄ Meta `contacts[]` (`name.formatted_name`, `phones[].phone/type/wa_id`,
   `emails[]`, `org{company,title}`).
 - **location** ⇄ Meta `location{latitude,longitude,name,address}`.
+- **interactive** (out) → Meta `interactive.{button|list}` (header/body/footer/action).
+- **interactive_reply** (in) ← Meta `interactive.{button_reply|list_reply}` + `context.id`.
 - Delivery receipts (sent/delivered/read/failed) for these types use the existing flow — no
-  change.
+  change. For interactive, the gateway should report the menu's wamid back as the message's
+  external id so an inbound reply's `context.id` resolves to it.
 - The Chat validates everything before the webhook fires, so the gateway can assume a valid
   payload and only needs to **rename/restructure**, not re-validate.
 

@@ -630,3 +630,12 @@ func TestSendMessage_Template_BadParamsRejected(t *testing.T) {
 		t.Errorf("expected validation_error for extra param, got %v", err)
 	}
 }
+
+func (r *fakeMsgRepo) FindByExternalMessageID(_ context.Context, convID, ext string) (*entity.Message, error) {
+	for _, m := range r.items {
+		if m.ConversationID == convID && m.ExternalMessageID == ext && m.DeletedAt == nil {
+			return m, nil
+		}
+	}
+	return nil, apperror.NotFound("nf")
+}

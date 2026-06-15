@@ -543,6 +543,13 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 		if msg := cmd.Location.Validate(); msg != "" {
 			return nil, apperror.Validation(msg).WithDetails(map[string]any{"location": msg})
 		}
+	case entity.MessageInteractive:
+		if msg := cmd.Interactive.Validate(); msg != "" {
+			return nil, apperror.Validation(msg).WithDetails(map[string]any{"interactive": msg})
+		}
+		if strings.TrimSpace(text) == "" {
+			text = cmd.Interactive.Body // mirror the body for inbox preview / search
+		}
 	default:
 		if strings.TrimSpace(cmd.Text) == "" && len(cmd.Attachments) == 0 {
 			return nil, apperror.Validation("message text or attachments required")
@@ -570,6 +577,7 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 		Template:       templatePayload,
 		Contacts:       cmd.Contacts,
 		Location:       cmd.Location,
+		Interactive:    cmd.Interactive,
 		Metadata:       cmd.Metadata,
 		CreatedAt:      now,
 		DeliveryStatus: entity.DeliveryPending,

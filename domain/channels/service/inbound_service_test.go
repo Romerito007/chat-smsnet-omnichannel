@@ -488,3 +488,15 @@ func TestInbound_ProtocolMode_NewProtocolWhenClosed(t *testing.T) {
 		t.Errorf("expected 2 conversations (closed + new), have %d", len(fx.convs.items))
 	}
 }
+
+func (r *fakeMsgRepo) FindByExternalMessageID(_ context.Context, convID, ext string) (*conventity.Message, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.items {
+		if m.ConversationID == convID && m.ExternalMessageID == ext {
+			cp := *m
+			return &cp, nil
+		}
+	}
+	return nil, apperror.NotFound("nf")
+}

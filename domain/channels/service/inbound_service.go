@@ -163,8 +163,8 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		return chcontracts.InboundResult{}, apperror.Validation("external_contact_id or contact_phone is required")
 	}
 	if strings.TrimSpace(msg.Text) == "" && len(msg.Attachments) == 0 && len(msg.RawAttachments) == 0 &&
-		len(msg.Contacts) == 0 && msg.Location == nil {
-		return chcontracts.InboundResult{}, apperror.Validation("text, attachments, contacts or location are required")
+		len(msg.Contacts) == 0 && msg.Location == nil && msg.InteractiveReply == nil {
+		return chcontracts.InboundResult{}, apperror.Validation("text, attachments, contacts, location or interactive_reply are required")
 	}
 	if len(msg.RawAttachments) > 0 && s.attachments == nil {
 		return chcontracts.InboundResult{}, apperror.Internal("attachment storage is not configured")
@@ -403,9 +403,11 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		attachments = append(attachments, att)
 	}
 
-	// Pick the message type by payload, validating the structured ones (contact/
-	// location) so a malformed inbound is a 4xx, not a corrupt stored message.
+	// Pick the message type by payload, validating the structured ones so a malformed
+	// inbound is a 4xx, not a corrupt stored message.
 	mtype := conventity.MessageText
+	text := in.Text
+	var reply *conventity.InteractiveReply
 	switch {
 	case len(in.Contacts) > 0:
 		if msg := conventity.ValidateContacts(in.Contacts); msg != "" {
@@ -417,6 +419,12 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 			return nil, apperror.Validation(msg).WithDetails(map[string]any{"location": msg})
 		}
 		mtype = conventity.MessageLocation
+	case in.InteractiveReply != nil:
+		mtype = conventity.MessageInteractiveReply
+		reply = s.resolveInteractiveReply(ctx, conv.ID, in.InteractiveReply)
+		if strings.TrimSpace(text) == "" {
+			text = reply.Title // mirror the chosen title so search/automation keep working
+		}
 	case len(attachments) > 0:
 		// Derive the renderable media type from the first attachment so an inbound
 		// image/audio/video is reported as such on BOTH rails (REST read + realtime),
@@ -432,10 +440,11 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		SenderID:          contactID,
 		Direction:         conventity.DirectionInbound,
 		MessageType:       mtype,
-		Text:              in.Text,
+		Text:              text,
 		Attachments:       attachments,
 		Contacts:          in.Contacts,
 		Location:          in.Location,
+		InteractiveReply:  reply,
 		Metadata:          in.Metadata,
 		CreatedAt:         createdAt,
 		DeliveryStatus:    conventity.DeliveryNone,
@@ -538,6 +547,21 @@ func (s *InboundService) recordEvent(ctx context.Context, conv *conventity.Conve
 		Data:           data,
 		CreatedAt:      s.clock.Now(),
 	})
+}
+
+// resolveInteractiveReply builds the stored interactive reply, resolving the menu's
+// external context id (Meta context.id) to the INTERNAL id of the menu message we
+// sent — best-effort: if the menu isn't found (e.g. its external id wasn't recorded
+// yet), ContextMessageID is left empty rather than failing the inbound.
+func (s *InboundService) resolveInteractiveReply(ctx context.Context, conversationID string, in *chcontracts.InboundInteractiveReply) *conventity.InteractiveReply {
+	r := &conventity.InteractiveReply{Kind: in.Kind, ID: in.ID, Title: in.Title, Description: in.Description}
+	ext := strings.TrimSpace(in.ContextExternalID)
+	if ext != "" {
+		if menu, err := s.messages.FindByExternalMessageID(ctx, conversationID, ext); err == nil && menu != nil {
+			r.ContextMessageID = menu.ID
+		}
+	}
+	return r
 }
 
 func (s *InboundService) publishConversation(ctx context.Context, conv *conventity.Conversation) {

@@ -374,3 +374,7 @@ func TestConversations_InvalidPayload_400(t *testing.T) {
 		t.Errorf("code = %q, want validation_error", code)
 	}
 }
+
+func (fakeMsgRepo) FindByExternalMessageID(context.Context, string, string) (*entity.Message, error) {
+	return nil, apperror.NotFound("none")
+}

@@ -319,3 +319,7 @@ func TestService_NoAssistantUsesConservativeDefault(t *testing.T) {
 		t.Errorf("no assistant must use default sampling, got temp=%v max=%d", spy.gotReq.Temperature, spy.gotReq.MaxTokens)
 	}
 }
+
+func (r *fakeMessages) FindByExternalMessageID(context.Context, string, string) (*conventity.Message, error) {
+	return nil, apperror.NotFound("nf")
+}

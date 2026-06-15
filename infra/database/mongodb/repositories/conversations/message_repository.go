@@ -122,6 +122,25 @@ func (r *MessageRepository) ListByConversation(ctx context.Context, conversation
 	return out, mongodb.MapError(c.Err())
 }
 
+// FindByExternalMessageID returns a non-deleted message of the conversation by its
+// external (channel) id, or NotFound.
+func (r *MessageRepository) FindByExternalMessageID(ctx context.Context, conversationID, externalID string) (*entity.Message, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var m models.Message
+	if err := r.coll.FindOne(ctx, bson.M{
+		"tenant_id":           tenantID,
+		"conversation_id":     conversationID,
+		"external_message_id": externalID,
+		"deleted_at":          bson.M{"$eq": nil},
+	}).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return msgToEntity(&m), nil
+}
+
 func msgToModel(m *entity.Message) models.Message {
 	atts := make([]models.Attachment, len(m.Attachments))
 	for i, a := range m.Attachments {
@@ -140,6 +159,8 @@ func msgToModel(m *entity.Message) models.Message {
 		Template:          msgTemplateToModel(m.Template),
 		Contacts:          msgContactsToModel(m.Contacts),
 		Location:          msgLocationToModel(m.Location),
+		Interactive:       msgInteractiveToModel(m.Interactive),
+		InteractiveReply:  msgInteractiveReplyToModel(m.InteractiveReply),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    string(m.DeliveryStatus),
@@ -170,6 +191,8 @@ func msgToEntity(m *models.Message) *entity.Message {
 		Template:          msgTemplateToEntity(m.Template),
 		Contacts:          msgContactsToEntity(m.Contacts),
 		Location:          msgLocationToEntity(m.Location),
+		Interactive:       msgInteractiveToEntity(m.Interactive),
+		InteractiveReply:  msgInteractiveReplyToEntity(m.InteractiveReply),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    entity.DeliveryStatus(m.DeliveryStatus),
@@ -251,6 +274,56 @@ func msgLocationToEntity(l *models.MessageLocation) *entity.Location {
 		return nil
 	}
 	return &entity.Location{Latitude: l.Latitude, Longitude: l.Longitude, Name: l.Name, Address: l.Address}
+}
+
+func msgInteractiveToModel(iv *entity.Interactive) *models.MessageInteractive {
+	if iv == nil {
+		return nil
+	}
+	m := &models.MessageInteractive{Kind: iv.Kind, Header: iv.Header, Body: iv.Body, Footer: iv.Footer, Button: iv.Button}
+	for _, b := range iv.Buttons {
+		m.Buttons = append(m.Buttons, models.MsgIntButton{ID: b.ID, Title: b.Title})
+	}
+	for _, s := range iv.Sections {
+		ms := models.MsgIntSection{Title: s.Title}
+		for _, r := range s.Rows {
+			ms.Rows = append(ms.Rows, models.MsgIntRow{ID: r.ID, Title: r.Title, Description: r.Description})
+		}
+		m.Sections = append(m.Sections, ms)
+	}
+	return m
+}
+
+func msgInteractiveToEntity(m *models.MessageInteractive) *entity.Interactive {
+	if m == nil {
+		return nil
+	}
+	iv := &entity.Interactive{Kind: m.Kind, Header: m.Header, Body: m.Body, Footer: m.Footer, Button: m.Button}
+	for _, b := range m.Buttons {
+		iv.Buttons = append(iv.Buttons, entity.InteractiveButton{ID: b.ID, Title: b.Title})
+	}
+	for _, s := range m.Sections {
+		es := entity.InteractiveSection{Title: s.Title}
+		for _, r := range s.Rows {
+			es.Rows = append(es.Rows, entity.InteractiveRow{ID: r.ID, Title: r.Title, Description: r.Description})
+		}
+		iv.Sections = append(iv.Sections, es)
+	}
+	return iv
+}
+
+func msgInteractiveReplyToModel(r *entity.InteractiveReply) *models.MessageInteractiveReply {
+	if r == nil {
+		return nil
+	}
+	return &models.MessageInteractiveReply{Kind: r.Kind, ID: r.ID, Title: r.Title, Description: r.Description, ContextMessageID: r.ContextMessageID}
+}
+
+func msgInteractiveReplyToEntity(r *models.MessageInteractiveReply) *entity.InteractiveReply {
+	if r == nil {
+		return nil
+	}
+	return &entity.InteractiveReply{Kind: r.Kind, ID: r.ID, Title: r.Title, Description: r.Description, ContextMessageID: r.ContextMessageID}
 }
 
 func msgTemplateToEntity(t *models.MessageTemplate) *entity.TemplatePayload {

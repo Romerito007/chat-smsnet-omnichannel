@@ -50,6 +50,10 @@ type MessageRepository interface {
 	// conversation, or NotFound when the thread is empty. Used to recompute the
 	// denormalized last-message snapshot when the latest message is deleted.
 	LatestByConversation(ctx context.Context, conversationID string) (*entity.Message, error)
+	// FindByExternalMessageID returns a conversation's message by its external
+	// (channel) id, or NotFound. Used to resolve an interactive reply's context.id
+	// back to the internal id of the menu message we sent.
+	FindByExternalMessageID(ctx context.Context, conversationID, externalID string) (*entity.Message, error)
 }
 
 // EventRepository persists conversation timeline events.

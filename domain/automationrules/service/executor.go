@@ -21,6 +21,7 @@ var ErrBudgetExceeded = errors.New("automation message budget exceeded")
 type ConversationOps interface {
 	SendAutomationMessage(ctx context.Context, conversationID, ruleID, text string) error
 	SendAutomationAttachment(ctx context.Context, conversationID, ruleID, attachmentID string) error
+	SendAutomationInteractive(ctx context.Context, conversationID, ruleID, interactiveJSON string) error
 	AutomationAssignAgent(ctx context.Context, conversationID, agentID string) error
 	AutomationAssignTeam(ctx context.Context, conversationID, sectorID string) error
 	AutomationRemoveAgent(ctx context.Context, conversationID string) error
@@ -90,6 +91,11 @@ func (x *Executor) Run(ctx context.Context, action entity.Action, ac ActionConte
 			return err
 		}
 		return x.requireConv().SendAutomationAttachment(ctx, ac.ConversationID, ac.RuleID, action.Param("attachment_id"))
+	case entity.ActionSendInteractive:
+		if err := x.checkBudget(ctx, ac.ConversationID); err != nil {
+			return err
+		}
+		return x.requireConv().SendAutomationInteractive(ctx, ac.ConversationID, ac.RuleID, action.Param("interactive"))
 
 	case entity.ActionAssignAgent:
 		return x.requireConv().AutomationAssignAgent(ctx, ac.ConversationID, action.Param("agent_id"))
@@ -145,6 +151,9 @@ var _ ActionRunner = (*Executor)(nil)
 type noopConvOps struct{}
 
 func (noopConvOps) SendAutomationMessage(context.Context, string, string, string) error { return nil }
+func (noopConvOps) SendAutomationInteractive(context.Context, string, string, string) error {
+	return nil
+}
 func (noopConvOps) SendAutomationAttachment(context.Context, string, string, string) error {
 	return nil
 }

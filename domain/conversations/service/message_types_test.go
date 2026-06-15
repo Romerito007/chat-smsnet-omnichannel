@@ -81,3 +81,97 @@ func TestSendMessage_Location(t *testing.T) {
 		}
 	}
 }
+
+func buttonsMenu() *entity.Interactive {
+	return &entity.Interactive{Kind: entity.InteractiveButtons, Body: "Pick one", Buttons: []entity.InteractiveButton{
+		{ID: "a", Title: "Option A"}, {ID: "b", Title: "Option B"},
+	}}
+}
+
+// TestSendMessage_Interactive: a valid buttons menu stores message_type=interactive,
+// mirrors body to text, and surfaces the menu on the realtime payload.
+func TestSendMessage_Interactive(t *testing.T) {
+	svc, _, _, _, pub := newService(map[string]string{"s1": "t1"})
+	id := openConv(t, svc)
+
+	msg, err := svc.SendMessage(adminCtx(), id, contracts.SendMessage{
+		MessageType: entity.MessageInteractive, Interactive: buttonsMenu(),
+	})
+	if err != nil {
+		t.Fatalf("send interactive: %v", err)
+	}
+	if msg.MessageType != entity.MessageInteractive || msg.Interactive == nil || len(msg.Interactive.Buttons) != 2 {
+		t.Fatalf("interactive not stored: %+v", msg)
+	}
+	if msg.Text != "Pick one" {
+		t.Errorf("body must mirror to text, got %q", msg.Text)
+	}
+	if p, ok := pub.lastPayload(contracts.RealtimeMessageCreated).(contracts.MessagePayload); !ok || p.Interactive == nil {
+		t.Errorf("realtime payload must carry interactive")
+	}
+}
+
+func TestSendMessage_Interactive_Invalid(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	id := openConv(t, svc)
+
+	long := ""
+	for i := 0; i < 21; i++ {
+		long += "x"
+	}
+	cases := map[string]*entity.Interactive{
+		"no body":      {Kind: entity.InteractiveButtons, Buttons: []entity.InteractiveButton{{ID: "a", Title: "A"}}},
+		"4 buttons":    {Kind: entity.InteractiveButtons, Body: "b", Buttons: []entity.InteractiveButton{{ID: "1", Title: "A"}, {ID: "2", Title: "B"}, {ID: "3", Title: "C"}, {ID: "4", Title: "D"}}},
+		"title>20":     {Kind: entity.InteractiveButtons, Body: "b", Buttons: []entity.InteractiveButton{{ID: "a", Title: long}}},
+		"dup id":       {Kind: entity.InteractiveButtons, Body: "b", Buttons: []entity.InteractiveButton{{ID: "a", Title: "A"}, {ID: "a", Title: "B"}}},
+		"unknown kind": {Kind: "carousel", Body: "b"},
+		"list no btn":  {Kind: entity.InteractiveList, Body: "b", Sections: []entity.InteractiveSection{{Rows: []entity.InteractiveRow{{ID: "r", Title: "R"}}}}},
+	}
+	for name, iv := range cases {
+		_, err := svc.SendMessage(adminCtx(), id, contracts.SendMessage{MessageType: entity.MessageInteractive, Interactive: iv})
+		if apperror.From(err).Code != apperror.CodeValidation {
+			t.Errorf("%s: expected validation error, got %v", name, err)
+		}
+	}
+}
+
+// TestSendMessage_Interactive_List validates a list with >10 rows is rejected.
+func TestSendMessage_Interactive_List(t *testing.T) {
+	svc, _, _, _, _ := newService(map[string]string{"s1": "t1"})
+	id := openConv(t, svc)
+
+	rows := make([]entity.InteractiveRow, 11)
+	for i := range rows {
+		rows[i] = entity.InteractiveRow{ID: string(rune('a' + i)), Title: "Row"}
+	}
+	_, err := svc.SendMessage(adminCtx(), id, contracts.SendMessage{
+		MessageType: entity.MessageInteractive,
+		Interactive: &entity.Interactive{Kind: entity.InteractiveList, Body: "b", Button: "Open", Sections: []entity.InteractiveSection{{Rows: rows}}},
+	})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf(">10 rows must be rejected, got %v", err)
+	}
+}
+
+// TestSendAutomationInteractive: a rule sends an interactive menu via JSON param.
+func TestSendAutomationInteractive(t *testing.T) {
+	svc, cr, mr, _, _ := newService(map[string]string{"s1": "t1"})
+	id := openConv(t, svc)
+	_ = cr
+
+	good := `{"kind":"buttons","body":"Menu","buttons":[{"id":"x","title":"X"}]}`
+	if err := svc.SendAutomationInteractive(adminCtx(), id, "rule1", good); err != nil {
+		t.Fatalf("automation interactive: %v", err)
+	}
+	last := mr.items[len(mr.items)-1]
+	if last.MessageType != entity.MessageInteractive || last.SenderType != entity.SenderAutomation || last.Interactive == nil {
+		t.Fatalf("automation interactive not stored: %+v", last)
+	}
+	// Bad JSON and limit violations are rejected.
+	if err := svc.SendAutomationInteractive(adminCtx(), id, "rule1", "{not json"); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("bad json must be a validation error, got %v", err)
+	}
+	if err := svc.SendAutomationInteractive(adminCtx(), id, "rule1", `{"kind":"buttons","body":"b"}`); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("no buttons must be a validation error, got %v", err)
+	}
+}

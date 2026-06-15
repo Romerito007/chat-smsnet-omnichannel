@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -294,6 +295,10 @@ func (s *RuleService) validate(ctx context.Context, r *entity.AutomationRule) er
 			if err := s.validateRef(ctx, v, i, "attachment_id", "attachment", a); err != nil {
 				return err
 			}
+		case entity.ActionSendInteractive:
+			if msg := validateInteractiveParam(a.Param("interactive")); msg != "" {
+				v[fieldKey("actions", i, "interactive")] = msg
+			}
 		case entity.ActionAssignAgent:
 			if err := s.validateRef(ctx, v, i, "agent_id", "agent", a); err != nil {
 				return err
@@ -325,6 +330,21 @@ func (s *RuleService) validate(ctx context.Context, r *entity.AutomationRule) er
 
 func fieldKey(group string, i int, sub string) string {
 	return group + "[" + strconv.Itoa(i) + "]." + sub
+}
+
+// validateInteractiveParam checks the send_interactive action's "interactive" param
+// is present and a well-formed JSON object. The full WhatsApp-limit validation runs
+// at execution time (SendAutomationInteractive), keeping this layer free of the
+// conversations domain.
+func validateInteractiveParam(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "is required"
+	}
+	var obj map[string]any
+	if json.Unmarshal([]byte(s), &obj) != nil {
+		return "must be a valid JSON object"
+	}
+	return ""
 }
 
 // validateRef checks an action's required param is present and (when a RefChecker

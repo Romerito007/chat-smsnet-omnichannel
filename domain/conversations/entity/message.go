@@ -3,6 +3,7 @@ package entity
 import (
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // SenderType identifies who authored a message.
@@ -40,15 +41,20 @@ const (
 	MessageVideo    MessageType = "video"
 	MessageContact  MessageType = "contact"  // one or more vCards (Contacts)
 	MessageLocation MessageType = "location" // a single geographic point (Location)
-	MessageTemplate MessageType = "template"
-	MessageSystem   MessageType = "system"
+	// MessageInteractive is an OUTBOUND menu (reply buttons or list) the business
+	// sends; MessageInteractiveReply is the INBOUND choice the customer made.
+	MessageInteractive      MessageType = "interactive"
+	MessageInteractiveReply MessageType = "interactive_reply"
+	MessageTemplate         MessageType = "template"
+	MessageSystem           MessageType = "system"
 )
 
 // Valid reports whether t is a known message type.
 func (t MessageType) Valid() bool {
 	switch t {
 	case MessageText, MessageImage, MessageFile, MessageAudio, MessageVideo,
-		MessageContact, MessageLocation, MessageTemplate, MessageSystem:
+		MessageContact, MessageLocation, MessageInteractive, MessageInteractiveReply,
+		MessageTemplate, MessageSystem:
 		return true
 	}
 	return false
@@ -138,6 +144,179 @@ func (l *Location) Validate() string {
 	}
 	if l.Longitude < -180 || l.Longitude > 180 {
 		return "longitude must be between -180 and 180"
+	}
+	return ""
+}
+
+// Interactive kinds and the WhatsApp limits enforced by ValidateInteractive (the
+// gateway can assume a valid payload). Char limits count Unicode runes.
+const (
+	InteractiveButtons = "buttons" // reply buttons (≤3)
+	InteractiveList    = "list"    // single-select list (sections/rows)
+
+	maxReplyButtons      = 3
+	maxButtonTitle       = 20
+	maxButtonID          = 256
+	maxButtonsBody       = 1024
+	maxInteractiveHeader = 60
+	maxInteractiveFooter = 60
+	maxListButton        = 20
+	maxListSections      = 10
+	maxListRows          = 10
+	maxSectionTitle      = 24
+	maxRowTitle          = 24
+	maxRowDescription    = 72
+	maxRowID             = 200
+	maxListBody          = 4096
+)
+
+// Interactive is an OUTBOUND interactive message (message_type=interactive): reply
+// buttons or a single-select list. v1 supports a text-only header. The JSON shape
+// mirrors what the gateway translates to the WhatsApp interactive.{button|list}
+// block.
+type Interactive struct {
+	Kind   string `json:"kind" bson:"kind"` // "buttons" | "list"
+	Header string `json:"header,omitempty" bson:"header,omitempty"`
+	Body   string `json:"body" bson:"body"`
+	Footer string `json:"footer,omitempty" bson:"footer,omitempty"`
+	// Buttons is set when Kind=buttons. Button/Sections are set when Kind=list
+	// (Button is the label that opens the list).
+	Buttons  []InteractiveButton  `json:"buttons,omitempty" bson:"buttons,omitempty"`
+	Button   string               `json:"button,omitempty" bson:"button,omitempty"`
+	Sections []InteractiveSection `json:"sections,omitempty" bson:"sections,omitempty"`
+}
+
+// InteractiveButton is one reply button (Kind=buttons).
+type InteractiveButton struct {
+	ID    string `json:"id" bson:"id"`
+	Title string `json:"title" bson:"title"`
+}
+
+// InteractiveSection is a list section (Kind=list).
+type InteractiveSection struct {
+	Title string           `json:"title,omitempty" bson:"title,omitempty"`
+	Rows  []InteractiveRow `json:"rows" bson:"rows"`
+}
+
+// InteractiveRow is one selectable list row.
+type InteractiveRow struct {
+	ID          string `json:"id" bson:"id"`
+	Title       string `json:"title" bson:"title"`
+	Description string `json:"description,omitempty" bson:"description,omitempty"`
+}
+
+// InteractiveReply is the INBOUND customer choice (message_type=interactive_reply):
+// the id+title of the chosen button/row, plus ContextMessageID linking it back to
+// the internal id of the menu message the chat sent.
+type InteractiveReply struct {
+	Kind             string `json:"kind" bson:"kind"` // "button" | "list"
+	ID               string `json:"id" bson:"id"`
+	Title            string `json:"title" bson:"title"`
+	Description      string `json:"description,omitempty" bson:"description,omitempty"`
+	ContextMessageID string `json:"context_message_id,omitempty" bson:"context_message_id,omitempty"`
+}
+
+func tooLong(s string, max int) bool { return utf8.RuneCountInString(s) > max }
+
+// Validate checks an outbound interactive payload against the WhatsApp limits,
+// returning "" when valid or a human-readable reason. Shared by SendMessage and the
+// automation send_interactive action so both rails enforce the same rules.
+func (iv *Interactive) Validate() string {
+	if iv == nil {
+		return "interactive is required for message_type=interactive"
+	}
+	if tooLong(iv.Header, maxInteractiveHeader) {
+		return "interactive header must be at most 60 characters"
+	}
+	if tooLong(iv.Footer, maxInteractiveFooter) {
+		return "interactive footer must be at most 60 characters"
+	}
+	if strings.TrimSpace(iv.Body) == "" {
+		return "interactive body is required"
+	}
+	switch iv.Kind {
+	case InteractiveButtons:
+		if tooLong(iv.Body, maxButtonsBody) {
+			return "interactive body must be at most 1024 characters"
+		}
+		if len(iv.Buttons) == 0 {
+			return "interactive requires at least one button"
+		}
+		if len(iv.Buttons) > maxReplyButtons {
+			return "interactive supports at most 3 buttons"
+		}
+		seen := make(map[string]bool, len(iv.Buttons))
+		for _, b := range iv.Buttons {
+			if strings.TrimSpace(b.ID) == "" {
+				return "button id is required"
+			}
+			if tooLong(b.ID, maxButtonID) {
+				return "button id must be at most 256 characters"
+			}
+			if strings.TrimSpace(b.Title) == "" {
+				return "button title is required"
+			}
+			if tooLong(b.Title, maxButtonTitle) {
+				return "button title must be at most 20 characters"
+			}
+			if seen[b.ID] {
+				return "button ids must be unique within the message"
+			}
+			seen[b.ID] = true
+		}
+	case InteractiveList:
+		if tooLong(iv.Body, maxListBody) {
+			return "interactive body must be at most 4096 characters"
+		}
+		if strings.TrimSpace(iv.Button) == "" {
+			return "list button label is required"
+		}
+		if tooLong(iv.Button, maxListButton) {
+			return "list button label must be at most 20 characters"
+		}
+		if len(iv.Sections) == 0 {
+			return "list requires at least one section"
+		}
+		if len(iv.Sections) > maxListSections {
+			return "list supports at most 10 sections"
+		}
+		seen := map[string]bool{}
+		total := 0
+		for _, sec := range iv.Sections {
+			if tooLong(sec.Title, maxSectionTitle) {
+				return "section title must be at most 24 characters"
+			}
+			if len(sec.Rows) == 0 {
+				return "each list section requires at least one row"
+			}
+			for _, r := range sec.Rows {
+				total++
+				if strings.TrimSpace(r.ID) == "" {
+					return "row id is required"
+				}
+				if tooLong(r.ID, maxRowID) {
+					return "row id must be at most 200 characters"
+				}
+				if strings.TrimSpace(r.Title) == "" {
+					return "row title is required"
+				}
+				if tooLong(r.Title, maxRowTitle) {
+					return "row title must be at most 24 characters"
+				}
+				if tooLong(r.Description, maxRowDescription) {
+					return "row description must be at most 72 characters"
+				}
+				if seen[r.ID] {
+					return "row ids must be unique within the message"
+				}
+				seen[r.ID] = true
+			}
+		}
+		if total > maxListRows {
+			return "list supports at most 10 rows in total"
+		}
+	default:
+		return "interactive.kind must be 'buttons' or 'list'"
 	}
 	return ""
 }
@@ -233,8 +412,12 @@ type Message struct {
 	Template *TemplatePayload
 	// Contacts is set for message_type=contact (1..10 vCards); Location for
 	// message_type=location. Both bidirectional (inbound + outbound).
-	Contacts          []ContactCard
-	Location          *Location
+	Contacts []ContactCard
+	Location *Location
+	// Interactive is the OUTBOUND menu (message_type=interactive); InteractiveReply
+	// is the INBOUND customer choice (message_type=interactive_reply).
+	Interactive       *Interactive
+	InteractiveReply  *InteractiveReply
 	Metadata          map[string]any
 	CreatedAt         time.Time
 	DeliveryStatus    DeliveryStatus

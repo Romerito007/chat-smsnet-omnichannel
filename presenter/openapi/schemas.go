@@ -157,6 +157,7 @@ func schemas() M {
 			"direction": str(), "message_type": str(), "text": str(),
 			"attachments": arr(ref("Attachment")), "template": ref("MessageTemplate"),
 			"contacts": arr(ref("MessageContact")), "location": ref("MessageLocation"),
+			"interactive": ref("MessageInteractive"), "interactive_reply": ref("MessageInteractiveReply"),
 			"metadata":        freeObject(),
 			"delivery_status": str(), "external_message_id": str(),
 			"created_at": dateTime(), "edited_at": dateTime(),
@@ -186,12 +187,42 @@ func schemas() M {
 			"longitude": describedNumber("Required, [-180, 180]."),
 			"name":      str(), "address": str(),
 		}, "latitude", "longitude"),
+		// message_type=interactive: an OUTBOUND menu (reply buttons or list). v1
+		// supports a text-only header. Maps to the Meta interactive.{button|list} block.
+		"MessageInteractive": object(M{
+			"kind":   describedStr("'buttons' or 'list'."),
+			"header": describedStr("Optional text header (≤60 chars; v1 is text-only)."),
+			"body":   describedStr("Required. ≤1024 for buttons, ≤4096 for list."),
+			"footer": describedStr("Optional (≤60)."),
+			"buttons": describedArr(object(M{
+				"id":    describedStr("Stable, unique within the message (≤256)."),
+				"title": describedStr("≤20 chars."),
+			}, "id", "title"), "Reply buttons when kind=buttons (max 3)."),
+			"button": describedStr("List open-label (kind=list, required, ≤20)."),
+			"sections": describedArr(object(M{
+				"title": describedStr("Optional section title (≤24)."),
+				"rows": describedArr(object(M{
+					"id":          describedStr("Stable, unique within the message (≤200)."),
+					"title":       describedStr("≤24 chars."),
+					"description": describedStr("Optional (≤72)."),
+				}, "id", "title"), "Section rows."),
+			}, "rows"), "List sections when kind=list (max 10 sections, ≤10 rows total)."),
+		}, "kind", "body"),
+		// message_type=interactive_reply: the INBOUND customer choice on a menu.
+		"MessageInteractiveReply": object(M{
+			"kind":               describedStr("'button' or 'list'."),
+			"id":                 describedStr("The chosen button/row id (stable — branch automations on this)."),
+			"title":              str(),
+			"description":        describedStr("Only for list replies."),
+			"context_message_id": describedStr("Internal id of the menu message this reply answers (resolved from Meta context.id)."),
+		}, "id"),
 		"SendMessageRequest": object(M{
 			"message_type": str(), "text": str(), "attachments": arr(ref("Attachment")),
-			"template": withDesc(ref("MessageTemplate"), "Required when message_type=template (WhatsApp). The template_id must exist on the conversation's channel."),
-			"contacts": describedArr(ref("MessageContact"), "Required when message_type=contact (1..10 vCards)."),
-			"location": withDesc(ref("MessageLocation"), "Required when message_type=location."),
-			"metadata": freeObject(),
+			"template":    withDesc(ref("MessageTemplate"), "Required when message_type=template (WhatsApp). The template_id must exist on the conversation's channel."),
+			"contacts":    describedArr(ref("MessageContact"), "Required when message_type=contact (1..10 vCards)."),
+			"location":    withDesc(ref("MessageLocation"), "Required when message_type=location."),
+			"interactive": withDesc(ref("MessageInteractive"), "Required when message_type=interactive (outbound menu)."),
+			"metadata":    freeObject(),
 		}),
 		"EditMessageRequest":  object(M{"text": str()}, "text"),
 		"InternalNoteRequest": object(M{"text": str(), "mention_user_ids": arr(str())}, "text"),
@@ -261,7 +292,11 @@ func schemas() M {
 			"attachments": arr(ref("Attachment")),
 			"contacts":    describedArr(ref("MessageContact"), "Set when the customer shares contact(s) (message_type=contact)."),
 			"location":    withDesc(ref("MessageLocation"), "Set when the customer shares a location (message_type=location)."),
-			"metadata":    freeObject(), "timestamp": integer(),
+			"interactive_reply": withDesc(object(M{
+				"kind": describedStr("'button' or 'list'."), "id": str(), "title": str(), "description": str(),
+				"context_external_id": describedStr("Meta context.id — the external id of the menu message the chat sent; resolved to the internal menu id."),
+			}, "id"), "Set when the customer answers an interactive menu (message_type=interactive_reply)."),
+			"metadata": freeObject(), "timestamp": integer(),
 		}),
 		// Chatwoot-compatible multipart/form-data: content + message_type + file_type
 		// + attachments[] (raw files). Routing fields mirror the JSON shape.

@@ -124,6 +124,10 @@ const (
 	// ActionSendAttachment injects an outbound automation message carrying an
 	// attachment. Param: attachment_id (uploaded, ready, same tenant).
 	ActionSendAttachment ActionType = "send_attachment"
+	// ActionSendInteractive injects an outbound interactive menu (reply buttons or
+	// list). Param: interactive — a JSON object matching the conversations
+	// Interactive shape (kind/body/buttons|sections…). Validated like a normal send.
+	ActionSendInteractive ActionType = "send_interactive"
 
 	// State-mutating actions on the conversation. Each runs under origin=automation
 	// so the lifecycle event it emits never re-triggers rules.

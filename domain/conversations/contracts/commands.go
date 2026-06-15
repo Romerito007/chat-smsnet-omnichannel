@@ -40,10 +40,13 @@ type SendMessage struct {
 	// outbound payload are derived from it.
 	Template *SendTemplate
 	// Contacts is required when MessageType=contact (1..10 vCards); Location is
-	// required when MessageType=location.
-	Contacts []entity.ContactCard
-	Location *entity.Location
-	Metadata map[string]any
+	// required when MessageType=location; Interactive is required when
+	// MessageType=interactive (an outbound menu). interactive_reply is inbound-only
+	// and is never created via SendMessage.
+	Contacts    []entity.ContactCard
+	Location    *entity.Location
+	Interactive *entity.Interactive
+	Metadata    map[string]any
 }
 
 // SendTemplate is the template selection on a template send.

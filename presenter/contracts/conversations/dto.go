@@ -92,6 +92,7 @@ type SendMessageRequest struct {
 	Template    *TemplateRequest     `json:"template"`
 	Contacts    []entity.ContactCard `json:"contacts"`
 	Location    *entity.Location     `json:"location"`
+	Interactive *entity.Interactive  `json:"interactive"`
 	Metadata    map[string]any       `json:"metadata"`
 }
 
@@ -107,6 +108,7 @@ func (r SendMessageRequest) ToCommand() contracts.SendMessage {
 		Attachments: atts,
 		Contacts:    r.Contacts,
 		Location:    r.Location,
+		Interactive: r.Interactive,
 		Metadata:    r.Metadata,
 	}
 	if r.Template != nil {
@@ -304,22 +306,24 @@ func NewEventResponses(items []*entity.ConversationEvent) []EventResponse {
 
 // MessageResponse is the public representation of a message.
 type MessageResponse struct {
-	ID                string               `json:"id"`
-	ConversationID    string               `json:"conversation_id"`
-	SenderType        string               `json:"sender_type"`
-	SenderID          string               `json:"sender_id,omitempty"`
-	Direction         string               `json:"direction"`
-	MessageType       string               `json:"message_type"`
-	Text              string               `json:"text"`
-	Attachments       []AttachmentRequest  `json:"attachments,omitempty"`
-	Contacts          []entity.ContactCard `json:"contacts,omitempty"`
-	Location          *entity.Location     `json:"location,omitempty"`
-	Template          *TemplateRequest     `json:"template,omitempty"`
-	Metadata          map[string]any       `json:"metadata,omitempty"`
-	DeliveryStatus    string               `json:"delivery_status,omitempty"`
-	ExternalMessageID string               `json:"external_message_id,omitempty"`
-	CreatedAt         time.Time            `json:"created_at"`
-	EditedAt          *time.Time           `json:"edited_at,omitempty"`
+	ID                string                   `json:"id"`
+	ConversationID    string                   `json:"conversation_id"`
+	SenderType        string                   `json:"sender_type"`
+	SenderID          string                   `json:"sender_id,omitempty"`
+	Direction         string                   `json:"direction"`
+	MessageType       string                   `json:"message_type"`
+	Text              string                   `json:"text"`
+	Attachments       []AttachmentRequest      `json:"attachments,omitempty"`
+	Contacts          []entity.ContactCard     `json:"contacts,omitempty"`
+	Location          *entity.Location         `json:"location,omitempty"`
+	Interactive       *entity.Interactive      `json:"interactive,omitempty"`
+	InteractiveReply  *entity.InteractiveReply `json:"interactive_reply,omitempty"`
+	Template          *TemplateRequest         `json:"template,omitempty"`
+	Metadata          map[string]any           `json:"metadata,omitempty"`
+	DeliveryStatus    string                   `json:"delivery_status,omitempty"`
+	ExternalMessageID string                   `json:"external_message_id,omitempty"`
+	CreatedAt         time.Time                `json:"created_at"`
+	EditedAt          *time.Time               `json:"edited_at,omitempty"`
 }
 
 // NewMessageResponse maps a message entity to its DTO.
@@ -339,6 +343,8 @@ func NewMessageResponse(m *entity.Message) MessageResponse {
 		Attachments:       atts,
 		Contacts:          m.Contacts,
 		Location:          m.Location,
+		Interactive:       m.Interactive,
+		InteractiveReply:  m.InteractiveReply,
 		Metadata:          m.Metadata,
 		DeliveryStatus:    string(m.DeliveryStatus),
 		ExternalMessageID: m.ExternalMessageID,
