@@ -189,6 +189,40 @@ func TestDispatcher_SectorScopeFilters(t *testing.T) {
 	}
 }
 
+func TestDispatcher_EmitLazyBuildsOnlyWithSubscriber(t *testing.T) {
+	// No subscription for the event: the lazy builder must NEVER run, so a tenant
+	// without a webhook pays zero contact/agent resolution on the hot path.
+	subs := &fakeSubs{byEvent: map[string][]*entity.WebhookSubscription{}}
+	d := NewDispatcher(subs, newFakeDeliveries(), &fakeEnqueuer{}, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	built := 0
+	d.EmitLazy(ctxTenant(), "t1", "message.created", "", func() any {
+		built++
+		return map[string]any{"id": "m1"}
+	})
+	if built != 0 {
+		t.Fatalf("builder ran with no subscriber: built=%d (expected 0 lookups)", built)
+	}
+
+	// With exactly one subscription across two in-scope deliveries, the builder runs
+	// ONCE (payload resolved a single time, then reused per delivery).
+	sub := &entity.WebhookSubscription{ID: "wh1", TenantID: "t1", Enabled: true, Events: []string{entity.EventMessageCreated}}
+	subs.byEvent[entity.EventMessageCreated] = []*entity.WebhookSubscription{sub}
+	del := newFakeDeliveries()
+	enq := &fakeEnqueuer{}
+	d = NewDispatcher(subs, del, enq, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	built = 0
+	d.EmitLazy(ctxTenant(), "t1", "message.created", "", func() any {
+		built++
+		return map[string]any{"id": "m1"}
+	})
+	if built != 1 {
+		t.Fatalf("builder must run exactly once when a subscriber exists, ran %d times", built)
+	}
+	if len(del.created) != 1 || len(enq.items) != 1 {
+		t.Fatalf("expected 1 delivery + 1 enqueue, got %d/%d", len(del.created), len(enq.items))
+	}
+}
+
 func TestDispatcher_UnsupportedEventIgnored(t *testing.T) {
 	del := newFakeDeliveries()
 	enq := &fakeEnqueuer{}

@@ -42,6 +42,22 @@ func NewDispatcher(
 // delivery is filtered by the subscription's events[] (only what it subscribed to)
 // AND its sector scopes. Unknown events and no-match tenants are no-ops.
 func (d *Dispatcher) Emit(ctx context.Context, tenantID, event, sectorID string, payload any) {
+	d.emit(ctx, tenantID, event, sectorID, func() any { return payload })
+}
+
+// EmitLazy is Emit with a deferred payload builder. The builder runs at most once,
+// and ONLY after ListEnabledByEvent confirms at least one matching subscription —
+// so when no webhook is subscribed to the event, the builder (and any contact/agent
+// resolution it performs) never runs. This is the gate that keeps the high-volume
+// inbound message_created path free of lookups for tenants without webhooks.
+func (d *Dispatcher) EmitLazy(ctx context.Context, tenantID, event, sectorID string, build func() any) {
+	d.emit(ctx, tenantID, event, sectorID, build)
+}
+
+// emit is the shared core: it resolves the wire event, looks up the matching
+// subscriptions and — only if there is at least one — invokes build ONCE to obtain
+// the payload, then creates and enqueues a delivery per in-scope subscription.
+func (d *Dispatcher) emit(ctx context.Context, tenantID, event, sectorID string, build func() any) {
 	if tenantID == "" {
 		return
 	}
@@ -51,9 +67,10 @@ func (d *Dispatcher) Emit(ctx context.Context, tenantID, event, sectorID string,
 	}
 	subs, err := d.subs.ListEnabledByEvent(ctx, tenantID, wire)
 	if err != nil || len(subs) == 0 {
-		return
+		return // no subscriber → build() is never called (zero contact/agent lookups)
 	}
 
+	payload := build()
 	now := d.clock.Now()
 	for _, sub := range subs {
 		if !scopeAllows(sub.Scopes, sectorID) {

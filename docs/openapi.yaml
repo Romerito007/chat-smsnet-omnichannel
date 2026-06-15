@@ -3628,6 +3628,76 @@ components:
                 url:
                     type: string
             type: object
+        WebhookAgent:
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+            type: object
+        WebhookContact:
+            properties:
+                custom_attributes:
+                    additionalProperties: true
+                    type: object
+                id:
+                    type: string
+                identities:
+                    items:
+                        $ref: '#/components/schemas/WebhookIdentity'
+                    type: array
+                name:
+                    type: string
+                phone:
+                    type: string
+            type: object
+        WebhookConversationData:
+            properties:
+                assigned_agent:
+                    $ref: '#/components/schemas/WebhookAgent'
+                assigned_to:
+                    type: string
+                channel:
+                    type: string
+                channel_id:
+                    type: string
+                contact:
+                    $ref: '#/components/schemas/WebhookContact'
+                contact_id:
+                    type: string
+                custom_attributes:
+                    additionalProperties: true
+                    type: object
+                id:
+                    type: string
+                last_message_at:
+                    format: date-time
+                    type: string
+                last_read_at:
+                    format: date-time
+                    type: string
+                priority:
+                    type: string
+                protocol:
+                    type: string
+                queue_id:
+                    type: string
+                sector_id:
+                    type: string
+                status:
+                    type: string
+                tags:
+                    items:
+                        type: string
+                    type: array
+                tenant_id:
+                    type: string
+                unread_count:
+                    type: integer
+                updated_at:
+                    format: date-time
+                    type: string
+            type: object
         WebhookCreated:
             properties:
                 created_at:
@@ -3731,6 +3801,58 @@ components:
                         - sla_breached
                     type: string
                 id:
+                    type: string
+            type: object
+        WebhookIdentity:
+            properties:
+                channel:
+                    description: Channel of the identifier (whatsapp, telegram, instagram, …).
+                    type: string
+                external_id:
+                    description: The contact's id on that channel (e.g. the WhatsApp JID) — the gateway's routing key.
+                    type: string
+            type: object
+        WebhookMessageData:
+            properties:
+                agent:
+                    $ref: '#/components/schemas/WebhookAgent'
+                attachments:
+                    items:
+                        $ref: '#/components/schemas/Attachment'
+                    type: array
+                contact:
+                    $ref: '#/components/schemas/WebhookContact'
+                conversation:
+                    properties:
+                        custom_attributes:
+                            additionalProperties: true
+                            type: object
+                    type: object
+                conversation_id:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                delivery_status:
+                    type: string
+                direction:
+                    type: string
+                edited_at:
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                internal:
+                    type: boolean
+                message_type:
+                    type: string
+                sender_id:
+                    type: string
+                sender_type:
+                    type: string
+                template:
+                    $ref: '#/components/schemas/MessageTemplate'
+                text:
                     type: string
             type: object
         WhatsAppTemplate:

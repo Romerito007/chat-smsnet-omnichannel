@@ -42,6 +42,17 @@ type Service struct {
 	contacts      contracts.ContactDirectory
 	agents        contracts.AgentDirectory
 	customAttr    shared.CustomAttributeValidator
+	enricher      contracts.WebhookEnricher
+}
+
+// SetWebhookEnricher wires the resolver of the outbound-webhook contact + agent
+// blocks. Optional: when unset, webhook payloads omit those blocks. Resolution is
+// lazy (only when a subscription matches the event), so wiring it costs nothing on
+// the hot path for tenants without webhooks.
+func (s *Service) SetWebhookEnricher(e contracts.WebhookEnricher) {
+	if e != nil {
+		s.enricher = e
+	}
 }
 
 // SetCustomAttributeValidator wires the validator for custom_attributes (against
@@ -324,7 +335,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateConversation) 
 	s.recordEvent(ctx, conv, entity.EventConversationCreated, nil)
 	s.publishConversation(ctx, conv)
 	s.publishLifecycle(ctx, conv, contracts.RealtimeConversationCreated)
-	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationCreated, conv.SectorID, contracts.NewConversationPayload(conv))
+	s.emitConversationWebhook(ctx, conv, entity.EventConversationCreated)
 	s.sla.OnConversationCreated(ctx, conv)
 	if conv.Status == entity.StatusQueued && conv.QueueID != "" {
 		s.queueStats.QueueChanged(ctx, conv.SectorID, conv.QueueID) // entered the queue
@@ -411,7 +422,7 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateCon
 	s.publishConversation(ctx, conv)
 	// conversation.updated drives webhooks + automation rules only from an explicit
 	// Update (PATCH), not from every internal publishConversation caller.
-	s.webhooks.Emit(ctx, conv.TenantID, contracts.RealtimeConversationUpdated, conv.SectorID, contracts.NewConversationPayload(conv))
+	s.emitConversationWebhook(ctx, conv, contracts.RealtimeConversationUpdated)
 	s.emitRuleEvent(ctx, conv, contracts.RealtimeConversationUpdated, contracts.NewConversationPayload(conv))
 	// A status change that lands on a terminal state also emits the named
 	// lifecycle event (e.g. resolving a conversation via PATCH status=resolved).
@@ -632,7 +643,7 @@ func (s *Service) Close(ctx context.Context, conversationID string, cmd contract
 	})
 	s.publishConversation(ctx, conv)
 	s.publishLifecycle(ctx, conv, contracts.RealtimeConversationClosed)
-	s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, conv.SectorID, contracts.NewConversationPayload(conv))
+	s.emitConversationWebhook(ctx, conv, entity.EventConversationClosed)
 	s.sla.OnResolved(ctx, conv, now)
 	s.csat.OnConversationClosed(ctx, conv)
 	if wasQueued {
@@ -671,7 +682,7 @@ func (s *Service) CloseInactive(ctx context.Context, idleFor time.Duration) (int
 		s.recordEvent(ctx, conv, entity.EventConversationClosed, map[string]any{"reason": "inactivity"})
 		s.publishConversation(ctx, conv)
 		s.publishLifecycle(ctx, conv, contracts.RealtimeConversationClosed)
-		s.webhooks.Emit(ctx, conv.TenantID, entity.EventConversationClosed, conv.SectorID, contracts.NewConversationPayload(conv))
+		s.emitConversationWebhook(ctx, conv, entity.EventConversationClosed)
 		s.sla.OnResolved(ctx, conv, now)
 		s.csat.OnConversationClosed(ctx, conv)
 		if wasQueued {
@@ -977,8 +988,7 @@ func (s *Service) EditMessage(ctx context.Context, conversationID, messageID str
 		contracts.RealtimeMessageUpdated, contracts.NewMessagePayload(msg))
 	// message_updated webhook (edit). Internal notes are never edited out to channels.
 	if msg.Direction != entity.DirectionInternal {
-		s.webhooks.Emit(ctx, conv.TenantID, contracts.RealtimeMessageUpdated, conv.SectorID,
-			contracts.NewIntegrationMessagePayload(msg, s.resolveIntegrationMedia(ctx, msg)))
+		s.emitMessageWebhook(ctx, conv, msg, contracts.RealtimeMessageUpdated)
 	}
 	return msg, nil
 }
@@ -1139,8 +1149,7 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 	// public channel-media URLs and the template (id+params) is included, so the
 	// integrator can deliver the message to the customer from this single event.
 	if eventType == entity.EventMessageCreated {
-		s.webhooks.Emit(ctx, conv.TenantID, entity.EventMessageCreated, conv.SectorID,
-			contracts.NewIntegrationMessagePayload(msg, s.resolveIntegrationMedia(ctx, msg)))
+		s.emitMessageWebhook(ctx, conv, msg, entity.EventMessageCreated)
 		// ANTI-LOOP: a message authored by automation emits its message_created with
 		// origin=automation, so it never re-triggers automation rules — derived here
 		// from the sender so it holds even when ctx wasn't tagged upstream.
@@ -1151,6 +1160,50 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 		s.emitRuleEvent(ruleCtx, conv, entity.EventMessageCreated, contracts.NewMessagePayload(msg))
 	}
 	return msg, nil
+}
+
+// integrationContact best-effort resolves the recipient block for an outbound
+// webhook. nil-safe: returns nil when no enricher is wired or it can't resolve.
+func (s *Service) integrationContact(ctx context.Context, contactID string) *contracts.WebhookContact {
+	if s.enricher == nil || contactID == "" {
+		return nil
+	}
+	return s.enricher.WebhookContact(ctx, contactID)
+}
+
+// integrationAgent best-effort resolves the agent (id+name) block. nil-safe.
+func (s *Service) integrationAgent(ctx context.Context, userID string) *contracts.WebhookAgent {
+	if s.enricher == nil || userID == "" {
+		return nil
+	}
+	return s.enricher.WebhookAgent(ctx, userID)
+}
+
+// emitMessageWebhook emits a message webhook with the lazy integration payload:
+// signed media URLs + the recipient contact + (for an agent-authored message) the
+// sender agent + the conversation's custom_attributes. The builder runs only when a
+// subscription matches, so contact/agent are not resolved otherwise.
+func (s *Service) emitMessageWebhook(ctx context.Context, conv *entity.Conversation, msg *entity.Message, event string) {
+	s.webhooks.EmitLazy(ctx, conv.TenantID, event, conv.SectorID, func() any {
+		p := contracts.NewIntegrationMessagePayload(msg, s.resolveIntegrationMedia(ctx, msg))
+		p.Contact = s.integrationContact(ctx, conv.ContactID)
+		if msg.SenderType == entity.SenderAgent {
+			p.Agent = s.integrationAgent(ctx, msg.SenderID)
+		}
+		p.Conversation = &contracts.WebhookConversationRef{CustomAttributes: conv.CustomAttributes}
+		return p
+	})
+}
+
+// emitConversationWebhook emits a conversation lifecycle webhook with the lazy
+// integration payload (custom_attributes + recipient contact + assigned agent),
+// resolved only when a subscription matches the event.
+func (s *Service) emitConversationWebhook(ctx context.Context, conv *entity.Conversation, event string) {
+	s.webhooks.EmitLazy(ctx, conv.TenantID, event, conv.SectorID, func() any {
+		return contracts.NewIntegrationConversationPayload(conv,
+			s.integrationContact(ctx, conv.ContactID),
+			s.integrationAgent(ctx, conv.AssignedTo))
+	})
 }
 
 // resolveIntegrationMedia best-effort resolves a message's attachment ids to

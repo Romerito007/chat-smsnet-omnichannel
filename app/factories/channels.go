@@ -70,6 +70,9 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 	// Inbound messages + conversation lifecycle fan out to webhooks (Chatwoot
 	// model), with signed channel-media attachment URLs in the payload.
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	// Enrich inbound webhook payloads with the recipient contact (+ identities),
+	// resolved lazily — only when a subscription matches the event.
+	svc.SetWebhookEnricher(WebhookEnricher(c))
 	svc.SetIntegrationMediaResolver(AttachmentService(c))
 	return svc
 }

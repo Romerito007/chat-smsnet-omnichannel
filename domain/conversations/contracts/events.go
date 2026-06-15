@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"context"
 	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
@@ -110,6 +111,13 @@ type MessagePayload struct {
 	DeliveryStatus string                  `json:"delivery_status,omitempty"`
 	CreatedAt      time.Time               `json:"created_at"`
 	EditedAt       *time.Time              `json:"edited_at,omitempty"`
+	// Contact/Agent/Conversation are the OUTBOUND-webhook enrichment blocks, set
+	// only by the integration builder (see emitMessageWebhook). They stay nil — and
+	// thus absent — on the lean realtime/rule payloads. Agent is present only for an
+	// agent-authored message.
+	Contact      *WebhookContact         `json:"contact,omitempty"`
+	Agent        *WebhookAgent           `json:"agent,omitempty"`
+	Conversation *WebhookConversationRef `json:"conversation,omitempty"`
 }
 
 // MessageTemplatePayload is the template section of a message payload: the opaque
@@ -167,4 +175,80 @@ func NewIntegrationMessagePayload(m *entity.Message, mediaURLs map[string]string
 type MessageRefPayload struct {
 	MessageID      string `json:"message_id"`
 	ConversationID string `json:"conversation_id"`
+}
+
+// ── outbound-webhook enrichment ───────────────────────────────────────────────
+//
+// These blocks are attached ONLY to the integration (outbound-webhook) payload
+// variants, never to the realtime/UI or automation-rule payloads. They give the
+// channel gateway everything it needs to ROUTE a message without a second call:
+// the recipient (contact + its channel identities — e.g. the WhatsApp JID) and,
+// for an agent-authored message, who sent it (id + name only, no PII).
+
+// WebhookIdentity is a contact's external identifier on a channel — the routing
+// key the gateway dials (e.g. {channel:"whatsapp", external_id:"<JID>"}).
+type WebhookIdentity struct {
+	Channel    string `json:"channel"`
+	ExternalID string `json:"external_id"`
+}
+
+// WebhookContact is the recipient block: the contact's id, display name, primary
+// phone, channel identities (the routing keys) and tenant custom_attributes. PII
+// beyond name/phone is intentionally excluded.
+type WebhookContact struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name,omitempty"`
+	Phone            string            `json:"phone,omitempty"`
+	Identities       []WebhookIdentity `json:"identities,omitempty"`
+	CustomAttributes map[string]any    `json:"custom_attributes,omitempty"`
+}
+
+// WebhookAgent is the sender block for an agent-authored message: id + name only,
+// deliberately without email or any other PII.
+type WebhookAgent struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
+// WebhookConversationRef is the lightweight conversation block embedded in a
+// message webhook so the integrator can read the conversation's custom_attributes
+// without a second call.
+type WebhookConversationRef struct {
+	CustomAttributes map[string]any `json:"custom_attributes,omitempty"`
+}
+
+// WebhookEnricher resolves the contact + agent blocks for an outbound-webhook
+// payload. It is invoked LAZILY — only after the dispatcher has confirmed at least
+// one subscription exists for the event — so a tenant with no webhook pays zero
+// contact/agent lookups on the hot inbound path. Every method is best-effort: a
+// nil return omits the block and never breaks delivery. Implemented by an adapter
+// over the contacts + iam user services.
+type WebhookEnricher interface {
+	// WebhookContact resolves the recipient block for a contact id (1 lookup).
+	WebhookContact(ctx context.Context, contactID string) *WebhookContact
+	// WebhookAgent resolves an agent's id+name block for a user id (0-1 lookup).
+	WebhookAgent(ctx context.Context, userID string) *WebhookAgent
+}
+
+// IntegrationConversationPayload is the conversation representation destined for an
+// OUTBOUND webhook: the lean ConversationPayload plus the enrichment blocks
+// (custom_attributes, the recipient contact and the assigned agent). assigned_agent
+// is null when the conversation is unassigned (or for inbound, where agents aren't
+// resolved).
+type IntegrationConversationPayload struct {
+	ConversationPayload
+	CustomAttributes map[string]any  `json:"custom_attributes,omitempty"`
+	Contact          *WebhookContact `json:"contact,omitempty"`
+	AssignedAgent    *WebhookAgent   `json:"assigned_agent,omitempty"`
+}
+
+// NewIntegrationConversationPayload builds the enriched conversation webhook
+// payload. contact/agent are pre-resolved by the caller (lazily) and may be nil.
+func NewIntegrationConversationPayload(c *entity.Conversation, contact *WebhookContact, agent *WebhookAgent) IntegrationConversationPayload {
+	return IntegrationConversationPayload{
+		ConversationPayload: NewConversationPayload(c),
+		CustomAttributes:    c.CustomAttributes,
+		Contact:             contact,
+		AssignedAgent:       agent,
+	}
 }

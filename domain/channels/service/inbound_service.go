@@ -38,6 +38,7 @@ type InboundService struct {
 	attachments   chcontracts.InboundAttachmentStore
 	ruleSink      shared.RuleEventSink
 	webhooks      shared.WebhookEmitter
+	enricher      convcontracts.WebhookEnricher
 	media         shared.IntegrationMediaResolver
 }
 
@@ -72,6 +73,33 @@ func (s *InboundService) SetIntegrationMediaResolver(r shared.IntegrationMediaRe
 	if r != nil {
 		s.media = r
 	}
+}
+
+// SetWebhookEnricher wires the resolver of the outbound-webhook contact block.
+// Inbound enriches the CONTACT only (a customer message has no agent), lazily —
+// the contact is resolved only when a subscription matches the event. Optional.
+func (s *InboundService) SetWebhookEnricher(e convcontracts.WebhookEnricher) {
+	if e != nil {
+		s.enricher = e
+	}
+}
+
+// integrationContact best-effort resolves the recipient block for the webhook.
+// nil-safe: nil when no enricher is wired or it can't resolve.
+func (s *InboundService) integrationContact(ctx context.Context, contactID string) *convcontracts.WebhookContact {
+	if s.enricher == nil || contactID == "" {
+		return nil
+	}
+	return s.enricher.WebhookContact(ctx, contactID)
+}
+
+// emitConversationWebhook emits a conversation lifecycle webhook with the lazy
+// integration payload — the recipient contact (no agent on inbound), resolved only
+// when a subscription matches.
+func (s *InboundService) emitConversationWebhook(ctx context.Context, conv *conventity.Conversation, event string) {
+	s.webhooks.EmitLazy(ctx, conv.TenantID, event, conv.SectorID, func() any {
+		return convcontracts.NewIntegrationConversationPayload(conv, s.integrationContact(ctx, conv.ContactID), nil)
+	})
 }
 
 // NewInboundService builds the orchestrator.
@@ -311,7 +339,7 @@ func (s *InboundService) reopen(ctx context.Context, conv *conventity.Conversati
 	s.recordEvent(ctx, conv, conventity.EventConversationReopened, nil)
 	s.emitRule(ctx, conv, conventity.EventConversationReopened)
 	// A reopen is a significant change → conversation_updated webhook.
-	s.webhooks.Emit(ctx, conv.TenantID, convcontracts.RealtimeConversationUpdated, conv.SectorID, convcontracts.NewConversationPayload(conv))
+	s.emitConversationWebhook(ctx, conv, convcontracts.RealtimeConversationUpdated)
 	return nil
 }
 
@@ -391,8 +419,12 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	s.publishConversation(ctx, conv)
 	// Inbound customer messages flow to webhooks too (Chatwoot model: entrada and
 	// saída both via message_created), with signed channel-media attachment URLs.
-	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventMessageCreated, conv.SectorID,
-		convcontracts.NewIntegrationMessagePayload(message, s.integrationMedia(ctx, message)))
+	s.webhooks.EmitLazy(ctx, conv.TenantID, conventity.EventMessageCreated, conv.SectorID, func() any {
+		p := convcontracts.NewIntegrationMessagePayload(message, s.integrationMedia(ctx, message))
+		p.Contact = s.integrationContact(ctx, conv.ContactID)
+		p.Conversation = &convcontracts.WebhookConversationRef{CustomAttributes: conv.CustomAttributes}
+		return p
+	})
 	return message, nil
 }
 
@@ -427,7 +459,7 @@ func (s *InboundService) routeNew(ctx context.Context, conv *conventity.Conversa
 	s.recordEvent(ctx, conv, conventity.EventConversationEnqueued, nil)
 	s.publishConversation(ctx, conv)
 	// The conversation is now in its initial (queued) state → fan out to webhooks.
-	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationCreated, conv.SectorID, convcontracts.NewConversationPayload(conv))
+	s.emitConversationWebhook(ctx, conv, conventity.EventConversationCreated)
 	return nil
 }
 

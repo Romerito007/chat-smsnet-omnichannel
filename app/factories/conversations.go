@@ -23,6 +23,9 @@ func conversationServiceBase(c *container.Container) *convservice.Service {
 		clock,
 	)
 	svc.SetWebhookEmitter(WebhookDispatcher(c))
+	// Enrich outbound webhook payloads with the recipient contact (+ identities) and
+	// the agent (id+name) — resolved lazily, only when a subscription matches.
+	svc.SetWebhookEnricher(WebhookEnricher(c))
 	// Outbound webhook payloads carry signed, public channel-media URLs so the
 	// integrator can fetch a delivered message's attachments without a JWT.
 	svc.SetIntegrationMediaResolver(AttachmentService(c))

@@ -38,9 +38,38 @@ type Service struct {
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 	webhooks      shared.WebhookEmitter
+	enricher      convcontracts.WebhookEnricher
 	notifier      shared.Notifier
 	auditor       shared.Auditor
 	queueStats    shared.QueueStatsNotifier
+}
+
+// SetWebhookEnricher wires the resolver of the outbound-webhook contact + agent
+// blocks for assignment/transfer events. Optional and lazy (resolved only when a
+// subscription matches the event).
+func (s *Service) SetWebhookEnricher(e convcontracts.WebhookEnricher) {
+	if e != nil {
+		s.enricher = e
+	}
+}
+
+// emitConversationWebhook emits a conversation webhook with the lazy integration
+// payload (custom_attributes + recipient contact + assigned agent), resolved only
+// when a subscription matches the event.
+func (s *Service) emitConversationWebhook(ctx context.Context, conv *conventity.Conversation, event string) {
+	s.webhooks.EmitLazy(ctx, conv.TenantID, event, conv.SectorID, func() any {
+		var contact *convcontracts.WebhookContact
+		var agent *convcontracts.WebhookAgent
+		if s.enricher != nil {
+			if conv.ContactID != "" {
+				contact = s.enricher.WebhookContact(ctx, conv.ContactID)
+			}
+			if conv.AssignedTo != "" {
+				agent = s.enricher.WebhookAgent(ctx, conv.AssignedTo)
+			}
+		}
+		return convcontracts.NewIntegrationConversationPayload(conv, contact, agent)
+	})
 }
 
 // SetAuditor wires the audit trail. Optional: when unset, transfers are not
@@ -214,7 +243,7 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 		if fromQueue != "" {
 			s.queueStats.QueueChanged(ctx, fromSector, fromQueue)
 		}
-		s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationTransferred, conv.SectorID, convcontracts.NewConversationPayload(conv))
+		s.emitConversationWebhook(ctx, conv, conventity.EventConversationTransferred)
 		_ = s.auditor.Record(ctx, shared.AuditEntry{
 			Action: "conversation.transferred", ResourceType: "conversation", ResourceID: conv.ID,
 			Data: map[string]any{
@@ -454,7 +483,7 @@ func (s *Service) applyAssignment(ctx context.Context, conv *conventity.Conversa
 	s.publishAssigned(ctx, conv, agentID)
 	// The conversation left the queue (waiting--) and is now assigned (assigned++).
 	s.queueStats.QueueChanged(ctx, conv.SectorID, fromQueue)
-	s.webhooks.Emit(ctx, conv.TenantID, conventity.EventConversationAssigned, conv.SectorID, convcontracts.NewConversationPayload(conv))
+	s.emitConversationWebhook(ctx, conv, conventity.EventConversationAssigned)
 	s.notifier.Notify(ctx, shared.NotifyInput{
 		TenantID: conv.TenantID, UserID: agentID,
 		Type:  "conversation.assigned_to_you",

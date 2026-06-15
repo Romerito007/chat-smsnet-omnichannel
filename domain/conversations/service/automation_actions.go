@@ -42,7 +42,7 @@ func (s *Service) automationMutate(ctx context.Context, conversationID string, m
 	}
 	s.recordEvent(ctx, conv, event, nil)
 	s.publishConversation(ctx, conv)
-	s.webhooks.Emit(ctx, conv.TenantID, event, conv.SectorID, contracts.NewConversationPayload(conv))
+	s.emitConversationWebhook(ctx, conv, event)
 	s.emitRuleEvent(ctx, conv, event, contracts.NewConversationPayload(conv))
 	return nil
 }

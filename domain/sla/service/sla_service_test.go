@@ -144,6 +144,10 @@ type fakeWebhooks struct{ events []string }
 func (w *fakeWebhooks) Emit(_ context.Context, _, event, _ string, _ any) {
 	w.events = append(w.events, event)
 }
+func (w *fakeWebhooks) EmitLazy(_ context.Context, _, event, _ string, build func() any) {
+	_ = build()
+	w.events = append(w.events, event)
+}
 func (w *fakeWebhooks) has(event string) bool {
 	for _, e := range w.events {
 		if e == event {

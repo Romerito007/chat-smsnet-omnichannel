@@ -12,6 +12,12 @@ type WebhookEmitter interface {
 	// matching webhook subscriptions. sectorID is the event's sector ("" when none),
 	// honored against a subscription's sector scopes. payload must be JSON-serializable.
 	Emit(ctx context.Context, tenantID, event, sectorID string, payload any)
+	// EmitLazy is Emit with a DEFERRED payload: build is invoked at most once, and
+	// ONLY after the dispatcher has confirmed at least one subscription matches the
+	// event. Callers whose payload is expensive to assemble (e.g. it resolves the
+	// contact and agent blocks) use this so a tenant with no webhook pays nothing on
+	// the hot path. build must return a JSON-serializable value.
+	EmitLazy(ctx context.Context, tenantID, event, sectorID string, build func() any)
 }
 
 // NoopWebhookEmitter discards events. Useful as a default and in tests.
@@ -19,6 +25,9 @@ type NoopWebhookEmitter struct{}
 
 // Emit implements WebhookEmitter.
 func (NoopWebhookEmitter) Emit(context.Context, string, string, string, any) {}
+
+// EmitLazy implements WebhookEmitter; it never invokes build (no subscriptions).
+func (NoopWebhookEmitter) EmitLazy(context.Context, string, string, string, func() any) {}
 
 // ChannelWebhookManager keeps a channel connection's MANAGED webhook subscription
 // in sync. It is implemented by the webhooks SubscriptionService and injected into

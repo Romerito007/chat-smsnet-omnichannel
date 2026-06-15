@@ -523,10 +523,52 @@ func schemas() M {
 			"created_at": dateTime(), "updated_at": dateTime(),
 		}),
 		// WebhookEnvelope is the exact JSON body delivered (and HMAC-signed) for
-		// every event. data is the event payload: a conversation object for the
-		// conversation_* events, a message object for message_created, etc.
+		// every event. data is the event payload: a WebhookConversationData for the
+		// conversation_* events, a WebhookMessageData for message_created/updated, etc.
 		"WebhookEnvelope": object(M{
 			"id": str(), "event": webhookEventEnum(), "created_at": dateTime(), "data": freeObject(),
+		}),
+		// WebhookIdentity is a contact's external identifier on a channel — the routing
+		// key the channel gateway dials (e.g. the WhatsApp JID). The recipient of an
+		// outbound message is resolved from contact.identities[channel == "whatsapp"].
+		"WebhookIdentity": object(M{
+			"channel":     describedStr("Channel of the identifier (whatsapp, telegram, instagram, …)."),
+			"external_id": describedStr("The contact's id on that channel (e.g. the WhatsApp JID) — the gateway's routing key."),
+		}),
+		// WebhookContact is the recipient block embedded in message/conversation
+		// webhooks so the gateway can route without a second call. No PII beyond
+		// name/phone.
+		"WebhookContact": object(M{
+			"id": str(), "name": str(), "phone": str(),
+			"identities":        arr(ref("WebhookIdentity")),
+			"custom_attributes": freeObject(),
+		}),
+		// WebhookAgent is the sender block for an agent-authored message: id + name
+		// only (deliberately no email/PII). Absent for customer/automation/system.
+		"WebhookAgent": object(M{"id": str(), "name": str()}),
+		// WebhookMessageData is the data of a message_created/message_updated event:
+		// the message plus the enrichment blocks. contact is the recipient; agent is
+		// present ONLY for an agent-authored message; conversation carries the
+		// conversation's custom_attributes.
+		"WebhookMessageData": object(M{
+			"id": str(), "conversation_id": str(), "sender_type": str(), "sender_id": str(),
+			"direction": str(), "message_type": str(), "text": str(),
+			"attachments": arr(ref("Attachment")), "template": ref("MessageTemplate"),
+			"internal": boolean(), "delivery_status": str(), "created_at": dateTime(), "edited_at": dateTime(),
+			"contact": ref("WebhookContact"), "agent": ref("WebhookAgent"),
+			"conversation": object(M{"custom_attributes": freeObject()}),
+		}),
+		// WebhookConversationData is the data of a conversation_* event: the
+		// conversation plus custom_attributes, the recipient contact and the assigned
+		// agent (null when unassigned, or for inbound where agents aren't resolved).
+		"WebhookConversationData": object(M{
+			"id": str(), "tenant_id": str(), "contact_id": str(), "channel": str(), "channel_id": str(),
+			"sector_id": str(), "queue_id": str(), "status": str(), "assigned_to": str(),
+			"priority": str(), "protocol": str(), "tags": arr(str()),
+			"last_message_at": dateTime(), "unread_count": integer(), "last_read_at": dateTime(), "updated_at": dateTime(),
+			"custom_attributes": freeObject(),
+			"contact":           ref("WebhookContact"),
+			"assigned_agent":    ref("WebhookAgent"),
 		}),
 
 		// ── copilot ────────────────────────────────────────────────────────────
