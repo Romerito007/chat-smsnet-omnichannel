@@ -32,10 +32,22 @@ const (
 	ToolSourceMCP  ToolSourceKind = "mcp"  // a specific tenant MCP server's tools
 )
 
+// Transport slugs for an ISP tool source (mirror providerhub's vocabulary). They
+// live here too so the mcp domain can route on ToolSource.Transport without
+// importing the providerhub domain.
+const (
+	TransportHTTP = "http"
+	TransportMCP  = "mcp"
+)
+
 // ToolSource is the resolved external tool source for a conversation's channel.
 type ToolSource struct {
 	Kind        ToolSourceKind
 	MCPServerID string // set only when Kind == ToolSourceMCP
+	// Transport is the SMSNET surface for an ISP source: "mcp" (the CONSULTAS/
+	// OPERACOES servers) or "http" (the ProviderHub gateway). Set only when Kind ==
+	// ToolSourceISP. An empty value behaves as "mcp" (the AI-native transport).
+	Transport string
 }
 
 // DecorateInput is the context for one SMSNET tool-call decoration.

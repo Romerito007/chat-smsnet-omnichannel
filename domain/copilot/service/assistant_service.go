@@ -9,6 +9,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/repository"
 	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/repository"
+	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
 	phrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/repository"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
@@ -20,6 +21,7 @@ type CreateAssistant struct {
 	ChannelIDs            []string
 	ISPProfileID          string
 	MCPServerID           string
+	Transport             string // http|mcp; only with an ISP profile (validated against its transports)
 	AllowCustomerData     *bool
 	HumanApprovalRequired *bool
 	Temperature           *float64
@@ -34,6 +36,7 @@ type UpdateAssistant struct {
 	ChannelIDs            *[]string
 	ISPProfileID          *string
 	MCPServerID           *string
+	Transport             *string
 	AllowCustomerData     *bool
 	HumanApprovalRequired *bool
 	Temperature           *float64
@@ -91,7 +94,8 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 	}
 	ispProfileID := strings.TrimSpace(cmd.ISPProfileID)
 	mcpServerID := strings.TrimSpace(cmd.MCPServerID)
-	if err := s.validateToolSource(ctx, ispProfileID, mcpServerID); err != nil {
+	transport, err := s.validateToolSource(ctx, ispProfileID, mcpServerID, strings.TrimSpace(cmd.Transport))
+	if err != nil {
 		return nil, err
 	}
 	if err := s.validateChannels(ctx, cmd.ChannelIDs); err != nil {
@@ -109,6 +113,7 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 		ChannelIDs:            cmd.ChannelIDs,
 		ISPProfileID:          ispProfileID,
 		MCPServerID:           mcpServerID,
+		Transport:             transport,
 		AllowCustomerData:     boolOr(cmd.AllowCustomerData, false),
 		HumanApprovalRequired: boolOr(cmd.HumanApprovalRequired, false),
 		Temperature:           floatOr(cmd.Temperature, entity.DefaultTemperature),
@@ -156,10 +161,18 @@ func (s *AssistantService) Update(ctx context.Context, id string, cmd UpdateAssi
 	if cmd.MCPServerID != nil {
 		a.MCPServerID = strings.TrimSpace(*cmd.MCPServerID)
 	}
-	if cmd.ISPProfileID != nil || cmd.MCPServerID != nil {
-		if err := s.validateToolSource(ctx, a.ISPProfileID, a.MCPServerID); err != nil {
+	if cmd.Transport != nil {
+		a.Transport = strings.TrimSpace(*cmd.Transport)
+	}
+	// The tool source + transport are validated on the RESULTING state whenever any
+	// of them changes, so the transport always stays consistent with the pinned
+	// profile's enabled transports.
+	if cmd.ISPProfileID != nil || cmd.MCPServerID != nil || cmd.Transport != nil {
+		transport, err := s.validateToolSource(ctx, a.ISPProfileID, a.MCPServerID, a.Transport)
+		if err != nil {
 			return nil, err
 		}
+		a.Transport = transport
 	}
 	if cmd.AllowCustomerData != nil {
 		a.AllowCustomerData = *cmd.AllowCustomerData
@@ -277,32 +290,59 @@ func (s *AssistantService) IsMCPServerInUse(ctx context.Context, mcpServerID str
 }
 
 // validateToolSource enforces that the external tool source is an ISP profile XOR a
-// custom MCP server (never both), and that whichever is set exists for the tenant.
-// Both empty is allowed (no external tools).
-func (s *AssistantService) validateToolSource(ctx context.Context, ispProfileID, mcpServerID string) error {
+// custom MCP server (never both), that whichever is set exists for the tenant, and
+// resolves the effective transport. It returns the transport the assistant should
+// store: a transport from the pinned profile's enabled set (selected or, when the
+// profile enables exactly one, defaulted); "" when there is no ISP profile. Both
+// empty (no external tools) is allowed.
+func (s *AssistantService) validateToolSource(ctx context.Context, ispProfileID, mcpServerID, transport string) (string, error) {
 	if ispProfileID != "" && mcpServerID != "" {
-		return apperror.Validation("choose an ISP profile OR an MCP server, not both").
+		return "", apperror.Validation("choose an ISP profile OR an MCP server, not both").
 			WithDetails(map[string]any{"isp_profile_id": "mutually exclusive with mcp_server_id"})
 	}
-	if err := s.validateProfile(ctx, ispProfileID); err != nil {
-		return err
+	if err := s.validateMCPServer(ctx, mcpServerID); err != nil {
+		return "", err
 	}
-	return s.validateMCPServer(ctx, mcpServerID)
+	return s.resolveProfileTransport(ctx, ispProfileID, transport)
 }
 
-// validateProfile ensures a pinned ISP profile exists for the tenant (empty = no
-// ISP, allowed).
-func (s *AssistantService) validateProfile(ctx context.Context, ispProfileID string) error {
+// resolveProfileTransport validates the pinned ISP profile and resolves the
+// assistant's transport against the profile's enabled transports:
+//   - no ISP profile → transport must be empty too (else a clear 422).
+//   - profile enables exactly one transport → that one (selection optional, but if
+//     given it must match).
+//   - profile enables both → transport is REQUIRED and must be one of them.
+func (s *AssistantService) resolveProfileTransport(ctx context.Context, ispProfileID, transport string) (string, error) {
 	if ispProfileID == "" {
-		return nil
-	}
-	if _, err := s.profiles.FindByID(ctx, ispProfileID); err != nil {
-		if apperror.From(err).Code == apperror.CodeNotFound {
-			return apperror.Validation("unknown isp_profile_id")
+		if transport != "" {
+			return "", apperror.Validation("transport requires an isp_profile_id").
+				WithDetails(map[string]any{"transport": "only valid with an ISP profile"})
 		}
-		return err
+		return "", nil
 	}
-	return nil
+	profile, err := s.profiles.FindByID(ctx, ispProfileID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return "", apperror.Validation("unknown isp_profile_id")
+		}
+		return "", err
+	}
+	if transport == "" {
+		if len(profile.Transports) == 1 {
+			return profile.Transports[0], nil // sole transport, selection optional
+		}
+		return "", apperror.Validation("transport is required: the ISP profile enables more than one transport").
+			WithDetails(map[string]any{"transport": "choose one of " + strings.Join(profile.Transports, ", ")})
+	}
+	if !phentity.IsSupportedTransport(transport) {
+		return "", apperror.Validation("unknown transport (expected http or mcp)").
+			WithDetails(map[string]any{"transport": "must be http or mcp"})
+	}
+	if !profile.SupportsTransport(transport) {
+		return "", apperror.Validation("transport not enabled on the ISP profile").
+			WithDetails(map[string]any{"transport": "the profile enables " + strings.Join(profile.Transports, ", ")})
+	}
+	return transport, nil
 }
 
 // validateMCPServer ensures the referenced MCP server exists for the tenant (empty

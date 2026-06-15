@@ -43,9 +43,11 @@ func NewISPResolver(profiles repository.ProfileRepository) *ISPResolver {
 	return &ISPResolver{profiles: profiles}
 }
 
-// Resolve selects the profile. explicitID (when non-empty) must be an enabled
-// profile of the tenant, else a NotFound error. With no explicit id: the default
-// wins; if there is no default, a single eligible profile resolves; 2+ eligible
+// Resolve selects the profile for the MANUAL (HTTP gateway) path, so only profiles
+// that ENABLE the http transport are eligible — a mcp-only profile cannot serve the
+// manual search. explicitID (when non-empty) must be an enabled, http-enabled
+// profile of the tenant, else a NotFound / Conflict error. With no explicit id: an
+// http-enabled default wins; otherwise a single http-enabled profile resolves; 2+
 // is ResolveAmbiguous; zero is ResolveNone.
 func (r *ISPResolver) Resolve(ctx context.Context, explicitID string) (ResolveResult, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
@@ -60,6 +62,9 @@ func (r *ISPResolver) Resolve(ctx context.Context, explicitID string) (ResolveRe
 		if !p.Enabled {
 			return ResolveResult{}, apperror.NotFound("isp profile not found")
 		}
+		if !p.SupportsHTTP() {
+			return ResolveResult{}, apperror.Conflict("este perfil de ISP não habilita o transporte HTTP, exigido pela busca manual")
+		}
 		return ResolveResult{Status: ResolveOK, Profile: p}, nil
 	}
 
@@ -69,10 +74,11 @@ func (r *ISPResolver) Resolve(ctx context.Context, explicitID string) (ResolveRe
 	}
 	eligible := make([]*entity.ISPProfile, 0, len(all))
 	for _, p := range all {
-		if p.Enabled {
-			eligible = append(eligible, p)
+		if !p.Enabled || !p.SupportsHTTP() {
+			continue // manual search needs the http transport
 		}
-		if p.Enabled && p.IsDefault {
+		eligible = append(eligible, p)
+		if p.IsDefault {
 			return ResolveResult{Status: ResolveOK, Profile: p}, nil
 		}
 	}

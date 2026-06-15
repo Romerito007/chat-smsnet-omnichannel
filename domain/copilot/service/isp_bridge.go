@@ -44,7 +44,7 @@ func (b *ISPToolBridge) ToolSource(ctx context.Context, channelID string) (mcpco
 		return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceMCP, MCPServerID: assistant.MCPServerID}, nil
 	}
 	if assistant.ISPProfileID != "" {
-		return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceISP}, nil
+		return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceISP, Transport: assistant.Transport}, nil
 	}
 	return mcpcontracts.ToolSource{Kind: mcpcontracts.ToolSourceNone}, nil
 }

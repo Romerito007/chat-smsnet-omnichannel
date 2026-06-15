@@ -593,6 +593,7 @@ func (d *demoSeeder) seedIntegrations() error {
 		ID: shared.NewID(), TenantID: d.tenantID, Label: "SGP Demo",
 		ISPType:     phentity.ISPSGPNet,
 		Credentials: map[string]string{"host": "https://isp.demo.local", "token": "demo-isp-token-PLACEHOLDER"},
+		Transports:  []string{phentity.TransportHTTP, phentity.TransportMCP},
 		IsDefault:   true, TimeoutMs: 8000, Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
 	}
 	if err := phrepo.NewProfileRepository(d.db, d.c.Cipher).Create(d.ctx, profile); err != nil {
@@ -609,7 +610,7 @@ func (d *demoSeeder) seedIntegrations() error {
 	}
 	assistant := &cpentity.Assistant{
 		ID: shared.NewID(), TenantID: d.tenantID, Name: "Assistente Suporte",
-		ChannelIDs: chIDs, ISPProfileID: d.ispProfileID,
+		ChannelIDs: chIDs, ISPProfileID: d.ispProfileID, Transport: phentity.TransportMCP,
 		AllowCustomerData: true, HumanApprovalRequired: true,
 		Temperature: 0.3, MaxTokens: 1024,
 		SystemInstructions: "Você é o assistente de suporte do provedor. Seja objetivo e cordial.",

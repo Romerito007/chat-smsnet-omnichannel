@@ -40,6 +40,7 @@ type CreateProfileRequest struct {
 	Label                       string            `json:"label"`
 	ISPType                     string            `json:"isp_type"`
 	Credentials                 map[string]string `json:"credentials"`
+	Transports                  []string          `json:"transports"` // required: ["http"], ["mcp"] or both
 	IsDefault                   bool              `json:"is_default"`
 	UsaPegarFaturaAtrasada      bool              `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF bool              `json:"usa_extrair_linha_digitavel_pdf"`
@@ -53,6 +54,7 @@ func (r CreateProfileRequest) ToCommand() phcontracts.CreateProfile {
 		Label:                       r.Label,
 		ISPType:                     r.ISPType,
 		Credentials:                 r.Credentials,
+		Transports:                  r.Transports,
 		IsDefault:                   r.IsDefault,
 		UsaPegarFaturaAtrasada:      r.UsaPegarFaturaAtrasada,
 		UsaExtrairLinhaDigitavelPDF: r.UsaExtrairLinhaDigitavelPDF,
@@ -67,6 +69,7 @@ type UpdateProfileRequest struct {
 	Label                       *string            `json:"label"`
 	ISPType                     *string            `json:"isp_type"`
 	Credentials                 *map[string]string `json:"credentials"`
+	Transports                  *[]string          `json:"transports"`
 	UsaPegarFaturaAtrasada      *bool              `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF *bool              `json:"usa_extrair_linha_digitavel_pdf"`
 	TimeoutMs                   *int               `json:"timeout_ms"`
@@ -79,6 +82,7 @@ func (r UpdateProfileRequest) ToCommand() phcontracts.UpdateProfile {
 		Label:                       r.Label,
 		ISPType:                     r.ISPType,
 		Credentials:                 r.Credentials,
+		Transports:                  r.Transports,
 		UsaPegarFaturaAtrasada:      r.UsaPegarFaturaAtrasada,
 		UsaExtrairLinhaDigitavelPDF: r.UsaExtrairLinhaDigitavelPDF,
 		TimeoutMs:                   r.TimeoutMs,
@@ -95,6 +99,7 @@ type ProfileResponse struct {
 	Label                       string    `json:"label"`
 	ISPType                     string    `json:"isp_type"`
 	CredentialKeys              []string  `json:"credential_keys"`
+	Transports                  []string  `json:"transports"`
 	IsDefault                   bool      `json:"is_default"`
 	Actions                     []string  `json:"actions"`
 	UsaPegarFaturaAtrasada      bool      `json:"usa_pegar_fatura_atrasada"`
@@ -123,6 +128,7 @@ func NewProfileResponse(p *phentity.ISPProfile) ProfileResponse {
 		Label:                       p.Label,
 		ISPType:                     p.ISPType,
 		CredentialKeys:              keys,
+		Transports:                  append([]string(nil), p.Transports...),
 		IsDefault:                   p.IsDefault,
 		Actions:                     actions,
 		UsaPegarFaturaAtrasada:      p.Options.UsaPegarFaturaAtrasada,

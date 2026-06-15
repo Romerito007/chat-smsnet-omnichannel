@@ -90,6 +90,25 @@ func TestOpenToolSession_ISPSourceExposesSMSNETOnly(t *testing.T) {
 	}
 }
 
+func TestOpenToolSession_ISPMCPTransportExposesSMSNET(t *testing.T) {
+	// ISP source with explicit transport=mcp behaves like the default: SMSNET tools.
+	svc := sourceFixture(contracts.ToolSource{Kind: contracts.ToolSourceISP, Transport: contracts.TransportMCP}, false)
+	names := sessionToolNames(t, svc)
+	if !names["consultar_cliente"] {
+		t.Errorf("transport=mcp must expose the SMSNET tools: %v", names)
+	}
+}
+
+func TestOpenToolSession_ISPHTTPTransportExposesNoCopilotTools(t *testing.T) {
+	// ISP source with transport=http routes at the HTTP gateway, which has no copilot
+	// tool bridge yet (phase-2 TODO) → the copilot session gets no SMSNET tools.
+	svc := sourceFixture(contracts.ToolSource{Kind: contracts.ToolSourceISP, Transport: contracts.TransportHTTP}, true)
+	names := sessionToolNames(t, svc)
+	if len(names) != 0 {
+		t.Errorf("transport=http must expose zero copilot tools (manual search uses HTTP separately), got %v", names)
+	}
+}
+
 func TestOpenToolSession_NoneSourceExposesNoTools(t *testing.T) {
 	svc := sourceFixture(contracts.ToolSource{Kind: contracts.ToolSourceNone}, false)
 	names := sessionToolNames(t, svc)

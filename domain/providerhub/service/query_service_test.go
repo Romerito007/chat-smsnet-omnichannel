@@ -145,6 +145,7 @@ func newSvc(gw *fakeGateway, limiterAllow, withProfile bool) (*QueryService, *fa
 		repo.byID["cfg1"] = &phentity.ISPProfile{
 			ID: "cfg1", TenantID: "t1", Label: "default", ISPType: phentity.ISPHubsoft,
 			IsDefault: true, Enabled: true, TimeoutMs: 1000,
+			Transports:  []string{phentity.TransportHTTP},
 			Credentials: map[string]string{"hubsoft_host": "h"},
 		}
 	}
@@ -322,8 +323,8 @@ func TestResolve_AmbiguousReturnsSelectionSentinel(t *testing.T) {
 	// Two enabled profiles, none default → ambiguous → needs_isp_selection sentinel.
 	gw := &fakeGateway{}
 	repo := newFakeProfileRepo()
-	repo.byID["a"] = &phentity.ISPProfile{ID: "a", TenantID: "t1", Label: "A", ISPType: phentity.ISPIXCSoft, Enabled: true}
-	repo.byID["b"] = &phentity.ISPProfile{ID: "b", TenantID: "t1", Label: "B", ISPType: phentity.ISPMKAuth, Enabled: true}
+	repo.byID["a"] = &phentity.ISPProfile{ID: "a", TenantID: "t1", Label: "A", ISPType: phentity.ISPIXCSoft, Enabled: true, Transports: []string{phentity.TransportHTTP}}
+	repo.byID["b"] = &phentity.ISPProfile{ID: "b", TenantID: "t1", Label: "B", ISPType: phentity.ISPMKAuth, Enabled: true, Transports: []string{phentity.TransportHTTP}}
 	svc := NewQueryService(repo, &fakeLogs{}, &fakeConvRepo{items: map[string]*conventity.Conversation{
 		"cv1": {ID: "cv1", TenantID: "t1", ContactID: "c1", SectorID: "s1"},
 	}}, &fakeContactRepo{byID: map[string]*contactentity.Contact{"c1": {ID: "c1", TenantID: "t1"}}},
@@ -343,8 +344,8 @@ func TestResolve_AmbiguousReturnsSelectionSentinel(t *testing.T) {
 func TestResolve_ExplicitIDUsedAndIdempotencyForwarded(t *testing.T) {
 	gw := &fakeGateway{liber: phcontracts.Liberacao{Liberado: true}}
 	repo := newFakeProfileRepo()
-	repo.byID["a"] = &phentity.ISPProfile{ID: "a", TenantID: "t1", Label: "A", ISPType: phentity.ISPIXCSoft, Enabled: true, Credentials: map[string]string{"ixcsoft_host": "h"}}
-	repo.byID["b"] = &phentity.ISPProfile{ID: "b", TenantID: "t1", Label: "B", ISPType: phentity.ISPMKAuth, IsDefault: true, Enabled: true, Credentials: map[string]string{"mkauth_host": "h"}}
+	repo.byID["a"] = &phentity.ISPProfile{ID: "a", TenantID: "t1", Label: "A", ISPType: phentity.ISPIXCSoft, Enabled: true, Transports: []string{phentity.TransportHTTP}, Credentials: map[string]string{"ixcsoft_host": "h"}}
+	repo.byID["b"] = &phentity.ISPProfile{ID: "b", TenantID: "t1", Label: "B", ISPType: phentity.ISPMKAuth, IsDefault: true, Enabled: true, Transports: []string{phentity.TransportHTTP}, Credentials: map[string]string{"mkauth_host": "h"}}
 	svc := NewQueryService(repo, &fakeLogs{}, &fakeConvRepo{items: map[string]*conventity.Conversation{
 		"cv1": {ID: "cv1", TenantID: "t1", ContactID: "c1", SectorID: "s1"},
 	}}, &fakeContactRepo{byID: map[string]*contactentity.Contact{"c1": {ID: "c1", TenantID: "t1"}}},

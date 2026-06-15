@@ -964,6 +964,9 @@ components:
                     type: number
                 tenant_id:
                     type: string
+                transport:
+                    description: 'SMSNET surface for the pinned ISP profile: http or mcp; must be one the profile enables. Empty when no ISP profile. Note: the copilot uses mcp; http is accepted but the copilot-over-http tool bridge is not built yet (phase 2).'
+                    type: string
                 updated_at:
                     format: date-time
                     type: string
@@ -1204,6 +1207,9 @@ components:
                 temperature:
                     description: 0–2; default 0.7 when omitted.
                     type: number
+                transport:
+                    description: http|mcp; only with an isp_profile_id. Must be a transport the profile enables (else 422). Optional when the profile enables exactly one (that one is used); required when it enables both.
+                    type: string
             required:
                 - name
             type: object
@@ -1303,6 +1309,14 @@ components:
                     type: string
                 timeout_ms:
                     type: integer
+                transports:
+                    description: 'REQUIRED. SMSNET surfaces to enable (at least one): http (gateway) and/or mcp.'
+                    items:
+                        enum:
+                            - http
+                            - mcp
+                        type: string
+                    type: array
                 usa_extrair_linha_digitavel_pdf:
                     type: boolean
                 usa_pegar_fatura_atrasada:
@@ -1310,6 +1324,7 @@ components:
             required:
                 - label
                 - isp_type
+                - transports
             type: object
         CreateMcpServerRequest:
             properties:
@@ -1788,6 +1803,14 @@ components:
                     type: string
                 timeout_ms:
                     type: integer
+                transports:
+                    description: SMSNET surfaces this profile enables. http = ProviderHub gateway (required for manual search); mcp = CONSULTAS/OPERACOES.
+                    items:
+                        enum:
+                            - http
+                            - mcp
+                        type: string
+                    type: array
                 updated_at:
                     format: date-time
                     type: string
@@ -3158,6 +3181,9 @@ components:
                 temperature:
                     description: 0–2.
                     type: number
+                transport:
+                    description: http|mcp; validated against the pinned profile's enabled transports.
+                    type: string
             type: object
         UpdateCustomAttributeRequest:
             properties:
@@ -3224,6 +3250,14 @@ components:
                     type: string
                 timeout_ms:
                     type: integer
+                transports:
+                    description: When set, replaces the enabled transports (still must be non-empty).
+                    items:
+                        enum:
+                            - http
+                            - mcp
+                        type: string
+                    type: array
                 usa_extrair_linha_digitavel_pdf:
                     type: boolean
                 usa_pegar_fatura_atrasada:

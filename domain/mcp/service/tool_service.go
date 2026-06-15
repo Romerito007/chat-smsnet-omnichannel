@@ -290,6 +290,14 @@ func (s *ToolService) sessionServers(ctx context.Context, conv *convEntityRef) (
 		}
 		return []*entity.ServerConnection{conn}, false, nil
 	case contracts.ToolSourceISP:
+		// Transport selects the SMSNET surface. Only "mcp" (the AI-native transport,
+		// and the empty default) exposes the CONSULTAS/OPERACOES servers to the
+		// copilot. transport == "http" routes the copilot at the ProviderHub gateway,
+		// which has no copilot tool bridge yet (phase-2 TODO) → no copilot tools. The
+		// manual search keeps using HTTP independently of this.
+		if src.Transport == contracts.TransportHTTP {
+			return nil, false, nil
+		}
 		all, aerr := s.servers.ListEnabled(ctx)
 		if aerr != nil {
 			return nil, false, aerr

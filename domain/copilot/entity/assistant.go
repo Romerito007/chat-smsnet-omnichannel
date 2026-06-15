@@ -18,6 +18,11 @@ type Assistant struct {
 	//   - both empty       → no external tools.
 	ISPProfileID string
 	MCPServerID  string
+	// Transport selects WHICH SMSNET surface this assistant uses when ISPProfileID is
+	// set: "http" (the ProviderHub gateway) or "mcp" (the CONSULTAS/OPERACOES MCP
+	// servers). It must be one of the pinned profile's enabled transports. Empty when
+	// no ISP profile is pinned.
+	Transport string
 	// Behavior (per assistant): the customer-data gate, the human-approval switch,
 	// sampling, and free-text persona/conduct instructions. The AI infra
 	// (provider/model/key/base_url) stays global in AIConfig. Financial/monitoring

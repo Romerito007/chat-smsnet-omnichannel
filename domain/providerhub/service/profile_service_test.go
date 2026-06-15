@@ -112,10 +112,13 @@ func validCreds() map[string]string {
 	return map[string]string{"ixcsoft_host": "h", "ixcsoft_token": "t"}
 }
 
+// bothTransports enables both surfaces (the common valid case in these tests).
+func bothTransports() []string { return []string{"http", "mcp"} }
+
 func TestProfileCreate_FirstIsForcedDefault(t *testing.T) {
 	svc := newProfileSvc(newFakeProfileRepo())
 	p, err := svc.Create(profileCtx(), contracts.CreateProfile{
-		Label: "IXC matriz", ISPType: "ixcsoft", Credentials: validCreds(), IsDefault: false,
+		Label: "IXC matriz", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports(), IsDefault: false,
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -134,9 +137,9 @@ func TestProfileCreate_FirstIsForcedDefault(t *testing.T) {
 func TestProfileCreate_SecondDefaultUnsetsFirst(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
-	first, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	first, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
 	second, err := svc.Create(profileCtx(), contracts.CreateProfile{
-		Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}, IsDefault: true,
+		Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}, Transports: bothTransports(), IsDefault: true,
 	})
 	if err != nil {
 		t.Fatalf("create second: %v", err)
@@ -179,7 +182,7 @@ func TestProfileCreate_AcceptsRbxsoftWithAppkey(t *testing.T) {
 	svc := newProfileSvc(newFakeProfileRepo())
 	_, err := svc.Create(profileCtx(), contracts.CreateProfile{
 		Label: "RBX", ISPType: "rbxsoft",
-		Credentials: map[string]string{"rbxsoft_host": "h", "rbxsoft_token": "t", "rbxsoft_appkey": "a"},
+		Credentials: map[string]string{"rbxsoft_host": "h", "rbxsoft_token": "t", "rbxsoft_appkey": "a"}, Transports: bothTransports(),
 	})
 	if err != nil {
 		t.Fatalf("rbxsoft with appkey should be valid: %v", err)
@@ -189,8 +192,8 @@ func TestProfileCreate_AcceptsRbxsoftWithAppkey(t *testing.T) {
 func TestProfileSetDefault_MovesDefault(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
-	a, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
-	b, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}})
+	a, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
+	b, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}, Transports: bothTransports()})
 
 	if _, err := svc.SetDefault(profileCtx(), b.ID); err != nil {
 		t.Fatalf("set default: %v", err)
@@ -208,7 +211,7 @@ func TestProfileSetDefault_MovesDefault(t *testing.T) {
 func TestProfileUpdate_RevalidatesCredentialsOnTypeChange(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
-	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
 
 	// Switch to whmcs but keep ixcsoft credentials → mismatch.
 	whmcs := "whmcs"
@@ -221,8 +224,8 @@ func TestProfileUpdate_RevalidatesCredentialsOnTypeChange(t *testing.T) {
 func TestProfileDelete_PromotesSoleRemaining(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
-	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
-	other, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}})
+	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
+	other, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}, Transports: bothTransports()})
 
 	// Delete the default; the sole remaining profile must be promoted.
 	if err := svc.Delete(profileCtx(), def.ID); err != nil {
@@ -237,9 +240,9 @@ func TestProfileDelete_PromotesSoleRemaining(t *testing.T) {
 func TestProfileDelete_NoPromotionWhenAmbiguous(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
-	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
-	_, _ = svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}})
-	_, _ = svc.Create(profileCtx(), contracts.CreateProfile{Label: "C", ISPType: "ispcloud", Credentials: map[string]string{"ispcloud_host": "h", "ispcloud_token": "t"}})
+	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
+	_, _ = svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}, Transports: bothTransports()})
+	_, _ = svc.Create(profileCtx(), contracts.CreateProfile{Label: "C", ISPType: "ispcloud", Credentials: map[string]string{"ispcloud_host": "h", "ispcloud_token": "t"}, Transports: bothTransports()})
 
 	// Delete the default; 2 remain → no guess, tenant left without a default.
 	if err := svc.Delete(profileCtx(), def.ID); err != nil {
@@ -257,8 +260,8 @@ func TestProfileDelete_NoPromotionWhenAmbiguous(t *testing.T) {
 func TestProfileDelete_NonDefaultKeepsDefault(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
-	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
-	other, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}})
+	def, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
+	other, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "mkauth", Credentials: map[string]string{"mkauth_host": "h", "mkauth_token": "t"}, Transports: bothTransports()})
 
 	// Deleting the non-default must leave the existing default untouched.
 	if err := svc.Delete(profileCtx(), other.ID); err != nil {
@@ -283,7 +286,7 @@ func TestProfileDelete_BlockedWhenInUseByAssistant(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
 	svc.SetUsageChecker(fakeUsageChecker{inUse: true, usedBy: "Atendimento WhatsApp"})
-	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
 
 	err := svc.Delete(profileCtx(), p.ID)
 	if apperror.From(err).Code != apperror.CodeConflict {
@@ -298,7 +301,7 @@ func TestProfileDelete_AllowedWhenNotInUse(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
 	svc.SetUsageChecker(fakeUsageChecker{inUse: false})
-	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
 
 	if err := svc.Delete(profileCtx(), p.ID); err != nil {
 		t.Fatalf("delete should succeed when not in use: %v", err)
@@ -308,7 +311,7 @@ func TestProfileDelete_AllowedWhenNotInUse(t *testing.T) {
 func TestProfileGatewayStatus_ReportsEnvAndProfiles(t *testing.T) {
 	repo := newFakeProfileRepo()
 	svc := newProfileSvc(repo)
-	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds()})
+	p, _ := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
 
 	st, err := svc.GatewayStatus(profileCtx())
 	if err != nil {

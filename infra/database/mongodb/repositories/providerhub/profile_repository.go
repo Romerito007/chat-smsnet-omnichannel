@@ -55,6 +55,7 @@ func (r *ProfileRepository) Update(ctx context.Context, p *entity.ISPProfile) er
 			"label":                 m.Label,
 			"isp_type":              m.ISPType,
 			"encrypted_credentials": m.EncryptedCredentials,
+			"transports":            m.Transports,
 			"is_default":            m.IsDefault,
 			"options":               m.Options,
 			"timeout_ms":            m.TimeoutMs,
@@ -164,6 +165,7 @@ func (r *ProfileRepository) toModel(p *entity.ISPProfile) (models.ISPProfile, er
 		Label:                p.Label,
 		ISPType:              p.ISPType,
 		EncryptedCredentials: encCreds,
+		Transports:           p.Transports,
 		IsDefault:            p.IsDefault,
 		Options: models.ISPProfileOptions{
 			UsaPegarFaturaAtrasada:      p.Options.UsaPegarFaturaAtrasada,
@@ -196,6 +198,7 @@ func (r *ProfileRepository) toEntity(m *models.ISPProfile) (*entity.ISPProfile, 
 		Label:       m.Label,
 		ISPType:     m.ISPType,
 		Credentials: creds,
+		Transports:  m.Transports,
 		IsDefault:   m.IsDefault,
 		Options: entity.Options{
 			UsaPegarFaturaAtrasada:      m.Options.UsaPegarFaturaAtrasada,

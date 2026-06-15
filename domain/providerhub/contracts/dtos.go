@@ -111,6 +111,7 @@ type CreateProfile struct {
 	Label                       string
 	ISPType                     string
 	Credentials                 map[string]string
+	Transports                  []string // REQUIRED: subset of {http, mcp}, at least one
 	IsDefault                   bool
 	UsaPegarFaturaAtrasada      bool
 	UsaExtrairLinhaDigitavelPDF bool
@@ -124,6 +125,7 @@ type UpdateProfile struct {
 	Label                       *string
 	ISPType                     *string
 	Credentials                 *map[string]string
+	Transports                  *[]string // when set, replaces the transports (still validated non-empty)
 	UsaPegarFaturaAtrasada      *bool
 	UsaExtrairLinhaDigitavelPDF *bool
 	TimeoutMs                   *int

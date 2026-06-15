@@ -15,6 +15,7 @@ type AssistantResponse struct {
 	ChannelIDs            []string  `json:"channel_ids"`
 	ISPProfileID          string    `json:"isp_profile_id,omitempty"`
 	MCPServerID           string    `json:"mcp_server_id,omitempty"`
+	Transport             string    `json:"transport,omitempty"`
 	AllowCustomerData     bool      `json:"allow_customer_data"`
 	HumanApprovalRequired bool      `json:"human_approval_required"`
 	Temperature           float64   `json:"temperature"`
@@ -38,6 +39,7 @@ func NewAssistantResponse(a *centity.Assistant) AssistantResponse {
 		ChannelIDs:            channels,
 		ISPProfileID:          a.ISPProfileID,
 		MCPServerID:           a.MCPServerID,
+		Transport:             a.Transport,
 		AllowCustomerData:     a.AllowCustomerData,
 		HumanApprovalRequired: a.HumanApprovalRequired,
 		Temperature:           a.Temperature,
@@ -64,6 +66,7 @@ type CreateAssistantRequest struct {
 	ChannelIDs            []string `json:"channel_ids"`
 	ISPProfileID          string   `json:"isp_profile_id"`
 	MCPServerID           string   `json:"mcp_server_id"`
+	Transport             string   `json:"transport"`
 	AllowCustomerData     *bool    `json:"allow_customer_data"`
 	HumanApprovalRequired *bool    `json:"human_approval_required"`
 	Temperature           *float64 `json:"temperature"`
@@ -79,6 +82,7 @@ func (r CreateAssistantRequest) ToCommand() cservice.CreateAssistant {
 		ChannelIDs:            r.ChannelIDs,
 		ISPProfileID:          r.ISPProfileID,
 		MCPServerID:           r.MCPServerID,
+		Transport:             r.Transport,
 		AllowCustomerData:     r.AllowCustomerData,
 		HumanApprovalRequired: r.HumanApprovalRequired,
 		Temperature:           r.Temperature,
@@ -94,6 +98,7 @@ type UpdateAssistantRequest struct {
 	ChannelIDs            *[]string `json:"channel_ids"`
 	ISPProfileID          *string   `json:"isp_profile_id"`
 	MCPServerID           *string   `json:"mcp_server_id"`
+	Transport             *string   `json:"transport"`
 	AllowCustomerData     *bool     `json:"allow_customer_data"`
 	HumanApprovalRequired *bool     `json:"human_approval_required"`
 	Temperature           *float64  `json:"temperature"`
@@ -109,6 +114,7 @@ func (r UpdateAssistantRequest) ToCommand() cservice.UpdateAssistant {
 		ChannelIDs:            r.ChannelIDs,
 		ISPProfileID:          r.ISPProfileID,
 		MCPServerID:           r.MCPServerID,
+		Transport:             r.Transport,
 		AllowCustomerData:     r.AllowCustomerData,
 		HumanApprovalRequired: r.HumanApprovalRequired,
 		Temperature:           r.Temperature,

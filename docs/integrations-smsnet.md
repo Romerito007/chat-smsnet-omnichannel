@@ -28,10 +28,20 @@ Configuração por **env default** com **override por tenant** no banco. Nada di
 Um tenant tem **vários perfis de ISP** endereçáveis por id (coleção `isp_profiles`),
 cada um com `label`, `isp_type` (validado contra o catálogo dos 19 slugs),
 credenciais (**cifradas em repouso AES-GCM**; só as **keys** são expostas via
-`credential_keys`), `is_default`, os dois toggles `usa_*`, `timeout_ms`, `enabled`.
-O perfil **não** guarda host/chave do gateway (são infra). No máximo **um** perfil
-por tenant é `is_default=true` (garantido por índice **único parcial**); o primeiro
-perfil criado vira default automaticamente.
+`credential_keys`), **`transports`**, `is_default`, os dois toggles `usa_*`,
+`timeout_ms`, `enabled`. O perfil **não** guarda host/chave do gateway (são infra).
+No máximo **um** perfil por tenant é `is_default=true` (garantido por índice **único
+parcial**); o primeiro perfil criado vira default automaticamente.
+
+**`transports`** declara **quais superfícies SMSNET** o perfil habilita —
+subconjunto de `{"http","mcp"}` (HTTP = gateway ProviderHub :8085; MCP =
+CONSULTAS/OPERACOES :8086/:8087). É só **habilitação**: os endereços continuam do
+env (gateway compartilhado). É **obrigatório** — vazio ou valor desconhecido → **422**
+(`transports: must enable at least one valid transport`); **não** há default
+silencioso. A **busca manual** (`/external/*`) usa HTTP, então **exige** `"http"` no
+perfil: um perfil só-`mcp` é **bloqueado** para a busca manual (explícito → **409**
+`não habilita o transporte HTTP`; resolução automática **ignora** perfis sem http;
+a UI esconde a busca manual para perfis só-mcp).
 
 CRUD em `/v1/providerhub/profiles` (`integration.read` para ler, `integration.configure`
 para escrever): `GET` (lista), `POST` (cria), `GET/PATCH/DELETE /{id}`,
@@ -81,13 +91,25 @@ not both"); os dois vazios = sem tools externas. CRUD em `/v1/copilot/assistants
 existem. Conversa com `channel_id` vazio → nenhum assistente resolve (sem fallback
 por tipo).
 
+**`transport`** (`http`|`mcp`) — só com `isp_profile_id` — escolhe **qual
+superfície** do perfil o assistente usa. Validação: tem que ser um transporte que o
+perfil **habilita** (`transports`), senão **422**; a UI só oferece os transportes do
+perfil. Se o perfil habilita **um só**, `transport` é opcional (assume esse); se
+habilita **dois**, é **obrigatório**. `transport` sem `isp_profile_id` → **422**.
+> **Fase 1 (atual):** o copiloto usa **MCP** (transporte de IA). `transport=mcp` (e o
+> vazio) expõe as tools SMSNET; `transport=http` é **aceito/validado** no contrato,
+> mas o **bridge HTTP-para-o-copiloto** ainda **não existe** (TODO fase 2) — uma
+> conversa cujo assistente está em `transport=http` roda **sem tools externas**. A
+> **busca manual** continua usando HTTP normalmente (independe deste campo).
+
 **Fonte de tools no `OpenToolSession`** (caminho do copiloto), decidida pelo
 assistente da conversa (`ISPToolBridge.ToolSource(channel_id)`):
-- **ISP** (`isp_profile_id`): comportamento de sempre — tools **SMSNET** liberadas
-  (gate por servidor: read sempre; write OPERACOES só se o perfil suporta
-  liberacao/chamado) + `config{type+creds}` injetado server-side em
+- **ISP** (`isp_profile_id`) com `transport=mcp` (ou vazio): comportamento de sempre
+  — tools **SMSNET** liberadas (gate por servidor: read sempre; write OPERACOES só se
+  o perfil suporta liberacao/chamado) + `config{type+creds}` injetado server-side em
   `ToolService.invoke` (o modelo nunca vê credencial; em write, `idempotency_key` =
-  `approval.ID`).
+  `approval.ID`). Com `transport=http` → **sem tools** no copiloto (bridge HTTP é TODO
+  fase 2).
 - **MCP** (`mcp_server_id`): o copiloto vê as tools **só daquele** servidor MCP do
   tenant, respeitando o `Kind` read/write (read executa; write cria `mcp_approval` /
   exige aprovação — mesmo gating).

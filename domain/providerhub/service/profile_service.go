@@ -74,7 +74,8 @@ func (s *ProfileService) Create(ctx context.Context, cmd contracts.CreateProfile
 	}
 	label := strings.TrimSpace(cmd.Label)
 	ispType := strings.TrimSpace(cmd.ISPType)
-	if err := validateProfile(label, ispType, cmd.Credentials); err != nil {
+	transports, tok := entity.NormalizeTransports(cmd.Transports)
+	if err := validateProfile(label, ispType, cmd.Credentials, transports, tok); err != nil {
 		return nil, err
 	}
 
@@ -104,6 +105,7 @@ func (s *ProfileService) Create(ctx context.Context, cmd contracts.CreateProfile
 		Label:       label,
 		ISPType:     ispType,
 		Credentials: cmd.Credentials,
+		Transports:  transports,
 		IsDefault:   isDefault,
 		Options: entity.Options{
 			UsaPegarFaturaAtrasada:      cmd.UsaPegarFaturaAtrasada,
@@ -140,9 +142,14 @@ func (s *ProfileService) Update(ctx context.Context, id string, cmd contracts.Up
 	if cmd.Credentials != nil {
 		p.Credentials = *cmd.Credentials
 	}
-	if err := validateProfile(p.Label, p.ISPType, p.Credentials); err != nil {
+	transports, tok := p.Transports, true
+	if cmd.Transports != nil {
+		transports, tok = entity.NormalizeTransports(*cmd.Transports)
+	}
+	if err := validateProfile(p.Label, p.ISPType, p.Credentials, transports, tok); err != nil {
 		return nil, err
 	}
+	p.Transports = transports
 	if cmd.UsaPegarFaturaAtrasada != nil {
 		p.Options.UsaPegarFaturaAtrasada = *cmd.UsaPegarFaturaAtrasada
 	}
@@ -281,7 +288,7 @@ func (s *ProfileService) callConfig(ctx context.Context, p *entity.ISPProfile) *
 // validateProfile enforces a non-empty label, an isp_type from the catalog (the
 // 19 slugs; legacy aliases are not allowed for new profiles) and that the
 // credential keys match the catalog 1:1 (no missing, no unknown).
-func validateProfile(label, ispType string, creds map[string]string) error {
+func validateProfile(label, ispType string, creds map[string]string, transports []string, transportsOK bool) error {
 	v := map[string]any{}
 	if label == "" {
 		v["label"] = "is required"
@@ -292,6 +299,11 @@ func validateProfile(label, ispType string, creds map[string]string) error {
 		v["isp_type"] = "unknown isp_type; expected one of " + strings.Join(catalogSlugs(), ", ")
 	} else if msg := credentialKeyMismatch(ispType, creds); msg != "" {
 		v["isp_credentials"] = msg
+	}
+	// transports is REQUIRED: at least one valid transport (http and/or mcp). An
+	// unknown value or an empty set is rejected — no silent default.
+	if !transportsOK || len(transports) == 0 {
+		v["transports"] = "must enable at least one valid transport (http and/or mcp)"
 	}
 	if len(v) > 0 {
 		return apperror.Validation("invalid ISP profile").WithDetails(v)

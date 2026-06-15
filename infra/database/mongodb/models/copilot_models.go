@@ -20,6 +20,7 @@ type Assistant struct {
 	ChannelIDs            []string `bson:"channel_ids,omitempty"`
 	ISPProfileID          string   `bson:"isp_profile_id,omitempty"`
 	MCPServerID           string   `bson:"mcp_server_id,omitempty"`
+	Transport             string   `bson:"transport,omitempty"`
 	AllowCustomerData     bool     `bson:"allow_customer_data"`
 	HumanApprovalRequired bool     `bson:"human_approval_required"`
 	Temperature           float64  `bson:"temperature"`
