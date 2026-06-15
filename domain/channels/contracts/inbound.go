@@ -20,8 +20,12 @@ type InboundMessage struct {
 	Text              string
 	Attachments       []entity.Attachment // already-hosted media (URL mode)
 	RawAttachments    []RawFile           // raw bytes (multipart mode), persisted on Handle
-	Metadata          map[string]any
-	Timestamp         int64 // epoch millis; 0 means "now"
+	// Contacts (customer shared vCard[s]) and Location (customer shared a location)
+	// are the typed structured inbound payloads, when the gateway forwards them.
+	Contacts  []entity.ContactCard
+	Location  *entity.Location
+	Metadata  map[string]any
+	Timestamp int64 // epoch millis; 0 means "now"
 }
 
 // RawFile is a raw inbound attachment (Chatwoot multipart/form-data): the bytes

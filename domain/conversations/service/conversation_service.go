@@ -522,18 +522,28 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 		return nil, apperror.Validation("invalid message_type")
 	}
 
-	// A template send derives its display text + outbound payload from the channel's
-	// template mirror; a normal send needs text or attachments.
+	// Each kind has its own required payload: a template resolves from the channel's
+	// template mirror; contact needs contacts[]; location needs a location; a normal
+	// message needs text or attachments.
 	text := cmd.Text
 	var templatePayload *entity.TemplatePayload
-	if mtype == entity.MessageTemplate {
+	switch mtype {
+	case entity.MessageTemplate:
 		resolved, payload, terr := s.resolveTemplate(ctx, conv, cmd.Template)
 		if terr != nil {
 			return nil, terr
 		}
 		text = resolved
 		templatePayload = payload
-	} else {
+	case entity.MessageContact:
+		if msg := entity.ValidateContacts(cmd.Contacts); msg != "" {
+			return nil, apperror.Validation(msg).WithDetails(map[string]any{"contacts": msg})
+		}
+	case entity.MessageLocation:
+		if msg := cmd.Location.Validate(); msg != "" {
+			return nil, apperror.Validation(msg).WithDetails(map[string]any{"location": msg})
+		}
+	default:
 		if strings.TrimSpace(cmd.Text) == "" && len(cmd.Attachments) == 0 {
 			return nil, apperror.Validation("message text or attachments required")
 		}
@@ -558,6 +568,8 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 		Text:           text,
 		Attachments:    cmd.Attachments,
 		Template:       templatePayload,
+		Contacts:       cmd.Contacts,
+		Location:       cmd.Location,
 		Metadata:       cmd.Metadata,
 		CreatedAt:      now,
 		DeliveryStatus: entity.DeliveryPending,

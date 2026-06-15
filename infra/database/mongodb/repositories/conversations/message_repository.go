@@ -138,6 +138,8 @@ func msgToModel(m *entity.Message) models.Message {
 		Text:              m.Text,
 		Attachments:       atts,
 		Template:          msgTemplateToModel(m.Template),
+		Contacts:          msgContactsToModel(m.Contacts),
+		Location:          msgLocationToModel(m.Location),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    string(m.DeliveryStatus),
@@ -166,6 +168,8 @@ func msgToEntity(m *models.Message) *entity.Message {
 		Text:              m.Text,
 		Attachments:       atts,
 		Template:          msgTemplateToEntity(m.Template),
+		Contacts:          msgContactsToEntity(m.Contacts),
+		Location:          msgLocationToEntity(m.Location),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    entity.DeliveryStatus(m.DeliveryStatus),
@@ -185,6 +189,68 @@ func msgTemplateToModel(t *entity.TemplatePayload) *models.MessageTemplate {
 		return nil
 	}
 	return &models.MessageTemplate{TemplateID: t.TemplateID, Params: t.Params}
+}
+
+func msgContactsToModel(in []entity.ContactCard) []models.MessageContact {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]models.MessageContact, len(in))
+	for i, c := range in {
+		mc := models.MessageContact{
+			Name:   models.MsgContactName{Formatted: c.Name.Formatted, First: c.Name.First, Last: c.Name.Last},
+			Phones: make([]models.MsgContactPhone, len(c.Phones)),
+		}
+		for j, p := range c.Phones {
+			mc.Phones[j] = models.MsgContactPhone{Phone: p.Phone, Type: p.Type, WaID: p.WaID}
+		}
+		for _, e := range c.Emails {
+			mc.Emails = append(mc.Emails, models.MsgContactEmail{Email: e.Email, Type: e.Type})
+		}
+		if c.Organization != nil {
+			mc.Organization = &models.MsgContactOrg{Company: c.Organization.Company, Title: c.Organization.Title}
+		}
+		out[i] = mc
+	}
+	return out
+}
+
+func msgContactsToEntity(in []models.MessageContact) []entity.ContactCard {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]entity.ContactCard, len(in))
+	for i, c := range in {
+		ec := entity.ContactCard{
+			Name:   entity.ContactName{Formatted: c.Name.Formatted, First: c.Name.First, Last: c.Name.Last},
+			Phones: make([]entity.ContactPhone, len(c.Phones)),
+		}
+		for j, p := range c.Phones {
+			ec.Phones[j] = entity.ContactPhone{Phone: p.Phone, Type: p.Type, WaID: p.WaID}
+		}
+		for _, e := range c.Emails {
+			ec.Emails = append(ec.Emails, entity.ContactEmail{Email: e.Email, Type: e.Type})
+		}
+		if c.Organization != nil {
+			ec.Organization = &entity.ContactOrg{Company: c.Organization.Company, Title: c.Organization.Title}
+		}
+		out[i] = ec
+	}
+	return out
+}
+
+func msgLocationToModel(l *entity.Location) *models.MessageLocation {
+	if l == nil {
+		return nil
+	}
+	return &models.MessageLocation{Latitude: l.Latitude, Longitude: l.Longitude, Name: l.Name, Address: l.Address}
+}
+
+func msgLocationToEntity(l *models.MessageLocation) *entity.Location {
+	if l == nil {
+		return nil
+	}
+	return &entity.Location{Latitude: l.Latitude, Longitude: l.Longitude, Name: l.Name, Address: l.Address}
 }
 
 func msgTemplateToEntity(t *models.MessageTemplate) *entity.TemplatePayload {

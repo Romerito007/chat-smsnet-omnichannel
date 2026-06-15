@@ -38,6 +38,8 @@ const (
 	MessageFile     MessageType = "file"
 	MessageAudio    MessageType = "audio"
 	MessageVideo    MessageType = "video"
+	MessageContact  MessageType = "contact"  // one or more vCards (Contacts)
+	MessageLocation MessageType = "location" // a single geographic point (Location)
 	MessageTemplate MessageType = "template"
 	MessageSystem   MessageType = "system"
 )
@@ -45,10 +47,99 @@ const (
 // Valid reports whether t is a known message type.
 func (t MessageType) Valid() bool {
 	switch t {
-	case MessageText, MessageImage, MessageFile, MessageAudio, MessageVideo, MessageTemplate, MessageSystem:
+	case MessageText, MessageImage, MessageFile, MessageAudio, MessageVideo,
+		MessageContact, MessageLocation, MessageTemplate, MessageSystem:
 		return true
 	}
 	return false
+}
+
+// MaxContactsPerMessage bounds how many vCards a single contact message may carry.
+const MaxContactsPerMessage = 10
+
+// ContactCard is one shared vCard (message_type=contact). The JSON shape mirrors the
+// WhatsApp contacts[] block the gateway translates to/from Meta.
+type ContactCard struct {
+	Name         ContactName    `json:"name" bson:"name"`
+	Phones       []ContactPhone `json:"phones" bson:"phones"`
+	Emails       []ContactEmail `json:"emails,omitempty" bson:"emails,omitempty"`
+	Organization *ContactOrg    `json:"organization,omitempty" bson:"organization,omitempty"`
+}
+
+// ContactName is a contact's display name (Formatted maps to Meta formatted_name).
+type ContactName struct {
+	Formatted string `json:"formatted" bson:"formatted"`
+	First     string `json:"first,omitempty" bson:"first,omitempty"`
+	Last      string `json:"last,omitempty" bson:"last,omitempty"`
+}
+
+// ContactPhone is one phone of a contact.
+type ContactPhone struct {
+	Phone string `json:"phone" bson:"phone"`
+	Type  string `json:"type,omitempty" bson:"type,omitempty"`
+	WaID  string `json:"wa_id,omitempty" bson:"wa_id,omitempty"`
+}
+
+// ContactEmail is one email of a contact.
+type ContactEmail struct {
+	Email string `json:"email" bson:"email"`
+	Type  string `json:"type,omitempty" bson:"type,omitempty"`
+}
+
+// ContactOrg is a contact's organization.
+type ContactOrg struct {
+	Company string `json:"company,omitempty" bson:"company,omitempty"`
+	Title   string `json:"title,omitempty" bson:"title,omitempty"`
+}
+
+// Location is a single geographic point (message_type=location), mirroring the
+// WhatsApp location block.
+type Location struct {
+	Latitude  float64 `json:"latitude" bson:"latitude"`
+	Longitude float64 `json:"longitude" bson:"longitude"`
+	Name      string  `json:"name,omitempty" bson:"name,omitempty"`
+	Address   string  `json:"address,omitempty" bson:"address,omitempty"`
+}
+
+// ValidateContacts checks a message_type=contact payload, returning "" when valid or
+// a human-readable reason otherwise (the caller wraps it as a validation error). It
+// is shared by the outbound (SendMessage) and inbound paths so both rails enforce
+// the same rules.
+func ValidateContacts(cs []ContactCard) string {
+	if len(cs) == 0 {
+		return "contacts are required for message_type=contact"
+	}
+	if len(cs) > MaxContactsPerMessage {
+		return "at most 10 contacts per message"
+	}
+	for _, c := range cs {
+		if strings.TrimSpace(c.Name.Formatted) == "" && strings.TrimSpace(c.Name.First) == "" && strings.TrimSpace(c.Name.Last) == "" {
+			return "each contact requires a name"
+		}
+		if len(c.Phones) == 0 {
+			return "each contact requires at least one phone"
+		}
+		for _, p := range c.Phones {
+			if strings.TrimSpace(p.Phone) == "" {
+				return "contact phone must not be empty"
+			}
+		}
+	}
+	return ""
+}
+
+// Validate checks a message_type=location payload, returning "" when valid.
+func (l *Location) Validate() string {
+	if l == nil {
+		return "location is required for message_type=location"
+	}
+	if l.Latitude < -90 || l.Latitude > 90 {
+		return "latitude must be between -90 and 90"
+	}
+	if l.Longitude < -180 || l.Longitude > 180 {
+		return "longitude must be between -180 and 180"
+	}
+	return ""
 }
 
 // MessageTypeForContentType derives the media message type from a MIME type:
@@ -139,7 +230,11 @@ type Message struct {
 	// Template is set for message_type=template (WhatsApp). It carries the opaque
 	// integrator template id + filled named params sent to the integrator. Text
 	// holds the locally-resolved display string (never sent out).
-	Template          *TemplatePayload
+	Template *TemplatePayload
+	// Contacts is set for message_type=contact (1..10 vCards); Location for
+	// message_type=location. Both bidirectional (inbound + outbound).
+	Contacts          []ContactCard
+	Location          *Location
 	Metadata          map[string]any
 	CreatedAt         time.Time
 	DeliveryStatus    DeliveryStatus

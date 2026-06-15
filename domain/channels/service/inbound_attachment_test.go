@@ -136,3 +136,54 @@ func lastMessageID(fx inboundFixture) string {
 	}
 	return fx.msgs.order[len(fx.msgs.order)-1]
 }
+
+// TestInbound_Contact: an inbound contact is typed contact, stored, and surfaced on
+// the realtime payload.
+func TestInbound_Contact(t *testing.T) {
+	fx := newInboundFixture()
+	m := inMsg("ext-contact")
+	m.Text = ""
+	m.Contacts = []conventity.ContactCard{{
+		Name:   conventity.ContactName{Formatted: "João"},
+		Phones: []conventity.ContactPhone{{Phone: "+5511777776666"}},
+	}}
+	res, err := fx.svc.Handle(tenantCtx(), conn(""), m)
+	if err != nil {
+		t.Fatalf("inbound contact: %v", err)
+	}
+	msg := fx.msgs.items[lastMessageID(fx)]
+	if msg.MessageType != conventity.MessageContact || len(msg.Contacts) != 1 {
+		t.Fatalf("inbound contact not typed/stored: %+v", msg)
+	}
+	if p, ok := fx.pub.lastPayload(convcontracts.RealtimeMessageCreated).(convcontracts.MessagePayload); !ok || len(p.Contacts) != 1 {
+		t.Errorf("realtime payload must carry contacts")
+	}
+	_ = res
+}
+
+// TestInbound_Location: an inbound location is typed location and stored.
+func TestInbound_Location(t *testing.T) {
+	fx := newInboundFixture()
+	m := inMsg("ext-loc")
+	m.Text = ""
+	m.Location = &conventity.Location{Latitude: -23.56, Longitude: -46.64, Name: "Cliente"}
+	if _, err := fx.svc.Handle(tenantCtx(), conn(""), m); err != nil {
+		t.Fatalf("inbound location: %v", err)
+	}
+	msg := fx.msgs.items[lastMessageID(fx)]
+	if msg.MessageType != conventity.MessageLocation || msg.Location == nil || msg.Location.Name != "Cliente" {
+		t.Fatalf("inbound location not typed/stored: %+v", msg)
+	}
+}
+
+// TestInbound_Location_InvalidRejected: a malformed inbound location is a 4xx, not a
+// corrupt stored message.
+func TestInbound_Location_InvalidRejected(t *testing.T) {
+	fx := newInboundFixture()
+	m := inMsg("ext-badloc")
+	m.Location = &conventity.Location{Latitude: 999, Longitude: 0}
+	_, err := fx.svc.Handle(tenantCtx(), conn(""), m)
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("expected validation error for bad location, got %v", err)
+	}
+}

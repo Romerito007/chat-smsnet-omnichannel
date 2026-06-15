@@ -86,11 +86,13 @@ type TemplateRequest struct {
 
 // SendMessageRequest is the body of POST /v1/conversations/{id}/messages.
 type SendMessageRequest struct {
-	MessageType string              `json:"message_type"`
-	Text        string              `json:"text"`
-	Attachments []AttachmentRequest `json:"attachments"`
-	Template    *TemplateRequest    `json:"template"`
-	Metadata    map[string]any      `json:"metadata"`
+	MessageType string               `json:"message_type"`
+	Text        string               `json:"text"`
+	Attachments []AttachmentRequest  `json:"attachments"`
+	Template    *TemplateRequest     `json:"template"`
+	Contacts    []entity.ContactCard `json:"contacts"`
+	Location    *entity.Location     `json:"location"`
+	Metadata    map[string]any       `json:"metadata"`
 }
 
 // ToCommand maps the request to the service command.
@@ -103,6 +105,8 @@ func (r SendMessageRequest) ToCommand() contracts.SendMessage {
 		MessageType: entity.MessageType(r.MessageType),
 		Text:        r.Text,
 		Attachments: atts,
+		Contacts:    r.Contacts,
+		Location:    r.Location,
 		Metadata:    r.Metadata,
 	}
 	if r.Template != nil {
@@ -300,20 +304,22 @@ func NewEventResponses(items []*entity.ConversationEvent) []EventResponse {
 
 // MessageResponse is the public representation of a message.
 type MessageResponse struct {
-	ID                string              `json:"id"`
-	ConversationID    string              `json:"conversation_id"`
-	SenderType        string              `json:"sender_type"`
-	SenderID          string              `json:"sender_id,omitempty"`
-	Direction         string              `json:"direction"`
-	MessageType       string              `json:"message_type"`
-	Text              string              `json:"text"`
-	Attachments       []AttachmentRequest `json:"attachments,omitempty"`
-	Template          *TemplateRequest    `json:"template,omitempty"`
-	Metadata          map[string]any      `json:"metadata,omitempty"`
-	DeliveryStatus    string              `json:"delivery_status,omitempty"`
-	ExternalMessageID string              `json:"external_message_id,omitempty"`
-	CreatedAt         time.Time           `json:"created_at"`
-	EditedAt          *time.Time          `json:"edited_at,omitempty"`
+	ID                string               `json:"id"`
+	ConversationID    string               `json:"conversation_id"`
+	SenderType        string               `json:"sender_type"`
+	SenderID          string               `json:"sender_id,omitempty"`
+	Direction         string               `json:"direction"`
+	MessageType       string               `json:"message_type"`
+	Text              string               `json:"text"`
+	Attachments       []AttachmentRequest  `json:"attachments,omitempty"`
+	Contacts          []entity.ContactCard `json:"contacts,omitempty"`
+	Location          *entity.Location     `json:"location,omitempty"`
+	Template          *TemplateRequest     `json:"template,omitempty"`
+	Metadata          map[string]any       `json:"metadata,omitempty"`
+	DeliveryStatus    string               `json:"delivery_status,omitempty"`
+	ExternalMessageID string               `json:"external_message_id,omitempty"`
+	CreatedAt         time.Time            `json:"created_at"`
+	EditedAt          *time.Time           `json:"edited_at,omitempty"`
 }
 
 // NewMessageResponse maps a message entity to its DTO.
@@ -331,6 +337,8 @@ func NewMessageResponse(m *entity.Message) MessageResponse {
 		MessageType:       string(m.MessageType),
 		Text:              m.Text,
 		Attachments:       atts,
+		Contacts:          m.Contacts,
+		Location:          m.Location,
 		Metadata:          m.Metadata,
 		DeliveryStatus:    string(m.DeliveryStatus),
 		ExternalMessageID: m.ExternalMessageID,

@@ -130,6 +130,10 @@ type MessagePayload struct {
 	MessageType    string              `json:"message_type"`
 	Text           string              `json:"text"`
 	Attachments    []entity.Attachment `json:"attachments,omitempty"`
+	// Contacts (message_type=contact) and Location (message_type=location) are the
+	// typed structured payloads, mirroring the WhatsApp contacts[]/location blocks.
+	Contacts []entity.ContactCard `json:"contacts,omitempty"`
+	Location *entity.Location     `json:"location,omitempty"`
 	// Template carries the integrator template id + filled params for a template
 	// message, so an outbound-webhook receiver can render/send it. Nil otherwise.
 	Template       *MessageTemplatePayload `json:"template,omitempty"`
@@ -164,6 +168,8 @@ func NewMessagePayload(m *entity.Message) MessagePayload {
 		MessageType:    string(m.MessageType),
 		Text:           m.Text,
 		Attachments:    m.Attachments,
+		Contacts:       m.Contacts,
+		Location:       m.Location,
 		Internal:       m.Direction == entity.DirectionInternal,
 		DeliveryStatus: string(m.DeliveryStatus),
 		CreatedAt:      m.CreatedAt,

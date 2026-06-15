@@ -162,8 +162,9 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 	if externalContact == "" {
 		return chcontracts.InboundResult{}, apperror.Validation("external_contact_id or contact_phone is required")
 	}
-	if strings.TrimSpace(msg.Text) == "" && len(msg.Attachments) == 0 && len(msg.RawAttachments) == 0 {
-		return chcontracts.InboundResult{}, apperror.Validation("text or attachments are required")
+	if strings.TrimSpace(msg.Text) == "" && len(msg.Attachments) == 0 && len(msg.RawAttachments) == 0 &&
+		len(msg.Contacts) == 0 && msg.Location == nil {
+		return chcontracts.InboundResult{}, apperror.Validation("text, attachments, contacts or location are required")
 	}
 	if len(msg.RawAttachments) > 0 && s.attachments == nil {
 		return chcontracts.InboundResult{}, apperror.Internal("attachment storage is not configured")
@@ -402,13 +403,24 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		attachments = append(attachments, att)
 	}
 
+	// Pick the message type by payload, validating the structured ones (contact/
+	// location) so a malformed inbound is a 4xx, not a corrupt stored message.
 	mtype := conventity.MessageText
-	if len(attachments) > 0 {
+	switch {
+	case len(in.Contacts) > 0:
+		if msg := conventity.ValidateContacts(in.Contacts); msg != "" {
+			return nil, apperror.Validation(msg).WithDetails(map[string]any{"contacts": msg})
+		}
+		mtype = conventity.MessageContact
+	case in.Location != nil:
+		if msg := in.Location.Validate(); msg != "" {
+			return nil, apperror.Validation(msg).WithDetails(map[string]any{"location": msg})
+		}
+		mtype = conventity.MessageLocation
+	case len(attachments) > 0:
 		// Derive the renderable media type from the first attachment so an inbound
 		// image/audio/video is reported as such on BOTH rails (REST read + realtime),
-		// even when it carries a caption — never collapsed to "text" or "file". This
-		// mirrors the read-side deriveMessageType, but fixing it at the producer keeps
-		// the stored type, the realtime payload and the REST response consistent.
+		// even when it carries a caption — never collapsed to "text" or "file".
 		mtype = conventity.MessageTypeForContentType(attachments[0].ContentType)
 	}
 
@@ -422,6 +434,8 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		MessageType:       mtype,
 		Text:              in.Text,
 		Attachments:       attachments,
+		Contacts:          in.Contacts,
+		Location:          in.Location,
 		Metadata:          in.Metadata,
 		CreatedAt:         createdAt,
 		DeliveryStatus:    conventity.DeliveryNone,

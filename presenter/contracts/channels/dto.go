@@ -209,20 +209,22 @@ type AttachmentItem struct {
 // or the inbound_token body field; integration_key/webhook_verify_token are
 // accepted as legacy aliases.
 type InboundRequest struct {
-	TenantKey          string           `json:"tenant_key"`
-	InboundToken       string           `json:"inbound_token"`
-	IntegrationKey     string           `json:"integration_key"`
-	WebhookVerifyToken string           `json:"webhook_verify_token"`
-	ExternalMessageID  string           `json:"external_message_id"`
-	ExternalContactID  string           `json:"external_contact_id"`
-	ContactName        string           `json:"contact_name"`
-	ContactPhone       string           `json:"contact_phone"`
-	ContactDocument    string           `json:"contact_document"`
-	Channel            string           `json:"channel"`
-	Text               string           `json:"text"`
-	Attachments        []AttachmentItem `json:"attachments"`
-	Metadata           map[string]any   `json:"metadata"`
-	Timestamp          int64            `json:"timestamp"`
+	TenantKey          string                   `json:"tenant_key"`
+	InboundToken       string                   `json:"inbound_token"`
+	IntegrationKey     string                   `json:"integration_key"`
+	WebhookVerifyToken string                   `json:"webhook_verify_token"`
+	ExternalMessageID  string                   `json:"external_message_id"`
+	ExternalContactID  string                   `json:"external_contact_id"`
+	ContactName        string                   `json:"contact_name"`
+	ContactPhone       string                   `json:"contact_phone"`
+	ContactDocument    string                   `json:"contact_document"`
+	Channel            string                   `json:"channel"`
+	Text               string                   `json:"text"`
+	Attachments        []AttachmentItem         `json:"attachments"`
+	Contacts           []conventity.ContactCard `json:"contacts"`
+	Location           *conventity.Location     `json:"location"`
+	Metadata           map[string]any           `json:"metadata"`
+	Timestamp          int64                    `json:"timestamp"`
 }
 
 // Token returns the integration token from the body, preferring the canonical
@@ -255,6 +257,8 @@ func (r InboundRequest) ToMessage(channel string) chcontracts.InboundMessage {
 		Channel:           channel,
 		Text:              r.Text,
 		Attachments:       atts,
+		Contacts:          r.Contacts,
+		Location:          r.Location,
 		Metadata:          r.Metadata,
 		Timestamp:         r.Timestamp,
 	}

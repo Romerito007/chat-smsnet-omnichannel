@@ -207,11 +207,24 @@ func (r *fakeSectorRepo) FindByID(ctx context.Context, id string) (*sectorentity
 	return nil, apperror.NotFound("not found")
 }
 
-type capturedEvent struct{ topic, event string }
+type capturedEvent struct {
+	topic, event string
+	payload      any
+}
 type fakePublisher struct{ events []capturedEvent }
 
-func (p *fakePublisher) Publish(_ context.Context, topic, event string, _ any) error {
-	p.events = append(p.events, capturedEvent{topic, event})
+func (p *fakePublisher) Publish(_ context.Context, topic, event string, payload any) error {
+	p.events = append(p.events, capturedEvent{topic, event, payload})
+	return nil
+}
+
+// lastPayload returns the payload of the most recent event with the given name.
+func (p *fakePublisher) lastPayload(event string) any {
+	for i := len(p.events) - 1; i >= 0; i-- {
+		if p.events[i].event == event {
+			return p.events[i].payload
+		}
+	}
 	return nil
 }
 

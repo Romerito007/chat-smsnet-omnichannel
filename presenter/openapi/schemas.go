@@ -155,7 +155,9 @@ func schemas() M {
 		"Message": object(M{
 			"id": str(), "conversation_id": str(), "sender_type": str(), "sender_id": str(),
 			"direction": str(), "message_type": str(), "text": str(),
-			"attachments": arr(ref("Attachment")), "template": ref("MessageTemplate"), "metadata": freeObject(),
+			"attachments": arr(ref("Attachment")), "template": ref("MessageTemplate"),
+			"contacts": arr(ref("MessageContact")), "location": ref("MessageLocation"),
+			"metadata":        freeObject(),
 			"delivery_status": str(), "external_message_id": str(),
 			"created_at": dateTime(), "edited_at": dateTime(),
 		}),
@@ -163,9 +165,32 @@ func schemas() M {
 			"template_id": describedStr("Opaque integrator template id (the chat does not interpret it)."),
 			"params":      withDesc(M{"type": "object", "additionalProperties": M{"type": "string"}}, "Filled named variables (key→value). On a template send the chat validates that every declared variable is present and no extras; the resolved display text is server-side only and never sent to the integrator."),
 		}, "template_id"),
+		// message_type=contact: 1..10 vCards (the gateway maps these 1:1 to the
+		// WhatsApp contacts[] block). See docs/message-types-v2.md.
+		"MessageContact": object(M{
+			"name": object(M{
+				"formatted": describedStr("Display name (maps to Meta name.formatted_name)."),
+				"first":     str(), "last": str(),
+			}, "formatted"),
+			"phones": describedArr(object(M{
+				"phone": describedStr("E.164 phone, required."),
+				"type":  describedStr("Free hint: CELL|HOME|WORK|…"),
+				"wa_id": describedStr("WhatsApp id when known."),
+			}, "phone"), "At least one phone is required."),
+			"emails":       arr(object(M{"email": str(), "type": str()})),
+			"organization": object(M{"company": str(), "title": str()}),
+		}, "name", "phones"),
+		// message_type=location: a single geographic point (maps to Meta location).
+		"MessageLocation": object(M{
+			"latitude":  describedNumber("Required, [-90, 90]."),
+			"longitude": describedNumber("Required, [-180, 180]."),
+			"name":      str(), "address": str(),
+		}, "latitude", "longitude"),
 		"SendMessageRequest": object(M{
 			"message_type": str(), "text": str(), "attachments": arr(ref("Attachment")),
 			"template": withDesc(ref("MessageTemplate"), "Required when message_type=template (WhatsApp). The template_id must exist on the conversation's channel."),
+			"contacts": describedArr(ref("MessageContact"), "Required when message_type=contact (1..10 vCards)."),
+			"location": withDesc(ref("MessageLocation"), "Required when message_type=location."),
 			"metadata": freeObject(),
 		}),
 		"EditMessageRequest":  object(M{"text": str()}, "text"),
@@ -233,7 +258,10 @@ func schemas() M {
 			"inbound_token": str(), "tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
 			"external_message_id": str(), "external_contact_id": str(), "contact_name": str(),
 			"contact_phone": str(), "contact_document": str(), "channel": str(), "text": str(),
-			"attachments": arr(ref("Attachment")), "metadata": freeObject(), "timestamp": integer(),
+			"attachments": arr(ref("Attachment")),
+			"contacts":    describedArr(ref("MessageContact"), "Set when the customer shares contact(s) (message_type=contact)."),
+			"location":    withDesc(ref("MessageLocation"), "Set when the customer shares a location (message_type=location)."),
+			"metadata":    freeObject(), "timestamp": integer(),
 		}),
 		// Chatwoot-compatible multipart/form-data: content + message_type + file_type
 		// + attachments[] (raw files). Routing fields mirror the JSON shape.

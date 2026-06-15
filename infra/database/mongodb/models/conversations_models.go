@@ -55,6 +55,8 @@ type Message struct {
 	Text              string           `bson:"text"`
 	Attachments       []Attachment     `bson:"attachments,omitempty"`
 	Template          *MessageTemplate `bson:"template,omitempty"`
+	Contacts          []MessageContact `bson:"contacts,omitempty"`
+	Location          *MessageLocation `bson:"location,omitempty"`
 	Metadata          map[string]any   `bson:"metadata,omitempty"`
 	CreatedAt         time.Time        `bson:"created_at"`
 	DeliveryStatus    string           `bson:"delivery_status,omitempty"`
@@ -82,4 +84,41 @@ type ConversationEvent struct {
 type MessageTemplate struct {
 	TemplateID string            `bson:"template_id"`
 	Params     map[string]string `bson:"params,omitempty"`
+}
+
+// MessageContact is the BSON sub-document for one vCard (message_type=contact).
+type MessageContact struct {
+	Name         MsgContactName    `bson:"name"`
+	Phones       []MsgContactPhone `bson:"phones"`
+	Emails       []MsgContactEmail `bson:"emails,omitempty"`
+	Organization *MsgContactOrg    `bson:"organization,omitempty"`
+}
+
+// MsgContactName / MsgContactPhone / MsgContactEmail / MsgContactOrg are the vCard
+// sub-documents.
+type MsgContactName struct {
+	Formatted string `bson:"formatted"`
+	First     string `bson:"first,omitempty"`
+	Last      string `bson:"last,omitempty"`
+}
+type MsgContactPhone struct {
+	Phone string `bson:"phone"`
+	Type  string `bson:"type,omitempty"`
+	WaID  string `bson:"wa_id,omitempty"`
+}
+type MsgContactEmail struct {
+	Email string `bson:"email"`
+	Type  string `bson:"type,omitempty"`
+}
+type MsgContactOrg struct {
+	Company string `bson:"company,omitempty"`
+	Title   string `bson:"title,omitempty"`
+}
+
+// MessageLocation is the BSON sub-document for message_type=location.
+type MessageLocation struct {
+	Latitude  float64 `bson:"latitude"`
+	Longitude float64 `bson:"longitude"`
+	Name      string  `bson:"name,omitempty"`
+	Address   string  `bson:"address,omitempty"`
 }

@@ -39,6 +39,10 @@ type SendMessage struct {
 	// integrator template id + filled named params. The display text and the
 	// outbound payload are derived from it.
 	Template *SendTemplate
+	// Contacts is required when MessageType=contact (1..10 vCards); Location is
+	// required when MessageType=location.
+	Contacts []entity.ContactCard
+	Location *entity.Location
 	Metadata map[string]any
 }
 

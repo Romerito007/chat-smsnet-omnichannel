@@ -1885,6 +1885,11 @@ components:
                     type: string
                 contact_phone:
                     type: string
+                contacts:
+                    description: Set when the customer shares contact(s) (message_type=contact).
+                    items:
+                        $ref: '#/components/schemas/MessageContact'
+                    type: array
                 external_contact_id:
                     type: string
                 external_message_id:
@@ -1893,6 +1898,9 @@ components:
                     type: string
                 integration_key:
                     type: string
+                location:
+                    $ref: '#/components/schemas/MessageLocation'
+                    description: Set when the customer shares a location (message_type=location).
                 metadata:
                     additionalProperties: true
                     type: object
@@ -2148,6 +2156,10 @@ components:
                     items:
                         $ref: '#/components/schemas/Attachment'
                     type: array
+                contacts:
+                    items:
+                        $ref: '#/components/schemas/MessageContact'
+                    type: array
                 conversation_id:
                     type: string
                 created_at:
@@ -2164,6 +2176,8 @@ components:
                     type: string
                 id:
                     type: string
+                location:
+                    $ref: '#/components/schemas/MessageLocation'
                 message_type:
                     type: string
                 metadata:
@@ -2183,6 +2197,57 @@ components:
                 message:
                     type: string
             type: object
+        MessageContact:
+            properties:
+                emails:
+                    items:
+                        properties:
+                            email:
+                                type: string
+                            type:
+                                type: string
+                        type: object
+                    type: array
+                name:
+                    properties:
+                        first:
+                            type: string
+                        formatted:
+                            description: Display name (maps to Meta name.formatted_name).
+                            type: string
+                        last:
+                            type: string
+                    required:
+                        - formatted
+                    type: object
+                organization:
+                    properties:
+                        company:
+                            type: string
+                        title:
+                            type: string
+                    type: object
+                phones:
+                    description: At least one phone is required.
+                    items:
+                        properties:
+                            phone:
+                                description: E.164 phone, required.
+                                type: string
+                            type:
+                                description: 'Free hint: CELL|HOME|WORK|…'
+                                type: string
+                            wa_id:
+                                description: WhatsApp id when known.
+                                type: string
+                        required:
+                            - phone
+                        type: object
+                    type: array
+            required:
+                - name
+                - phones
+            type: object
         MessageHit:
             properties:
                 conversation_id:
@@ -2198,6 +2263,22 @@ components:
                     type: string
                 text:
                     type: string
+            type: object
+        MessageLocation:
+            properties:
+                address:
+                    type: string
+                latitude:
+                    description: Required, [-90, 90].
+                    type: number
+                longitude:
+                    description: Required, [-180, 180].
+                    type: number
+                name:
+                    type: string
+            required:
+                - latitude
+                - longitude
             type: object
         MessageTemplate:
             properties:
@@ -2843,6 +2924,14 @@ components:
                     items:
                         $ref: '#/components/schemas/Attachment'
                     type: array
+                contacts:
+                    description: Required when message_type=contact (1..10 vCards).
+                    items:
+                        $ref: '#/components/schemas/MessageContact'
+                    type: array
+                location:
+                    $ref: '#/components/schemas/MessageLocation'
+                    description: Required when message_type=location.
                 message_type:
                     type: string
                 metadata:
