@@ -60,6 +60,7 @@ func (r *ConnectionRepository) Update(ctx context.Context, c *entity.ChannelConn
 			"auth_type":          string(c.AuthType),
 			"encrypted_secret":   enc,
 			"inbound_token_hash": c.InboundTokenHash,
+			"business_hours":     c.BusinessHours,
 			"enabled":            c.Enabled,
 			"uses_protocol":      c.UsesProtocol,
 			"whatsapp_templates": templatesToModel(c.WhatsAppTemplates),
