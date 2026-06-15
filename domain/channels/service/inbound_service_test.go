@@ -216,16 +216,31 @@ func (r *fakeInbound) Create(_ context.Context, rec *chentity.InboundRecord) err
 	return nil
 }
 
-type capturedEvent struct{ topic, event string }
+type capturedEvent struct {
+	topic, event string
+	payload      any
+}
 type fakePublisher struct {
 	mu     sync.Mutex
 	events []capturedEvent
 }
 
-func (p *fakePublisher) Publish(_ context.Context, topic, event string, _ any) error {
+func (p *fakePublisher) Publish(_ context.Context, topic, event string, payload any) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.events = append(p.events, capturedEvent{topic, event})
+	p.events = append(p.events, capturedEvent{topic, event, payload})
+	return nil
+}
+
+// lastPayload returns the payload of the most recent event with the given name.
+func (p *fakePublisher) lastPayload(event string) any {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := len(p.events) - 1; i >= 0; i-- {
+		if p.events[i].event == event {
+			return p.events[i].payload
+		}
+	}
 	return nil
 }
 func (p *fakePublisher) has(event string) bool {

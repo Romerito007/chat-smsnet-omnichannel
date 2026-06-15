@@ -6,6 +6,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
+	convcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 )
 
@@ -54,11 +55,27 @@ func TestInbound_MediaOnly_PersistsAttachment(t *testing.T) {
 	if msg == nil || len(msg.Attachments) != 1 || msg.Attachments[0].ID != "att1" {
 		t.Fatalf("message must carry the stored attachment, got %+v", msg)
 	}
-	if msg.MessageType != conventity.MessageFile {
-		t.Errorf("media-only message must be typed as file, got %q", msg.MessageType)
+	// image/jpeg must be typed as image (renderable), not file/text — otherwise the
+	// dashboard shows an empty bubble instead of the picture.
+	if msg.MessageType != conventity.MessageImage {
+		t.Errorf("media-only image must be typed as image, got %q", msg.MessageType)
 	}
 	if res.ConversationID == "" {
 		t.Error("expected a conversation id in the result")
+	}
+
+	// The realtime message_created payload the dashboard receives must carry the
+	// attachment AND the renderable type — this is the live path that drew the
+	// empty bubble before the fix.
+	p, ok := fx.pub.lastPayload(convcontracts.RealtimeMessageCreated).(convcontracts.MessagePayload)
+	if !ok {
+		t.Fatalf("expected a MessagePayload on the realtime event, got %T", fx.pub.lastPayload(convcontracts.RealtimeMessageCreated))
+	}
+	if p.MessageType != string(conventity.MessageImage) {
+		t.Errorf("realtime message_type = %q, want image", p.MessageType)
+	}
+	if len(p.Attachments) != 1 || p.Attachments[0].ContentType != "image/jpeg" || p.Attachments[0].URL == "" {
+		t.Errorf("realtime payload must include the hydrated attachment, got %+v", p.Attachments)
 	}
 }
 
@@ -72,6 +89,10 @@ func TestInbound_MediaWithCaption(t *testing.T) {
 	msg := fx.msgs.items[lastMessageID(fx)]
 	if msg.Text != "foto" || len(msg.Attachments) != 1 {
 		t.Errorf("expected caption text + attachment, got text=%q attachments=%d", msg.Text, len(msg.Attachments))
+	}
+	// A caption must NOT downgrade the type to text — the image still renders.
+	if msg.MessageType != conventity.MessageImage {
+		t.Errorf("captioned image must stay typed as image, got %q", msg.MessageType)
 	}
 }
 
@@ -88,6 +109,9 @@ func TestInbound_Audio(t *testing.T) {
 	}
 	if store.last.ContentType != "audio/webm" {
 		t.Errorf("audio not stored with its content type, got %q", store.last.ContentType)
+	}
+	if msg := fx.msgs.items[lastMessageID(fx)]; msg.MessageType != conventity.MessageAudio {
+		t.Errorf("audio/webm must be typed as audio, got %q", msg.MessageType)
 	}
 }
 

@@ -396,12 +396,20 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 				"content_type", f.ContentType, "size", len(f.Data), "cause", err.Error())
 			return nil, err
 		}
+		shared.LoggerFrom(ctx, s.logger).Info("INBOUND_ATTACHMENT_STORED",
+			"conversation_id", conv.ID, "attachment_id", att.ID, "filename", att.Filename,
+			"content_type", att.ContentType, "size", att.Size)
 		attachments = append(attachments, att)
 	}
 
 	mtype := conventity.MessageText
-	if strings.TrimSpace(in.Text) == "" && len(attachments) > 0 {
-		mtype = conventity.MessageFile
+	if len(attachments) > 0 {
+		// Derive the renderable media type from the first attachment so an inbound
+		// image/audio/video is reported as such on BOTH rails (REST read + realtime),
+		// even when it carries a caption — never collapsed to "text" or "file". This
+		// mirrors the read-side deriveMessageType, but fixing it at the producer keeps
+		// the stored type, the realtime payload and the REST response consistent.
+		mtype = conventity.MessageTypeForContentType(attachments[0].ContentType)
 	}
 
 	message := &conventity.Message{
@@ -422,6 +430,11 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	if err := s.messages.Create(ctx, message); err != nil {
 		return nil, err
 	}
+	if len(attachments) > 0 {
+		shared.LoggerFrom(ctx, s.logger).Info("INBOUND_MESSAGE_CREATED_WITH_ATTACHMENTS",
+			"message_id", message.ID, "attachment_count", len(attachments),
+			"message_type", string(mtype), "direction", string(conventity.DirectionInbound))
+	}
 
 	conv.LastMessageAt = createdAt
 	conv.UpdatedAt = createdAt
@@ -433,8 +446,14 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	}
 
 	s.recordEvent(ctx, conv, conventity.EventMessageCreated, map[string]any{"message_id": message.ID})
+	realtimePayload := convcontracts.NewMessagePayload(message)
+	if len(realtimePayload.Attachments) > 0 {
+		shared.LoggerFrom(ctx, s.logger).Info("REALTIME_MESSAGE_CREATED_PAYLOAD",
+			"message_id", message.ID, "attachment_count", len(realtimePayload.Attachments),
+			"message_type", realtimePayload.MessageType)
+	}
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
-		convcontracts.RealtimeMessageCreated, convcontracts.NewMessagePayload(message))
+		convcontracts.RealtimeMessageCreated, realtimePayload)
 	s.publishConversation(ctx, conv)
 	// Inbound customer messages flow to webhooks too (Chatwoot model: entrada and
 	// saída both via message_created), with signed channel-media attachment URLs.

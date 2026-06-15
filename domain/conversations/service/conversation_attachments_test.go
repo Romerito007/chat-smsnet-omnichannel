@@ -84,6 +84,41 @@ func TestListMessages_HydratesAttachmentsAndDerivesType(t *testing.T) {
 	}
 }
 
+// TestListMessages_CaptionedImageKeepsImageType locks the captioned-media contract
+// on the read path: when a media message ALSO has text (a caption), deriveMessageType
+// defers to the STORED type, so the producer must store "image" (not "text"). An
+// inbound captioned image stored as text used to render as a plain text bubble.
+func TestListMessages_CaptionedImageKeepsImageType(t *testing.T) {
+	svc, _, mr, _, _ := newService(map[string]string{"s1": "t1"})
+	svc.SetAttachmentResolver(imageAudioResolver())
+	id := openConv(t, svc)
+
+	mr.items = append(mr.items,
+		&entity.Message{ID: "m1", TenantID: "t1", ConversationID: id, Text: "olha a foto",
+			MessageType: entity.MessageImage, Attachments: []entity.Attachment{{ID: "img"}}},
+	)
+
+	msgs, err := svc.ListMessages(adminCtx(), id, shared.PageRequest{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var m1 *entity.Message
+	for _, m := range msgs {
+		if m.ID == "m1" {
+			m1 = m
+		}
+	}
+	if m1 == nil {
+		t.Fatal("m1 not returned")
+	}
+	if m1.MessageType != entity.MessageImage {
+		t.Errorf("captioned image must stay image on read, got %q", m1.MessageType)
+	}
+	if m1.Text != "olha a foto" || len(m1.Attachments) != 1 || m1.Attachments[0].ContentType != "image/jpeg" {
+		t.Errorf("captioned image must keep its caption + hydrated attachment: %+v", m1)
+	}
+}
+
 // SendMessage rejects an unknown/unconfirmed attachment and, for a valid image
 // attachment with no text, returns a hydrated, image-typed message.
 func TestSendMessage_ValidatesAndDerivesType(t *testing.T) {
