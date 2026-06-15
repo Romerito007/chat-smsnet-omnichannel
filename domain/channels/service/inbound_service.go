@@ -461,8 +461,11 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: convcontracts.RealtimeMessageCreated, Data: realtimePayload},
 		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: convcontracts.RealtimeConversationUpdated, Data: convPayload},
 	}
-	if conv.SectorID != "" {
-		events = append(events, shared.PublishEvent{Topic: shared.TopicInbox(conv.TenantID, conv.SectorID), Event: convcontracts.RealtimeConversationUpdated, Data: convPayload})
+	// Inbox rooms: the sector room, or — for a queued/sector-less conversation — the
+	// unassigned room (+ assignee), so the agent's inbox updates live for new inbound
+	// messages on unassigned conversations too (mirrors the REST inbox visibility).
+	for _, topic := range shared.InboxTopicsFor(conv.TenantID, conv.SectorID, conv.AssignedTo) {
+		events = append(events, shared.PublishEvent{Topic: topic, Event: convcontracts.RealtimeConversationUpdated, Data: convPayload})
 	}
 	shared.PublishAll(ctx, s.publisher, events...)
 	// Inbound customer messages flow to webhooks too (Chatwoot model: entrada and
@@ -527,8 +530,9 @@ func (s *InboundService) publishConversation(ctx context.Context, conv *conventi
 	payload := convcontracts.NewConversationPayload(conv)
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
 		convcontracts.RealtimeConversationUpdated, payload)
-	if conv.SectorID != "" {
-		_ = s.publisher.Publish(ctx, shared.TopicInbox(conv.TenantID, conv.SectorID),
-			convcontracts.RealtimeConversationUpdated, payload)
+	// Inbox rooms mirroring the REST visibility: sector room, or the unassigned room
+	// (+ assignee) for a queued/sector-less conversation.
+	for _, topic := range shared.InboxTopicsFor(conv.TenantID, conv.SectorID, conv.AssignedTo) {
+		_ = s.publisher.Publish(ctx, topic, convcontracts.RealtimeConversationUpdated, payload)
 	}
 }

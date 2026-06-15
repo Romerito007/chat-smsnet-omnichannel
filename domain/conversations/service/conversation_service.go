@@ -1179,8 +1179,10 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: contracts.RealtimeMessageCreated, Data: contracts.NewMessagePayload(msg)},
 		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: contracts.RealtimeConversationUpdated, Data: convPayload},
 	}
-	if conv.SectorID != "" {
-		events = append(events, shared.PublishEvent{Topic: shared.TopicInbox(conv.TenantID, conv.SectorID), Event: contracts.RealtimeConversationUpdated, Data: convPayload})
+	// Inbox rooms: the sector room, or — for a queued/sector-less conversation — the
+	// unassigned room (+ the assignee), mirroring the REST inbox visibility.
+	for _, topic := range shared.InboxTopicsFor(conv.TenantID, conv.SectorID, conv.AssignedTo) {
+		events = append(events, shared.PublishEvent{Topic: topic, Event: contracts.RealtimeConversationUpdated, Data: convPayload})
 	}
 	shared.PublishAll(ctx, s.publisher, events...)
 
@@ -1358,15 +1360,15 @@ func (s *Service) recordEvent(ctx context.Context, conv *entity.Conversation, ev
 	})
 }
 
-// publishConversation emits conversation.updated to the conversation topic and,
-// when sectored, the sector inbox topic.
+// publishConversation emits conversation.updated to the conversation topic and the
+// inbox rooms that may see it (sector room, or the unassigned room + assignee for a
+// queued/sector-less conversation), mirroring the REST inbox visibility.
 func (s *Service) publishConversation(ctx context.Context, conv *entity.Conversation) {
 	payload := contracts.NewConversationPayload(conv)
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
 		contracts.RealtimeConversationUpdated, payload)
-	if conv.SectorID != "" {
-		_ = s.publisher.Publish(ctx, shared.TopicInbox(conv.TenantID, conv.SectorID),
-			contracts.RealtimeConversationUpdated, payload)
+	for _, topic := range shared.InboxTopicsFor(conv.TenantID, conv.SectorID, conv.AssignedTo) {
+		_ = s.publisher.Publish(ctx, topic, contracts.RealtimeConversationUpdated, payload)
 	}
 }
 
@@ -1380,8 +1382,8 @@ func (s *Service) publishLifecycle(ctx context.Context, conv *entity.Conversatio
 	}
 	payload := contracts.NewConversationPayload(conv)
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID), event, payload)
-	if conv.SectorID != "" {
-		_ = s.publisher.Publish(ctx, shared.TopicInbox(conv.TenantID, conv.SectorID), event, payload)
+	for _, topic := range shared.InboxTopicsFor(conv.TenantID, conv.SectorID, conv.AssignedTo) {
+		_ = s.publisher.Publish(ctx, topic, event, payload)
 	}
 	// Named lifecycle events (created/resolved/closed/reopened) drive automation rules.
 	s.emitRuleEvent(ctx, conv, event, payload)

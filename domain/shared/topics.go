@@ -27,3 +27,31 @@ func TopicConversation(tenantID TenantID, conversationID ID) string {
 func TopicInbox(tenantID TenantID, sectorID ID) string {
 	return "t:" + tenantID + ":inbox:" + sectorID
 }
+
+// TopicUnassigned is the per-tenant room for queued/unassigned conversations that
+// carry NO sector. Only all-scope agents (who can see the whole queue in the REST
+// inbox) auto-join it, so realtime updates for sector-less conversations reach
+// exactly the agents the inbox visibility would show them to — and never leak to
+// sector-scoped agents.
+func TopicUnassigned(tenantID TenantID) string {
+	return "t:" + tenantID + ":unassigned"
+}
+
+// InboxTopicsFor returns the inbox rooms that must receive a conversation's
+// list-level update (conversation.created/updated/assigned/…), mirroring the REST
+// inbox visibility (visibleTo):
+//   - a sectored conversation → its sector room;
+//   - a sector-less (queued/unassigned) conversation → the unassigned room
+//     (all-scope agents) plus, when assigned, the assignee's own user room.
+//
+// The per-conversation room (subscribed on open) is handled separately by callers.
+func InboxTopicsFor(tenantID TenantID, sectorID, assignedTo ID) []string {
+	if sectorID != "" {
+		return []string{TopicInbox(tenantID, sectorID)}
+	}
+	out := []string{TopicUnassigned(tenantID)}
+	if assignedTo != "" {
+		out = append(out, TopicUser(tenantID, assignedTo))
+	}
+	return out
+}

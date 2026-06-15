@@ -153,6 +153,11 @@ func (h *Handler) joinDefaultRooms(client *realtime.Client, claims auth.AccessCl
 	h.hub.Subscribe(client, shared.TopicTenant(claims.TenantID))
 	h.hub.Subscribe(client, shared.TopicUser(claims.TenantID, claims.UserID))
 	h.hub.Subscribe(client, shared.TopicPresence(claims.TenantID))
+	// All-scope agents see the whole queue in the REST inbox, so they also join the
+	// unassigned room to get live updates for queued/sector-less conversations.
+	if claims.SectorScope == authz.ScopeAll {
+		h.hub.Subscribe(client, shared.TopicUnassigned(claims.TenantID))
+	}
 	for _, sectorID := range claims.SectorIDs {
 		if sectorID != "" {
 			h.hub.Subscribe(client, shared.TopicInbox(claims.TenantID, sectorID))

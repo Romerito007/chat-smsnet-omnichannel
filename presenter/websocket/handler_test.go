@@ -197,3 +197,57 @@ func TestResyncFrame_WireContract(t *testing.T) {
 		t.Error("ts must be set")
 	}
 }
+
+// TestWS_AllScopeJoinsUnassignedRoom: an all-scope agent (sees the whole queue)
+// auto-joins the unassigned room, so updates for queued/sector-less conversations
+// reach it live.
+func TestWS_AllScopeJoinsUnassignedRoom(t *testing.T) {
+	hub := realtime.NewHub()
+	m := testManager()
+	srv, wsURL := newServer(t, hub, m, 0)
+	defer srv.Close()
+
+	tok, _, err := m.IssueAccess(auth.AccessClaims{
+		TenantID: "t1", UserID: "boss", Permissions: []authz.Permission{authz.ConversationRead}, SectorScope: authz.ScopeAll,
+	})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL+"?token="+tok, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	expectDelivery(t, hub, shared.TopicUnassigned("t1"), conn) // delivered ⇒ joined
+}
+
+// TestWS_SectorScopeDoesNotJoinUnassignedRoom: a sector-scoped agent must NOT join
+// the unassigned room, so a queued/sector-less conversation never leaks to agents
+// the REST inbox would hide it from.
+func TestWS_SectorScopeDoesNotJoinUnassignedRoom(t *testing.T) {
+	hub := realtime.NewHub()
+	m := testManager()
+	srv, wsURL := newServer(t, hub, m, 0)
+	defer srv.Close()
+
+	tok, _, err := m.IssueAccess(auth.AccessClaims{
+		TenantID: "t1", UserID: "u1", Permissions: []authz.Permission{authz.ConversationRead},
+		SectorIDs: []string{"s1"}, SectorScope: authz.ScopeOwn,
+	})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL+"?token="+tok, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	// Once the sector room is joined (proves joinDefaultRooms ran), the unassigned
+	// room must have no subscriber for this client.
+	waitForSubscription(t, hub, shared.TopicInbox("t1", "s1"))
+	if hub.HasSubscribers(shared.TopicUnassigned("t1")) {
+		t.Error("sector-scoped agent must NOT join the unassigned room (no leak)")
+	}
+}
