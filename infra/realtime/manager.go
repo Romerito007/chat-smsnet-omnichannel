@@ -25,6 +25,11 @@ func (m *Manager) Publish(ctx context.Context, topic Topic, payload []byte) erro
 	return m.pubsub.Publish(ctx, Message{Topic: topic, Payload: payload})
 }
 
+// PublishBatch emits several messages in one Redis round trip (pipeline).
+func (m *Manager) PublishBatch(ctx context.Context, msgs []Message) error {
+	return m.pubsub.PublishBatch(ctx, msgs)
+}
+
 // Run starts the cross-node subscription loop; call it from the ws role.
 func (m *Manager) Run(ctx context.Context) error {
 	return m.pubsub.Run(ctx)

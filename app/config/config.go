@@ -238,6 +238,9 @@ type OtelConfig struct {
 type RealtimeConfig struct {
 	// MaxConnPerUser bounds simultaneous WS connections per user (0 = unlimited).
 	MaxConnPerUser int
+	// SendBufferSize is the per-connection outbound buffer. A larger buffer absorbs
+	// common bursts before a slow consumer triggers a resync; <= 0 uses the default.
+	SendBufferSize int
 }
 
 // ChannelsConfig holds the channels domain settings.
@@ -355,6 +358,7 @@ func Load() (Config, error) {
 		},
 		Realtime: RealtimeConfig{
 			MaxConnPerUser: getInt("WS_MAX_CONN_PER_USER", 10),
+			SendBufferSize: getInt("WS_SEND_BUFFER_SIZE", 256),
 		},
 		Channels: ChannelsConfig{
 			EncryptionKey: getString("CHANNELS_ENCRYPTION_KEY", "dev-channel-encryption-key"),

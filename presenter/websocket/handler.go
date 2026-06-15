@@ -23,12 +23,12 @@ import (
 )
 
 const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	heartbeatWait  = 20 * time.Second // app-level keepalive ({event:"ping"})
-	sendBufferSize = 64
-	maxReadBytes   = 4096
+	writeWait         = 10 * time.Second
+	pongWait          = 60 * time.Second
+	pingPeriod        = (pongWait * 9) / 10
+	heartbeatWait     = 20 * time.Second // app-level keepalive ({event:"ping"})
+	defaultSendBuffer = 256              // per-connection outbound buffer (configurable)
+	maxReadBytes      = 4096
 )
 
 // pingEnvelope is the app-level keepalive frame, sent on the same {event, ts, data}
@@ -47,6 +47,15 @@ func pingFrame() []byte {
 	return b
 }
 
+// resyncFrame tells the client it missed one or more events (its send buffer
+// overflowed) and must refetch its current state — the same recovery it does on a
+// reconnect. It is written directly to the socket, bypassing the saturated Send
+// buffer, so the signal gets through even when delivery is dropping messages.
+func resyncFrame() []byte {
+	b, _ := json.Marshal(pingEnvelope{Event: "realtime.resync", Ts: time.Now().UnixMilli(), Data: map[string]any{"reason": "slow_consumer"}})
+	return b
+}
+
 // clientCommand is the inbound control frame a client sends to (un)subscribe to a
 // conversation room.
 type clientCommand struct {
@@ -61,16 +70,21 @@ type Handler struct {
 	tokens         auth.TokenManager
 	logger         shared.Logger
 	maxConnPerUser int
+	sendBufferSize int
 	upgrader       websocket.Upgrader
 }
 
-// NewHandler builds the WS handler.
-func NewHandler(hub *realtime.Hub, tokens auth.TokenManager, logger shared.Logger, maxConnPerUser int) *Handler {
+// NewHandler builds the WS handler. sendBufferSize <= 0 falls back to the default.
+func NewHandler(hub *realtime.Hub, tokens auth.TokenManager, logger shared.Logger, maxConnPerUser, sendBufferSize int) *Handler {
+	if sendBufferSize <= 0 {
+		sendBufferSize = defaultSendBuffer
+	}
 	return &Handler{
 		hub:            hub,
 		tokens:         tokens,
 		logger:         logger,
 		maxConnPerUser: maxConnPerUser,
+		sendBufferSize: sendBufferSize,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -99,8 +113,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ID:       shared.NewID(),
 		TenantID: claims.TenantID,
 		UserID:   claims.UserID,
-		Send:     make(chan realtime.Message, sendBufferSize),
+		Send:     make(chan realtime.Message, h.sendBufferSize),
 		Topics:   map[realtime.Topic]struct{}{},
+		Resync:   make(chan struct{}, 1),
 	}
 
 	// Enforce the per-user connection limit before upgrading.
@@ -203,6 +218,15 @@ func (h *Handler) writePump(conn *websocket.Conn, client *realtime.Client) {
 				return
 			}
 			if err := conn.WriteMessage(websocket.TextMessage, msg.Payload); err != nil {
+				return
+			}
+		case <-client.Resync:
+			// A delivery was dropped (slow consumer): tell the client to refetch. This
+			// write bypasses the Send buffer, so it lands even while Send is full. If it
+			// can't be written within writeWait the connection is torn down and the
+			// client refetches on reconnect — either way no missed event stays hidden.
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteMessage(websocket.TextMessage, resyncFrame()); err != nil {
 				return
 			}
 		case <-heartbeat.C:

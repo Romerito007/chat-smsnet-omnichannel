@@ -15,6 +15,6 @@ import (
 // tenant comes only from the verified token, never a header. The server wiring
 // exposes it at both /realtime/ws (canonical) and /ws (alias).
 func Handler(c *container.Container) http.Handler {
-	h := ws.NewHandler(c.Realtime.Hub, c.Tokens, c.Logger, c.Config.Realtime.MaxConnPerUser)
+	h := ws.NewHandler(c.Realtime.Hub, c.Tokens, c.Logger, c.Config.Realtime.MaxConnPerUser, c.Config.Realtime.SendBufferSize)
 	return middleware.Recover(c.Logger)(middleware.RequestID(c.Logger, c.Config.LogRequestBody)(h))
 }

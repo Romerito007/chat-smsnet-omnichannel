@@ -36,4 +36,26 @@ func (p *EventPublisher) Publish(ctx context.Context, topic string, event string
 	return p.mgr.Publish(ctx, topic, payload)
 }
 
-var _ shared.EventPublisher = (*EventPublisher)(nil)
+// PublishBatch serializes several events and fans them out in ONE Redis round trip
+// (a pipeline), preserving order. Used for the message-create burst (message.created
+// + conversation.updated…) so the request pays a single RTT instead of N serial ones.
+func (p *EventPublisher) PublishBatch(ctx context.Context, events []shared.PublishEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	now := time.Now().UnixMilli()
+	msgs := make([]Message, 0, len(events))
+	for _, e := range events {
+		payload, err := json.Marshal(envelope{Event: e.Event, Ts: now, Data: e.Data})
+		if err != nil {
+			return err
+		}
+		msgs = append(msgs, Message{Topic: e.Topic, Payload: payload})
+	}
+	return p.mgr.PublishBatch(ctx, msgs)
+}
+
+var (
+	_ shared.EventPublisher      = (*EventPublisher)(nil)
+	_ shared.BatchEventPublisher = (*EventPublisher)(nil)
+)

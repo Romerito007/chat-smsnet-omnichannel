@@ -28,6 +28,23 @@ type Client struct {
 	UserID   string
 	Send     chan Message
 	Topics   map[Topic]struct{}
+	// Resync is an out-of-band, capacity-1 signal raised when Deliver has to drop a
+	// message because Send is full (a slow consumer). The write pump turns a pending
+	// signal into a realtime.resync frame written DIRECTLY to the socket (not through
+	// the saturated Send buffer), so the client learns it missed events and can
+	// refetch. Capacity 1 coalesces any number of drops into a single pending resync.
+	Resync chan struct{}
+}
+
+// SignalResync raises the client's resync flag without blocking (coalesced).
+func (c *Client) SignalResync() {
+	if c.Resync == nil {
+		return
+	}
+	select {
+	case c.Resync <- struct{}{}:
+	default: // a resync is already pending — one refetch covers all missed events
+	}
 }
 
 // Hub maintains the set of clients subscribed to each topic within one process,
@@ -114,8 +131,10 @@ func (h *Hub) Remove(c *Client) {
 }
 
 // Deliver pushes a message to every local client subscribed to its topic.
-// Clients with a full send buffer are skipped (best-effort, non-blocking) to
-// keep one slow consumer from stalling fan-out.
+// Clients with a full send buffer are NOT silently skipped: the message is dropped
+// (non-blocking, so one slow consumer never stalls fan-out) but the client is
+// flagged for resync, so it learns it missed events and refetches instead of
+// showing a stale thread until a manual refresh.
 func (h *Hub) Deliver(msg Message) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -123,6 +142,7 @@ func (h *Hub) Deliver(msg Message) {
 		select {
 		case c.Send <- msg:
 		default:
+			c.SignalResync() // buffer full → tell the client it fell behind
 		}
 	}
 }

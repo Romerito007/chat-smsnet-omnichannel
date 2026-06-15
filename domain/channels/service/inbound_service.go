@@ -454,9 +454,17 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 			"message_id", message.ID, "attachment_count", len(realtimePayload.Attachments),
 			"message_type", realtimePayload.MessageType)
 	}
-	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
-		convcontracts.RealtimeMessageCreated, realtimePayload)
-	s.publishConversation(ctx, conv)
+	// Realtime: message.created + conversation.updated (conversation topic, and the
+	// sector inbox topic) in ONE Redis round trip, ordered (message before update).
+	convPayload := convcontracts.NewConversationPayload(conv)
+	events := []shared.PublishEvent{
+		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: convcontracts.RealtimeMessageCreated, Data: realtimePayload},
+		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: convcontracts.RealtimeConversationUpdated, Data: convPayload},
+	}
+	if conv.SectorID != "" {
+		events = append(events, shared.PublishEvent{Topic: shared.TopicInbox(conv.TenantID, conv.SectorID), Event: convcontracts.RealtimeConversationUpdated, Data: convPayload})
+	}
+	shared.PublishAll(ctx, s.publisher, events...)
 	// Inbound customer messages flow to webhooks too (Chatwoot model: entrada and
 	// saída both via message_created), with signed channel-media attachment URLs.
 	s.webhooks.EmitLazy(ctx, conv.TenantID, conventity.EventMessageCreated, conv.SectorID, func() any {

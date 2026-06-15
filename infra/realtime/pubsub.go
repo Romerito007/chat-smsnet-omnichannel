@@ -34,6 +34,28 @@ func (p *PubSub) Publish(ctx context.Context, msg Message) error {
 	return p.rdb.Publish(ctx, channelName, raw).Err()
 }
 
+// PublishBatch broadcasts several messages in a single Redis pipeline (one round
+// trip), preserving order. A marshal failure aborts before any network write.
+func (p *PubSub) PublishBatch(ctx context.Context, msgs []Message) error {
+	if len(msgs) == 0 {
+		return nil
+	}
+	raws := make([][]byte, len(msgs))
+	for i, m := range msgs {
+		raw, err := json.Marshal(m)
+		if err != nil {
+			return err
+		}
+		raws[i] = raw
+	}
+	pipe := p.rdb.Pipeline()
+	for _, raw := range raws {
+		pipe.Publish(ctx, channelName, raw)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 // Run subscribes to the fan-out channel and delivers received messages to local
 // clients until the context is cancelled.
 func (p *PubSub) Run(ctx context.Context) error {

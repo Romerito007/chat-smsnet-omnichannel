@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,7 +38,7 @@ func issueToken(t *testing.T, m *security.JWTManager, perms []authz.Permission, 
 
 func newServer(t *testing.T, hub *realtime.Hub, m *security.JWTManager, maxConn int) (*httptest.Server, string) {
 	t.Helper()
-	h := NewHandler(hub, m, shared.NewLogger("error"), maxConn)
+	h := NewHandler(hub, m, shared.NewLogger("error"), maxConn, 0)
 	srv := httptest.NewServer(h)
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
 	return srv, wsURL
@@ -172,5 +173,27 @@ func TestWS_EnforcesConnectionLimit(t *testing.T) {
 	}
 	if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("expected 429, got %v", resp)
+	}
+}
+
+// TestResyncFrame_WireContract pins the frame the server sends on a dropped event,
+// which the frontend must handle exactly like a reconnect (refetch its state).
+func TestResyncFrame_WireContract(t *testing.T) {
+	var env struct {
+		Event string         `json:"event"`
+		Ts    int64          `json:"ts"`
+		Data  map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(resyncFrame(), &env); err != nil {
+		t.Fatalf("resync frame must be valid JSON: %v", err)
+	}
+	if env.Event != "realtime.resync" {
+		t.Errorf("event = %q, want realtime.resync", env.Event)
+	}
+	if env.Data["reason"] != "slow_consumer" {
+		t.Errorf("reason = %v, want slow_consumer", env.Data["reason"])
+	}
+	if env.Ts == 0 {
+		t.Error("ts must be set")
 	}
 }

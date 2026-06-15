@@ -1172,10 +1172,17 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 
 	s.recordEvent(ctx, conv, eventType, map[string]any{"message_id": msg.ID})
 
-	// Realtime: message to the conversation topic; conversation update to inbox.
-	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
-		contracts.RealtimeMessageCreated, contracts.NewMessagePayload(msg))
-	s.publishConversation(ctx, conv)
+	// Realtime: message.created + conversation.updated (conversation topic, and the
+	// sector inbox topic) in ONE Redis round trip, ordered (message before update).
+	convPayload := contracts.NewConversationPayload(conv)
+	events := []shared.PublishEvent{
+		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: contracts.RealtimeMessageCreated, Data: contracts.NewMessagePayload(msg)},
+		{Topic: shared.TopicConversation(conv.TenantID, conv.ID), Event: contracts.RealtimeConversationUpdated, Data: convPayload},
+	}
+	if conv.SectorID != "" {
+		events = append(events, shared.PublishEvent{Topic: shared.TopicInbox(conv.TenantID, conv.SectorID), Event: contracts.RealtimeConversationUpdated, Data: convPayload})
+	}
+	shared.PublishAll(ctx, s.publisher, events...)
 
 	// Outbound webhook + automation rules: only real messages, not internal notes.
 	// The webhook payload is delivery-ready: attachment URLs are swapped for signed,
