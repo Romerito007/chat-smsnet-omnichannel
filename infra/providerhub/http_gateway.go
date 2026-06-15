@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	phcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/contracts"
 	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	infrahttp "github.com/romerito007/chat-smsnet-omnichannel/infra/http_client"
 )
 
@@ -33,11 +36,21 @@ const (
 // Gateway is the HTTP implementation of the providerhub gateway.
 type Gateway struct {
 	client *http.Client
+	logger shared.Logger
 }
 
 // NewGateway builds the gateway.
 func NewGateway() *Gateway {
-	return &Gateway{client: infrahttp.New(20 * time.Second)}
+	return &Gateway{client: infrahttp.New(20 * time.Second), logger: slog.Default()}
+}
+
+// SetLogger wires the structured logger used to record the REAL cause of a gateway
+// failure (status/url/body/transport error) — the client only ever sees the generic
+// "serviço indisponível", so without this a misconfigured host/path/key is opaque.
+func (g *Gateway) SetLogger(l shared.Logger) {
+	if l != nil {
+		g.logger = l
+	}
 }
 
 // envelope is the smsnet-integrations response wrapper.
@@ -217,17 +230,41 @@ func (g *Gateway) call(ctx context.Context, cfg *phentity.ProviderIntegrationCon
 	}
 	resp, err := g.client.Do(req)
 	if err != nil {
+		// Transport failure (DNS/connect/timeout): the host is configured but the
+		// request never completed. Log the URL + cause so a wrong host/port/path is
+		// diagnosable; the caller only sees the generic friendly message.
+		g.logFailure(ctx, "transport", url, cfg, 0, err.Error())
 		return nil, apperror.Integration(friendly)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		// Non-2xx: the host answered but rejected the call (wrong path → 404, bad
+		// x-api-key → 401/403, upstream error → 5xx). Log status + body snippet.
+		g.logFailure(ctx, "http_status", url, cfg, resp.StatusCode, string(snippet))
 		return nil, apperror.Integration(friendly)
 	}
 	var env envelope
 	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		g.logFailure(ctx, "decode", url, cfg, resp.StatusCode, err.Error())
 		return nil, apperror.Integration(friendly)
 	}
 	return &env, nil
+}
+
+// logFailure records the concrete cause of a gateway failure (the api key is never
+// logged). request_id/tenant_id come from the context.
+func (g *Gateway) logFailure(ctx context.Context, reason, url string, cfg *phentity.ProviderIntegrationConfig, status int, detail string) {
+	shared.LoggerFrom(ctx, g.logger).Error("SMSNET_GATEWAY_CALL_FAILED",
+		"reason", reason, "url", url, "status", status, "isp_type", cfg.ISPType,
+		"base_url", cfg.SMSNetBaseURL, "has_api_key", cfg.SMSNetAPIKey != "", "detail", truncate(detail, 300))
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // mapNonSuccess maps a non-success envelope status to a domain error.

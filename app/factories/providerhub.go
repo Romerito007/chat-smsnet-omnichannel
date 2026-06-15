@@ -10,11 +10,20 @@ import (
 	providerhubctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/providerhub"
 )
 
+// providerHubGateway builds the HTTP gateway with the structured logger wired, so a
+// failing SMSNET call records its real cause (status/url/body) instead of only the
+// opaque "serviço indisponível".
+func providerHubGateway(c *container.Container) *infraproviderhub.Gateway {
+	g := infraproviderhub.NewGateway()
+	g.SetLogger(c.Logger)
+	return g
+}
+
 // ProviderHubProfileService builds the ISP-profile service (CRUD + gateway status).
 func ProviderHubProfileService(c *container.Container) *phservice.ProfileService {
 	svc := phservice.NewProfileService(
 		providerhubrepo.NewProfileRepository(c.Mongo.DB, c.Cipher),
-		infraproviderhub.NewGateway(),
+		providerHubGateway(c),
 		clock,
 	)
 	svc.SetEnvDefault(c.Config.ProviderHub.GatewayAPIHost, c.Config.ProviderHub.GatewayAPIKey)
@@ -30,7 +39,7 @@ func ProviderHubQueryService(c *container.Container) *phservice.QueryService {
 		providerhubrepo.NewQueryLogRepository(c.Mongo.DB),
 		convrepo.NewConversationRepository(c.Mongo.DB),
 		contactrepo.New(c.Mongo.DB),
-		infraproviderhub.NewGateway(),
+		providerHubGateway(c),
 		infraproviderhub.NewRateLimiter(c.Redis, c.Config.ProviderHub.RatePerMinute),
 		clock,
 	)

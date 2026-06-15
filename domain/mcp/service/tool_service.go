@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
@@ -31,6 +32,16 @@ type ToolService struct {
 	clock         shared.Clock
 	auditor       shared.Auditor
 	ispBridge     contracts.ISPToolBridge // optional: gates + injects ISP config for SMSNET servers
+	logger        shared.Logger
+}
+
+// SetLogger wires the structured logger used to surface a server whose tool listing
+// fails during session open (otherwise that server is silently skipped — a
+// misconfigured SMSNET MCP URL would just yield no tools, with no clue why).
+func (s *ToolService) SetLogger(l shared.Logger) {
+	if l != nil {
+		s.logger = l
+	}
 }
 
 // SetISPBridge wires the SMSNET ISP tool bridge: it gates which SMSNET servers a
@@ -57,6 +68,7 @@ func NewToolService(
 	return &ToolService{
 		servers: servers, approvals: approvals, callLogs: callLogs, conversations: conversations,
 		client: client, publisher: publisher, clock: clock, auditor: shared.NoopAuditor{},
+		logger: slog.Default(),
 	}
 }
 
@@ -242,7 +254,12 @@ func (s *ToolService) OpenToolSession(ctx context.Context, conversationID string
 	for _, conn := range servers {
 		specs, lerr := s.client.ListTools(ctx, conn)
 		if lerr != nil {
-			continue // a single unreachable server must not break the session
+			// A single unreachable server must not break the session, but log WHY it
+			// was skipped — a misconfigured SMSNET MCP URL/path otherwise yields no
+			// tools with no clue. The client error carries the endpoint + status.
+			shared.LoggerFrom(ctx, s.logger).Error("MCP_SERVER_TOOLS_UNAVAILABLE",
+				"server", conn.Name, "base_url", conn.BaseURL, "kind", string(conn.Kind), "cause", lerr.Error())
+			continue
 		}
 		for _, t := range annotate(conn, specs) {
 			// For the ISP source, SMSNET tools are still gated per kind by the

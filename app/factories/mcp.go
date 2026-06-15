@@ -45,6 +45,7 @@ func MCPToolService(c *container.Container) *mcpservice.ToolService {
 		clock,
 	)
 	svc.SetAuditor(AuditService(c))
+	svc.SetLogger(c.Logger)
 	// Gate + inject the SMSNET ISP config (type+creds) into tool calls server-side,
 	// based on the conversation's assistant ISP profile. Credentials never reach
 	// the model.
