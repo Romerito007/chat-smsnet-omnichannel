@@ -24,37 +24,38 @@ func newMock(t *testing.T) (*httptest.Server, *capture) {
 	t.Helper()
 	cap := &capture{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/consultar-cliente", func(w http.ResponseWriter, r *http.Request) {
+	// SMSNET real paths + camelCase response shapes (per the integration docs).
+	mux.HandleFunc("/cliente", func(w http.ResponseWriter, r *http.Request) {
 		cap.apiKey = r.Header.Get("x-api-key")
 		cap.path = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&cap.body)
 		// Second step: a chosen contract (idCliente) returns that specific contract.
 		if id, ok := cap.body["idCliente"].(string); ok && id != "" {
-			writeJSON(w, `{"status":"success","data":{"nome":"Cliente Contrato `+id+`","cpfcnpj":"123","contrato_status_display":"Ativo `+id+`"}}`)
+			writeJSON(w, `{"status":"success","data":{"nome":"Cliente Contrato `+id+`","cpfcnpj":"123","contratoStatusDisplay":"Ativo `+id+`"}}`)
 			return
 		}
 		switch cap.body["cpfcnpj"] {
 		case "000": // not found
 			writeJSON(w, `{"status":"not_found","message":"sem cadastro"}`)
-		case "555": // needs input (multiple contracts)
-			writeJSON(w, `{"status":"needs_input","data":{"options":[{"id_cliente":"A","label":"Contrato A"},{"id_cliente":"B","label":"Contrato B"}]}}`)
+		case "555": // needs input — options at the TOP LEVEL ({label,value})
+			writeJSON(w, `{"status":"needs_input","selectionType":"contrato","options":[{"label":"Contrato A","value":"A"},{"label":"Contrato B","value":"B"}]}`)
 		case "boom": // fallback
 			writeJSON(w, `{"status":"fallback","message":"erro upstream"}`)
-		default: // success
-			writeJSON(w, `{"status":"success","data":{"nome":"João Silva","cpfcnpj":"123","contrato_status_display":"Ativo","valor_check_out":99.9,"faturas":[{"valor":50.0,"vencimento":"2026-07-01","linha_digitavel":"34191..."}]}}`)
+		default: // success — camelCase keys, valorCheckOut as a string
+			writeJSON(w, `{"status":"success","data":{"nome":"João Silva","cpfcnpj":"123","contratoStatusDisplay":"Ativo","valorCheckOut":"99.900000","faturas":[{"valor":50.0,"vencimento":"2026-07-01","linhaDigitavel":"34191..."}]}}`)
 		}
 	})
-	mux.HandleFunc("/listar-planos", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, `{"status":"success","data":{"planos":[{"nome":"100MB","valor":99.9,"velocidade":"100 Mbps"}]}}`)
+	mux.HandleFunc("/planos", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, `{"status":"success","data":[{"descricao":"100MB","valor":99.9}]}`)
 	})
-	mux.HandleFunc("/dados-empresa", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, `{"status":"success","data":{"nome":"Provedor X","cnpj":"00.000/0001"}}`)
+	mux.HandleFunc("/empresa", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, `{"status":"success","data":{"nome":"Provedor X","cnpj":"00.000/0001","telefone1":"(11) 0000-0000"}}`)
 	})
-	mux.HandleFunc("/liberar-acesso", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/liberacao", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&cap.body)
-		writeJSON(w, `{"status":"success","data":{"liberado":true,"protocolo":"LB-1","liberado_ate":"2026-07-10"}}`)
+		writeJSON(w, `{"status":"success","data":{"liberado":1,"protocolo":"LB-1","liberadoAte":"2026-07-10"}}`)
 	})
-	mux.HandleFunc("/abrir-chamado", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/chamado", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, `{"status":"success","data":{"protocolo":"CH-1","msg":"aberto"}}`)
 	})
 	srv := httptest.NewServer(mux)
@@ -85,6 +86,9 @@ func TestGateway_ConsultarCliente_Success(t *testing.T) {
 	res, err := g.ConsultarCliente(context.Background(), cfgFor(srv.URL), phcontracts.ConsultaClienteRequest{CpfCnpj: "123"})
 	if err != nil {
 		t.Fatalf("consulta: %v", err)
+	}
+	if cap.path != "/cliente" {
+		t.Fatalf("must call the SMSNET /cliente path, got %q", cap.path)
 	}
 	if res.Cliente == nil || res.Cliente.Nome != "João Silva" || res.Cliente.ValorCheckOut != 99.9 {
 		t.Fatalf("unexpected cliente: %+v", res.Cliente)

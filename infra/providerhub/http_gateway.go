@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,11 +54,21 @@ func (g *Gateway) SetLogger(l shared.Logger) {
 	}
 }
 
-// envelope is the smsnet-integrations response wrapper.
+// envelope is the smsnet-integrations response wrapper. options/selectionType are
+// top-level (a needs_input multi-contract response), NOT inside data.
 type envelope struct {
-	Status  string          `json:"status"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data"`
+	Status        string          `json:"status"`
+	Message       string          `json:"message"`
+	Data          json.RawMessage `json:"data"`
+	Options       []smsnetOption  `json:"options"`
+	SelectionType string          `json:"selectionType"`
+}
+
+// smsnetOption is one selectable contract on a needs_input response: value is the
+// idCliente to resend, label is the human display.
+type smsnetOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 // ConsultarCliente looks up a customer; maps needs_input to a selection result.
@@ -76,23 +87,24 @@ func (g *Gateway) ConsultarCliente(ctx context.Context, cfg *phentity.ProviderIn
 		body["idCliente"] = req.IDCliente
 	}
 
-	env, err := g.call(ctx, cfg, "/consultar-cliente", body)
+	env, err := g.call(ctx, cfg, "/cliente", body)
 	if err != nil {
 		return phcontracts.ClienteResult{}, err
 	}
 	switch env.Status {
 	case statusSuccess:
-		var cli phcontracts.Cliente
-		if err := json.Unmarshal(env.Data, &cli); err != nil {
+		var raw smsnetCliente
+		if err := json.Unmarshal(env.Data, &raw); err != nil {
 			return phcontracts.ClienteResult{}, apperror.Integration(friendly)
 		}
+		cli := mapCliente(raw)
 		return phcontracts.ClienteResult{Cliente: &cli}, nil
 	case statusNeedsInput:
-		var d struct {
-			Options []phcontracts.ContratoOption `json:"options"`
+		opts := make([]phcontracts.ContratoOption, 0, len(env.Options))
+		for _, o := range env.Options {
+			opts = append(opts, phcontracts.ContratoOption{IDCliente: o.Value, Label: o.Label})
 		}
-		_ = json.Unmarshal(env.Data, &d)
-		return phcontracts.ClienteResult{NeedsSelection: true, Options: d.Options}, nil
+		return phcontracts.ClienteResult{NeedsSelection: true, Options: opts}, nil
 	case statusNotFound:
 		return phcontracts.ClienteResult{}, apperror.NotFound("cliente não localizado")
 	default:
@@ -105,20 +117,23 @@ func (g *Gateway) ListarPlanos(ctx context.Context, cfg *phentity.ProviderIntegr
 	if len(cfg.Options.DadosPlanos) > 0 {
 		return planosFromFixed(cfg.Options.DadosPlanos), nil
 	}
-	env, err := g.call(ctx, cfg, "/listar-planos", g.baseBody(cfg))
+	env, err := g.call(ctx, cfg, "/planos", g.baseBody(cfg))
 	if err != nil {
 		return nil, err
 	}
 	if env.Status != statusSuccess {
 		return nil, mapNonSuccess(env.Status, "planos não localizados")
 	}
-	var d struct {
-		Planos []phcontracts.Plano `json:"planos"`
-	}
-	if err := json.Unmarshal(env.Data, &d); err != nil {
+	// SMSNET returns data as the plans array directly ([{descricao, valor}]).
+	var raw []smsnetPlano
+	if err := json.Unmarshal(env.Data, &raw); err != nil {
 		return nil, apperror.Integration(friendly)
 	}
-	return d.Planos, nil
+	out := make([]phcontracts.Plano, 0, len(raw))
+	for _, p := range raw {
+		out = append(out, mapPlano(p))
+	}
+	return out, nil
 }
 
 // DadosEmpresa returns the company profile (from fixed config data when present).
@@ -126,36 +141,36 @@ func (g *Gateway) DadosEmpresa(ctx context.Context, cfg *phentity.ProviderIntegr
 	if len(cfg.Options.DadosEmpresa) > 0 {
 		return empresaFromFixed(cfg.Options.DadosEmpresa), nil
 	}
-	env, err := g.call(ctx, cfg, "/dados-empresa", g.baseBody(cfg))
+	env, err := g.call(ctx, cfg, "/empresa", g.baseBody(cfg))
 	if err != nil {
 		return phcontracts.Empresa{}, err
 	}
 	if env.Status != statusSuccess {
 		return phcontracts.Empresa{}, mapNonSuccess(env.Status, "empresa não localizada")
 	}
-	var out phcontracts.Empresa
-	if err := json.Unmarshal(env.Data, &out); err != nil {
+	var raw smsnetEmpresa
+	if err := json.Unmarshal(env.Data, &raw); err != nil {
 		return phcontracts.Empresa{}, apperror.Integration(friendly)
 	}
-	return out, nil
+	return mapEmpresa(raw), nil
 }
 
 // LiberarAcesso performs a trust-unlock for a contract.
 func (g *Gateway) LiberarAcesso(ctx context.Context, cfg *phentity.ProviderIntegrationConfig, idCliente string) (phcontracts.Liberacao, error) {
 	body := g.baseBody(cfg)
 	body["idCliente"] = idCliente
-	env, err := g.call(ctx, cfg, "/liberar-acesso", body)
+	env, err := g.call(ctx, cfg, "/liberacao", body)
 	if err != nil {
 		return phcontracts.Liberacao{}, err
 	}
 	if env.Status != statusSuccess {
 		return phcontracts.Liberacao{}, mapNonSuccess(env.Status, "contrato não localizado")
 	}
-	var out phcontracts.Liberacao
-	if err := json.Unmarshal(env.Data, &out); err != nil {
+	var raw smsnetLiberacao
+	if err := json.Unmarshal(env.Data, &raw); err != nil {
 		return phcontracts.Liberacao{}, apperror.Integration(friendly)
 	}
-	return out, nil
+	return mapLiberacao(raw), nil
 }
 
 // AbrirChamado opens a support ticket for a contract.
@@ -164,23 +179,23 @@ func (g *Gateway) AbrirChamado(ctx context.Context, cfg *phentity.ProviderIntegr
 	body["idCliente"] = idCliente
 	body["subject"] = subject
 	body["message"] = message
-	env, err := g.call(ctx, cfg, "/abrir-chamado", body)
+	env, err := g.call(ctx, cfg, "/chamado", body)
 	if err != nil {
 		return phcontracts.Chamado{}, err
 	}
 	if env.Status != statusSuccess {
 		return phcontracts.Chamado{}, mapNonSuccess(env.Status, "contrato não localizado")
 	}
-	var out phcontracts.Chamado
-	if err := json.Unmarshal(env.Data, &out); err != nil {
+	var raw smsnetChamado
+	if err := json.Unmarshal(env.Data, &raw); err != nil {
 		return phcontracts.Chamado{}, apperror.Integration(friendly)
 	}
-	return out, nil
+	return phcontracts.Chamado{Protocolo: raw.Protocolo, Msg: raw.Msg}, nil
 }
 
-// Ping validates connectivity + credentials by hitting dados-empresa.
+// Ping validates connectivity + credentials by hitting /empresa.
 func (g *Gateway) Ping(ctx context.Context, cfg *phentity.ProviderIntegrationConfig) error {
-	_, err := g.call(ctx, cfg, "/dados-empresa", g.baseBody(cfg))
+	_, err := g.call(ctx, cfg, "/empresa", g.baseBody(cfg))
 	return err
 }
 
@@ -265,6 +280,130 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// ── SMSNET response shapes (camelCase) → normalized DTOs ──────────────────────
+// The smsnet-integrations API returns camelCase keys and some numeric fields as
+// strings (e.g. valorCheckOut "99.900000", liberado 1). We decode into these
+// internal structs and map to the chat's normalized (snake_case) DTOs.
+
+type smsnetCliente struct {
+	Nome                  string          `json:"nome"`
+	CpfCnpj               string          `json:"cpfcnpj"`
+	ContratoStatusDisplay string          `json:"contratoStatusDisplay"`
+	ValorCheckOut         json.RawMessage `json:"valorCheckOut"` // string or number
+	Faturas               []smsnetFatura  `json:"faturas"`
+}
+type smsnetFatura struct {
+	Valor          json.RawMessage `json:"valor"` // number or string
+	Vencimento     string          `json:"vencimento"`
+	Link           string          `json:"link"`
+	LinhaDigitavel string          `json:"linhaDigitavel"`
+	Pix            string          `json:"pix"`
+}
+type smsnetPlano struct {
+	Nome       string          `json:"nome"`
+	Descricao  string          `json:"descricao"`
+	Velocidade string          `json:"velocidade"`
+	Valor      json.RawMessage `json:"valor"`
+}
+type smsnetEmpresa struct {
+	Nome      string `json:"nome"`
+	CNPJ      string `json:"cnpj"`
+	Endereco  string `json:"endereco"`
+	Telefone1 string `json:"telefone1"`
+	Telefone2 string `json:"telefone2"`
+	Email     string `json:"email"`
+	Site      string `json:"site"`
+}
+type smsnetLiberacao struct {
+	Liberado    json.RawMessage `json:"liberado"` // number 1 / bool
+	Protocolo   string          `json:"protocolo"`
+	LiberadoAte string          `json:"liberadoAte"`
+	Msg         string          `json:"msg"`
+}
+type smsnetChamado struct {
+	Protocolo string `json:"protocolo"`
+	Msg       string `json:"msg"`
+}
+
+func mapCliente(s smsnetCliente) phcontracts.Cliente {
+	out := phcontracts.Cliente{
+		Nome:                  s.Nome,
+		CpfCnpj:               s.CpfCnpj,
+		ContratoStatusDisplay: s.ContratoStatusDisplay,
+		ValorCheckOut:         looseFloat(s.ValorCheckOut),
+	}
+	for _, f := range s.Faturas {
+		out.Faturas = append(out.Faturas, phcontracts.Fatura{
+			Valor:          looseFloat(f.Valor),
+			Vencimento:     f.Vencimento,
+			Link:           f.Link,
+			LinhaDigitavel: f.LinhaDigitavel,
+			Pix:            f.Pix,
+		})
+	}
+	return out
+}
+
+func mapPlano(p smsnetPlano) phcontracts.Plano {
+	nome := p.Nome
+	if nome == "" {
+		nome = p.Descricao
+	}
+	return phcontracts.Plano{Nome: nome, Descricao: p.Descricao, Velocidade: p.Velocidade, Valor: looseFloat(p.Valor)}
+}
+
+func mapEmpresa(e smsnetEmpresa) phcontracts.Empresa {
+	tel := e.Telefone1
+	if tel == "" {
+		tel = e.Telefone2
+	}
+	return phcontracts.Empresa{Nome: e.Nome, CNPJ: e.CNPJ, Telefone: tel, Email: e.Email, Endereco: e.Endereco, Site: e.Site}
+}
+
+func mapLiberacao(l smsnetLiberacao) phcontracts.Liberacao {
+	return phcontracts.Liberacao{Liberado: looseBool(l.Liberado), Protocolo: l.Protocolo, LiberadoAte: l.LiberadoAte, Msg: l.Msg}
+}
+
+// looseFloat parses a JSON value that may be a number OR a quoted numeric string
+// (the SMSNET API returns e.g. valorCheckOut as "99.900000"). Returns 0 on failure.
+func looseFloat(raw json.RawMessage) float64 {
+	if len(raw) == 0 {
+		return 0
+	}
+	var f float64
+	if json.Unmarshal(raw, &f) == nil {
+		return f
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+		return v
+	}
+	return 0
+}
+
+// looseBool reads a JSON value that may be a bool OR a number (liberado: 1) OR a
+// quoted "1"/"true". Returns true for true / non-zero / "1"/"true".
+func looseBool(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var b bool
+	if json.Unmarshal(raw, &b) == nil {
+		return b
+	}
+	var n float64
+	if json.Unmarshal(raw, &n) == nil {
+		return n != 0
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		s = strings.TrimSpace(strings.ToLower(s))
+		return s == "1" || s == "true"
+	}
+	return false
 }
 
 // mapNonSuccess maps a non-success envelope status to a domain error.
