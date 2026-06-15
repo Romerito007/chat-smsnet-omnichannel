@@ -362,15 +362,34 @@ func (s *Service) List(ctx context.Context, filter contracts.ListFilter, page sh
 	return s.conversations.List(ctx, filter, vis, page.Normalize())
 }
 
-// LastMessages returns the latest non-deleted message per conversation id (for
-// list-item previews). Conversations with an empty thread are absent from the
-// map. Tenant-scoped; the caller already authorized the listing.
-func (s *Service) LastMessages(ctx context.Context, conversationIDs []string) (map[string]*entity.Message, error) {
-	if _, err := shared.RequireTenant(ctx); err != nil {
-		return nil, err
+// refreshLastMessageSnapshot recomputes the conversation's denormalized
+// last-message snapshot after an edit/delete that may have touched the latest
+// message. No-op when the affected message is not the one the snapshot mirrors. On
+// delete of the latest it falls back to the new latest (one indexed findOne) or
+// clears the snapshot when none remain, and republishes the conversation so the
+// inbox row updates live.
+func (s *Service) refreshLastMessageSnapshot(ctx context.Context, conv *entity.Conversation, affected *entity.Message, deleted bool) error {
+	if conv.LastMessage == nil || conv.LastMessage.MessageID != affected.ID {
+		return nil // the change didn't touch the conversation's last message
 	}
-	// Single aggregation across the page (no per-conversation query).
-	return s.messages.LatestByConversations(ctx, conversationIDs)
+	if !deleted {
+		conv.LastMessage = entity.NewLastMessageSnapshot(affected) // edited text/type
+	} else {
+		latest, err := s.messages.LatestByConversation(ctx, conv.ID)
+		if err != nil && apperror.From(err).Code != apperror.CodeNotFound {
+			return err
+		}
+		conv.LastMessage = entity.NewLastMessageSnapshot(latest) // nil when none remain
+		if latest != nil {
+			conv.LastMessageAt = latest.CreatedAt
+		}
+	}
+	conv.UpdatedAt = s.clock.Now()
+	if err := s.conversations.Update(ctx, conv); err != nil {
+		return err
+	}
+	s.publishConversation(ctx, conv)
+	return nil
 }
 
 // Update applies the non-nil fields of cmd.
@@ -983,6 +1002,12 @@ func (s *Service) EditMessage(ctx context.Context, conversationID, messageID str
 	// Hydrate attachments for the realtime payload and the response.
 	s.hydrateMessages(ctx, msg)
 
+	// Keep the inbox preview consistent: if the edited message is the conversation's
+	// latest, refresh the denormalized snapshot (new text/type).
+	if err := s.refreshLastMessageSnapshot(ctx, conv, msg, false); err != nil {
+		return nil, err
+	}
+
 	s.recordEvent(ctx, conv, entity.EventMessageEdited, map[string]any{"message_id": msg.ID})
 	_ = s.publisher.Publish(ctx, shared.TopicConversation(conv.TenantID, conv.ID),
 		contracts.RealtimeMessageUpdated, contracts.NewMessagePayload(msg))
@@ -1018,6 +1043,12 @@ func (s *Service) DeleteMessage(ctx context.Context, conversationID, messageID s
 	now := s.clock.Now()
 	msg.DeletedAt = &now
 	if err := s.messages.Update(ctx, msg); err != nil {
+		return err
+	}
+
+	// Keep the inbox preview consistent: if the deleted message was the latest, fall
+	// back to the new latest (or clear the snapshot when none remain).
+	if err := s.refreshLastMessageSnapshot(ctx, conv, msg, true); err != nil {
 		return err
 	}
 
@@ -1130,8 +1161,10 @@ func (s *Service) persistMessage(ctx context.Context, conv *entity.Conversation,
 	}
 	msg.Attachments = hydrated
 
-	// Every message updates last activity on the conversation.
+	// Every message updates last activity on the conversation, and refreshes the
+	// denormalized last-message snapshot the inbox reads (no aggregation).
 	conv.LastMessageAt = msg.CreatedAt
+	conv.LastMessage = entity.NewLastMessageSnapshot(msg)
 	conv.UpdatedAt = msg.CreatedAt
 	if err := s.conversations.Update(ctx, conv); err != nil {
 		return nil, err

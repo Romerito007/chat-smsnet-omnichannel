@@ -53,6 +53,7 @@ func (r *ConversationRepository) Update(ctx context.Context, c *entity.Conversat
 			"tags":              c.Tags,
 			"custom_attributes": c.CustomAttributes,
 			"last_message_at":   c.LastMessageAt,
+			"last_message":      lastMessageToModel(c.LastMessage),
 			"unread_count":      c.UnreadCount,
 			"last_read_at":      c.LastReadAt,
 			"updated_at":        c.UpdatedAt,
@@ -260,6 +261,7 @@ func convToModel(c *entity.Conversation) models.Conversation {
 		Tags:             c.Tags,
 		CustomAttributes: c.CustomAttributes,
 		LastMessageAt:    c.LastMessageAt,
+		LastMessage:      lastMessageToModel(c.LastMessage),
 		UnreadCount:      c.UnreadCount,
 		LastReadAt:       c.LastReadAt,
 		ClosedAt:         c.ClosedAt,
@@ -287,11 +289,38 @@ func convToEntity(m *models.Conversation) *entity.Conversation {
 		Tags:             m.Tags,
 		CustomAttributes: m.CustomAttributes,
 		LastMessageAt:    m.LastMessageAt,
+		LastMessage:      lastMessageToEntity(m.LastMessage),
 		UnreadCount:      m.UnreadCount,
 		LastReadAt:       m.LastReadAt,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 		ClosedAt:         m.ClosedAt,
+	}
+}
+
+func lastMessageToModel(s *entity.LastMessageSnapshot) *models.LastMessage {
+	if s == nil {
+		return nil
+	}
+	return &models.LastMessage{
+		MessageID:   s.MessageID,
+		Preview:     s.Preview,
+		SenderType:  string(s.SenderType),
+		MessageType: string(s.MessageType),
+		CreatedAt:   s.CreatedAt,
+	}
+}
+
+func lastMessageToEntity(m *models.LastMessage) *entity.LastMessageSnapshot {
+	if m == nil {
+		return nil
+	}
+	return &entity.LastMessageSnapshot{
+		MessageID:   m.MessageID,
+		Preview:     m.Preview,
+		SenderType:  entity.SenderType(m.SenderType),
+		MessageType: entity.MessageType(m.MessageType),
+		CreatedAt:   m.CreatedAt,
 	}
 }
 

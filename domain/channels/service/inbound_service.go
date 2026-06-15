@@ -437,6 +437,8 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	}
 
 	conv.LastMessageAt = createdAt
+	// Refresh the denormalized last-message snapshot the inbox reads (no aggregation).
+	conv.LastMessage = conventity.NewLastMessageSnapshot(message)
 	conv.UpdatedAt = createdAt
 	// A new customer message increments the unread counter for agents; reset by
 	// MarkRead (POST /read).

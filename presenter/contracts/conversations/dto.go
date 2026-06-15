@@ -177,35 +177,26 @@ type LastMessage struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-func newLastMessage(m *entity.Message) *LastMessage {
-	if m == nil {
+func newLastMessage(s *entity.LastMessageSnapshot) *LastMessage {
+	if s == nil {
 		return nil
 	}
 	return &LastMessage{
-		Preview:     previewText(m.Text, 280),
-		SenderType:  string(m.SenderType),
-		MessageType: string(m.MessageType),
-		CreatedAt:   m.CreatedAt,
+		Preview:     s.Preview,
+		SenderType:  string(s.SenderType),
+		MessageType: string(s.MessageType),
+		CreatedAt:   s.CreatedAt,
 	}
-}
-
-func previewText(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
 }
 
 // NewConversationResponsesWithLastMessage maps a page of conversations, attaching
-// each one's last-message preview from last (keyed by conversation id).
-func NewConversationResponsesWithLastMessage(items []*entity.Conversation, last map[string]*entity.Message, contactCards, agentCards map[string]shared.DisplayCard) []ConversationResponse {
+// each one's last-message preview from the denormalized snapshot on the row (no
+// aggregation).
+func NewConversationResponsesWithLastMessage(items []*entity.Conversation, contactCards, agentCards map[string]shared.DisplayCard) []ConversationResponse {
 	out := make([]ConversationResponse, len(items))
 	for i, c := range items {
 		r := NewConversationResponse(c)
-		if m, ok := last[c.ID]; ok {
-			r.LastMessage = newLastMessage(m)
-		}
+		r.LastMessage = newLastMessage(c.LastMessage)
 		applyCards(&r, c, contactCards, agentCards)
 		out[i] = r
 	}
@@ -246,6 +237,7 @@ func NewConversationResponse(c *entity.Conversation) ConversationResponse {
 		Tags:             c.Tags,
 		CustomAttributes: c.CustomAttributes,
 		LastMessageAt:    c.LastMessageAt,
+		LastMessage:      newLastMessage(c.LastMessage),
 		UnreadCount:      c.UnreadCount,
 		LastReadAt:       c.LastReadAt,
 		CreatedAt:        c.CreatedAt,

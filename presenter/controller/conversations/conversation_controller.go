@@ -43,20 +43,14 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, err)
 		return
 	}
-	ids := make([]string, len(items))
-	for i, it := range items {
-		ids[i] = it.ID
-	}
-	last, err := c.svc.LastMessages(r.Context(), ids)
-	if err != nil {
-		middleware.WriteError(w, r, err)
-		return
-	}
+	// The last-message preview is denormalized on each conversation document
+	// (refreshed on every message create), so the inbox renders it straight from the
+	// row — no per-page aggregation over the messages collection.
 	// Resolve the contact + assignee display cards per row in two batch queries, so
 	// the inbox renders each row (name/avatar) without a per-row fetch. Best-effort.
 	contactCards, _ := c.svc.ContactCards(r.Context(), items)
 	agentCards, _ := c.svc.AgentCards(r.Context(), items)
-	resp := shared.NewPage(dto.NewConversationResponsesWithLastMessage(items, last, contactCards, agentCards), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
+	resp := shared.NewPage(dto.NewConversationResponsesWithLastMessage(items, contactCards, agentCards), page.Limit, func(cv dto.ConversationResponse) shared.Cursor {
 		return shared.Cursor{CreatedAt: cv.UpdatedAt.UnixMilli(), ID: cv.ID}
 	})
 	middleware.WriteJSON(w, http.StatusOK, resp)

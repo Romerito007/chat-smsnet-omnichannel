@@ -52,22 +52,34 @@ type ReadPayload struct {
 
 // ConversationPayload is the realtime/event representation of a conversation.
 type ConversationPayload struct {
-	ID            string     `json:"id"`
-	TenantID      string     `json:"tenant_id"`
-	ContactID     string     `json:"contact_id"`
-	Channel       string     `json:"channel"`
-	ChannelID     string     `json:"channel_id,omitempty"`
-	SectorID      string     `json:"sector_id,omitempty"`
-	QueueID       string     `json:"queue_id,omitempty"`
-	Status        string     `json:"status"`
-	AssignedTo    string     `json:"assigned_to,omitempty"`
-	Priority      string     `json:"priority"`
-	Protocol      string     `json:"protocol,omitempty"`
-	Tags          []string   `json:"tags,omitempty"`
-	LastMessageAt time.Time  `json:"last_message_at"`
-	UnreadCount   int        `json:"unread_count"`
-	LastReadAt    *time.Time `json:"last_read_at,omitempty"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	ContactID     string    `json:"contact_id"`
+	Channel       string    `json:"channel"`
+	ChannelID     string    `json:"channel_id,omitempty"`
+	SectorID      string    `json:"sector_id,omitempty"`
+	QueueID       string    `json:"queue_id,omitempty"`
+	Status        string    `json:"status"`
+	AssignedTo    string    `json:"assigned_to,omitempty"`
+	Priority      string    `json:"priority"`
+	Protocol      string    `json:"protocol,omitempty"`
+	Tags          []string  `json:"tags,omitempty"`
+	LastMessageAt time.Time `json:"last_message_at"`
+	// LastMessage mirrors the denormalized inbox preview so a conversation.updated
+	// event refreshes the row's snippet live (no refetch). Nil when no message yet.
+	LastMessage *LastMessagePayload `json:"last_message,omitempty"`
+	UnreadCount int                 `json:"unread_count"`
+	LastReadAt  *time.Time          `json:"last_read_at,omitempty"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+}
+
+// LastMessagePayload is the realtime shape of the conversation's last-message
+// preview (matches the inbox REST DTO).
+type LastMessagePayload struct {
+	Preview     string    `json:"preview"`
+	SenderType  string    `json:"sender_type"`
+	MessageType string    `json:"message_type"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // NewConversationPayload builds the payload from a conversation entity.
@@ -86,9 +98,23 @@ func NewConversationPayload(c *entity.Conversation) ConversationPayload {
 		Protocol:      c.Protocol,
 		Tags:          c.Tags,
 		LastMessageAt: c.LastMessageAt,
+		LastMessage:   newLastMessagePayload(c.LastMessage),
 		UnreadCount:   c.UnreadCount,
 		LastReadAt:    c.LastReadAt,
 		UpdatedAt:     c.UpdatedAt,
+	}
+}
+
+// newLastMessagePayload maps the denormalized snapshot to the realtime shape.
+func newLastMessagePayload(s *entity.LastMessageSnapshot) *LastMessagePayload {
+	if s == nil {
+		return nil
+	}
+	return &LastMessagePayload{
+		Preview:     s.Preview,
+		SenderType:  string(s.SenderType),
+		MessageType: string(s.MessageType),
+		CreatedAt:   s.CreatedAt,
 	}
 }
 

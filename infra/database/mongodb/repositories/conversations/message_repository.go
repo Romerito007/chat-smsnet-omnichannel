@@ -90,45 +90,6 @@ func (r *MessageRepository) LatestByConversation(ctx context.Context, conversati
 	return msgToEntity(&m), nil
 }
 
-// LatestByConversations returns the latest non-deleted message per conversation
-// id in ONE aggregation (no N+1): $match {tenant, conversation_id:$in, not deleted}
-// → $sort {created_at desc, _id desc} → $group {_id:$conversation_id, doc:$first}.
-// The tenant_conversation_created index covers the match + sort.
-func (r *MessageRepository) LatestByConversations(ctx context.Context, conversationIDs []string) (map[string]*entity.Message, error) {
-	tenantID, err := shared.RequireTenant(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(conversationIDs) == 0 {
-		return nil, nil
-	}
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: bson.M{
-			"tenant_id":       tenantID,
-			"conversation_id": bson.M{"$in": conversationIDs},
-			"deleted_at":      bson.M{"$eq": nil},
-		}}},
-		{{Key: "$sort", Value: bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}}}},
-		{{Key: "$group", Value: bson.M{"_id": "$conversation_id", "doc": bson.M{"$first": "$$ROOT"}}}},
-	}
-	cur, err := r.coll.Aggregate(ctx, pipeline)
-	if err != nil {
-		return nil, mongodb.MapError(err)
-	}
-	defer func() { _ = cur.Close(ctx) }()
-	out := make(map[string]*entity.Message, len(conversationIDs))
-	for cur.Next(ctx) {
-		var row struct {
-			Doc models.Message `bson:"doc"`
-		}
-		if err := cur.Decode(&row); err != nil {
-			return nil, mongodb.MapError(err)
-		}
-		out[row.Doc.ConversationID] = msgToEntity(&row.Doc)
-	}
-	return out, mongodb.MapError(cur.Err())
-}
-
 func (r *MessageRepository) ListByConversation(ctx context.Context, conversationID string, page shared.PageRequest) ([]*entity.Message, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

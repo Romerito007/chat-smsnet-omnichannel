@@ -354,6 +354,24 @@ func TestInbound_CreatesAndQueuesWithoutSector(t *testing.T) {
 	}
 }
 
+// TestInbound_DenormalizesLastMessage verifies the inbound chokepoint writes the
+// last-message snapshot onto the conversation (what the inbox reads), so an inbound
+// message updates the inbox preview without any aggregation.
+func TestInbound_DenormalizesLastMessage(t *testing.T) {
+	fx := newInboundFixture()
+	res, err := fx.svc.Handle(tenantCtx(), conn(""), inMsg("ext-snap"))
+	if err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	conv := fx.convs.items[res.ConversationID]
+	if conv.LastMessage == nil {
+		t.Fatal("inbound must write the denormalized last_message snapshot")
+	}
+	if conv.LastMessage.Preview != "hello" || conv.LastMessage.SenderType != conventity.SenderCustomer {
+		t.Errorf("snapshot mismatch: %+v", conv.LastMessage)
+	}
+}
+
 func TestInbound_IdempotentResend(t *testing.T) {
 	fx := newInboundFixture()
 	ctx := tenantCtx()

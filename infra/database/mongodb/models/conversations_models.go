@@ -17,9 +17,21 @@ type Conversation struct {
 	Tags             []string       `bson:"tags,omitempty"`
 	CustomAttributes map[string]any `bson:"custom_attributes,omitempty"`
 	LastMessageAt    time.Time      `bson:"last_message_at"`
+	LastMessage      *LastMessage   `bson:"last_message,omitempty"`
 	UnreadCount      int            `bson:"unread_count,omitempty"`
 	LastReadAt       *time.Time     `bson:"last_read_at,omitempty"`
 	ClosedAt         *time.Time     `bson:"closed_at,omitempty"`
+}
+
+// LastMessage is the denormalized preview of a conversation's most recent message,
+// kept on the conversation document so the inbox renders without aggregating the
+// messages collection.
+type LastMessage struct {
+	MessageID   string    `bson:"message_id"`
+	Preview     string    `bson:"preview,omitempty"`
+	SenderType  string    `bson:"sender_type"`
+	MessageType string    `bson:"message_type"`
+	CreatedAt   time.Time `bson:"created_at"`
 }
 
 // Attachment is the BSON sub-document for a message attachment.

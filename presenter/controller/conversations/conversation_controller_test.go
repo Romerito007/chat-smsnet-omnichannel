@@ -226,13 +226,15 @@ func TestConversations_List_HappyTenantFilteredCursorShape(t *testing.T) {
 }
 
 // GET /v1/conversations embeds contact + agent display fields resolved in a
-// CONSTANT number of batch calls (no per-row, no per-conversation last-message):
-// last-messages = 1 aggregation, contact cards = 1, agent cards = 1 — regardless
-// of page size. Contacts/agents without a record (or avatar) yield empty fields.
+// CONSTANT number of batch calls (contact cards = 1, agent cards = 1), and reads
+// the last-message preview from the denormalized snapshot on each row — NO
+// aggregation over the messages collection. Contacts/agents without a record (or
+// avatar) yield empty fields.
 func TestConversations_List_EmbedsContactAndAgentInConstantQueries(t *testing.T) {
 	now := time.Now()
 	cr := &fakeConvRepo{items: []*entity.Conversation{
-		{ID: "c1", TenantID: "t1", ContactID: "ct-av", AssignedTo: "u-agent", Status: entity.StatusAssigned, Priority: entity.PriorityNormal, UpdatedAt: now},
+		{ID: "c1", TenantID: "t1", ContactID: "ct-av", AssignedTo: "u-agent", Status: entity.StatusAssigned, Priority: entity.PriorityNormal, UpdatedAt: now,
+			LastMessage: &entity.LastMessageSnapshot{MessageID: "m1", Preview: "última mensagem", SenderType: entity.SenderCustomer, MessageType: entity.MessageText, CreatedAt: now}},
 		{ID: "c2", TenantID: "t1", ContactID: "ct-none", Status: entity.StatusNew, Priority: entity.PriorityNormal, UpdatedAt: now},
 		{ID: "c3", TenantID: "t1", ContactID: "ct-av", AssignedTo: "u-agent", Status: entity.StatusAssigned, Priority: entity.PriorityNormal, UpdatedAt: now},
 	}}
@@ -256,6 +258,10 @@ func TestConversations_List_EmbedsContactAndAgentInConstantQueries(t *testing.T)
 			ContactAvatarURL string `json:"contact_avatar_url"`
 			AgentName        string `json:"agent_name"`
 			AgentAvatarURL   string `json:"agent_avatar_url"`
+			LastMessage      *struct {
+				Preview     string `json:"preview"`
+				MessageType string `json:"message_type"`
+			} `json:"last_message"`
 		} `json:"data"`
 	}
 	httpharness.DecodeJSON(t, rec, &page)
@@ -280,10 +286,18 @@ func TestConversations_List_EmbedsContactAndAgentInConstantQueries(t *testing.T)
 	if got["c2"].an != "" || got["c2"].aa != "" {
 		t.Errorf("c2 (unassigned) must have empty agent fields, got %+v", got["c2"])
 	}
-	// Constant queries regardless of page size: 1 last-message aggregation + 1
-	// contact-card batch + 1 agent-card batch.
-	if latestCalls != 1 {
-		t.Errorf("last-message must be a single aggregation, got %d calls", latestCalls)
+	// The inbox preview is denormalized on the conversation row now, so the list
+	// must NOT aggregate the messages collection at all (the gargalo we removed),
+	// and the row carries the snapshot preview straight from the document.
+	if latestCalls != 0 {
+		t.Errorf("inbox must not aggregate last-messages anymore, got %d calls", latestCalls)
+	}
+	for _, d := range page.Data {
+		if d.ID == "c1" {
+			if d.LastMessage == nil || d.LastMessage.Preview != "última mensagem" {
+				t.Errorf("c1 must carry the denormalized last_message preview, got %+v", d.LastMessage)
+			}
+		}
 	}
 	if cd.calls != 1 {
 		t.Errorf("contact cards must resolve in one batch, got %d calls", cd.calls)

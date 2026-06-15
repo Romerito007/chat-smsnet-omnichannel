@@ -889,6 +889,7 @@ func (d *demoSeeder) createMessages(conv *conventity.Conversation, assignee stri
 		"Acabei de reiniciar o sinal do seu equipamento, pode testar?",
 		"Agendei o atendimento. Mais alguma coisa?",
 	}
+	var last *conventity.Message // newest message, for the denormalized snapshot
 	for i := 0; i < n; i++ {
 		t = t.Add(step)
 		fromCustomer := i%2 == 0
@@ -916,6 +917,7 @@ func (d *demoSeeder) createMessages(conv *conventity.Conversation, assignee stri
 			return err
 		}
 		d.mark("messages", m.ID)
+		last = m
 	}
 	// An internal note on some conversations (never delivered to the customer).
 	// Pick from a small pool so a contact's history doesn't show the same note
@@ -939,6 +941,15 @@ func (d *demoSeeder) createMessages(conv *conventity.Conversation, assignee stri
 			return err
 		}
 		d.mark("messages", note.ID)
+		last = note // the note carries conv.LastMessageAt, so it is the newest
+	}
+	// Denormalize the last-message snapshot onto the conversation (what the inbox
+	// reads), mirroring the runtime chokepoints — no aggregation needed.
+	if last != nil {
+		conv.LastMessage = conventity.NewLastMessageSnapshot(last)
+		if err := convrepo.NewConversationRepository(d.db).Update(d.ctx, conv); err != nil {
+			return err
+		}
 	}
 	return nil
 }

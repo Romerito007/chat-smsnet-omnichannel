@@ -78,6 +78,12 @@ type Conversation struct {
 	// validated against definitions with applies_to=conversation.
 	CustomAttributes map[string]any
 	LastMessageAt    time.Time
+	// LastMessage is a denormalized snapshot of the conversation's most recent
+	// message (preview/type/sender/time), updated at every message create. It lets
+	// the inbox render each row's preview straight from the conversation document —
+	// no per-page aggregation over the messages collection. Nil when the
+	// conversation has no message yet.
+	LastMessage *LastMessageSnapshot
 	// UnreadCount is the number of inbound (customer) messages since an agent last
 	// read the conversation. Bumped on each inbound message; zeroed by MarkRead
 	// (POST /read).
@@ -87,4 +93,44 @@ type Conversation struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	ClosedAt   *time.Time
+}
+
+// lastMessagePreviewLen bounds the denormalized preview (matches the inbox DTO).
+const lastMessagePreviewLen = 280
+
+// LastMessageSnapshot is the denormalized preview of a conversation's most recent
+// message, stored on the conversation document for the inbox. MessageID identifies
+// which message it mirrors, so an edit/delete of THAT message can refresh or
+// recompute the snapshot.
+type LastMessageSnapshot struct {
+	MessageID   string
+	Preview     string
+	SenderType  SenderType
+	MessageType MessageType
+	CreatedAt   time.Time
+}
+
+// NewLastMessageSnapshot builds the snapshot from a message: a length-bounded text
+// preview plus the fields the inbox row needs (sender/type/time). Returns nil for a
+// nil message (e.g. a conversation with no remaining messages).
+func NewLastMessageSnapshot(m *Message) *LastMessageSnapshot {
+	if m == nil {
+		return nil
+	}
+	return &LastMessageSnapshot{
+		MessageID:   m.ID,
+		Preview:     truncateRunes(m.Text, lastMessagePreviewLen),
+		SenderType:  m.SenderType,
+		MessageType: m.MessageType,
+		CreatedAt:   m.CreatedAt,
+	}
+}
+
+// truncateRunes shortens s to at most n runes, appending an ellipsis when cut.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
