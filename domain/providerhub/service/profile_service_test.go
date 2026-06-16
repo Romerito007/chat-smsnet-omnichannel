@@ -377,3 +377,24 @@ func TestProfileEnabledActions_SubsetAndValidation(t *testing.T) {
 		t.Fatalf("an action not in the ISP catalog must be a validation error, got %v", err)
 	}
 }
+
+func TestProfile_UsaPegarFaturaAtrasadaDefaultsFalse(t *testing.T) {
+	svc := newProfileSvc(newFakeProfileRepo())
+	// Omitting the flag must yield false → the gateway returns ALL invoices.
+	p, err := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if p.Options.UsaPegarFaturaAtrasada {
+		t.Error("usa_pegar_fatura_atrasada must default to false (list all invoices) when omitted")
+	}
+	// Opting in is honored (the minority oldest-only billing flow).
+	on, err := svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "ixcsoft", Credentials: validCreds(),
+		Transports: bothTransports(), UsaPegarFaturaAtrasada: true})
+	if err != nil {
+		t.Fatalf("create opt-in: %v", err)
+	}
+	if !on.Options.UsaPegarFaturaAtrasada {
+		t.Error("explicit usa_pegar_fatura_atrasada=true must be stored")
+	}
+}

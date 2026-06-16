@@ -228,7 +228,10 @@ func CredentialKeysFor(slug string) []string {
 
 // Options are per-tenant feature toggles and fixed data forwarded to the API.
 type Options struct {
-	// UsaPegarFaturaAtrasada asks the API to include overdue invoices.
+	// UsaPegarFaturaAtrasada controls how many invoices /cliente returns: true →
+	// ONLY the oldest (overdue) invoice; false → ALL invoices. Default false (the
+	// common case: list every invoice). The minority billing flow that wants just
+	// the oldest enables it explicitly.
 	UsaPegarFaturaAtrasada bool
 	// UsaExtrairLinhaDigitavelPDF asks the API to extract the boleto line from PDF.
 	UsaExtrairLinhaDigitavelPDF bool

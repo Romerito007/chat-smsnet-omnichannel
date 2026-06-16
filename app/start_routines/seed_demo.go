@@ -594,7 +594,10 @@ func (d *demoSeeder) seedIntegrations() error {
 		ISPType:     phentity.ISPSGPNet,
 		Credentials: map[string]string{"host": "https://isp.demo.local", "token": "demo-isp-token-PLACEHOLDER"},
 		Transports:  []string{phentity.TransportHTTP, phentity.TransportMCP},
-		IsDefault:   true, TimeoutMs: 8000, Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
+		// Default: list ALL invoices (UsaPegarFaturaAtrasada=false). The oldest-only
+		// billing flow is opt-in.
+		Options:   phentity.Options{UsaPegarFaturaAtrasada: false},
+		IsDefault: true, TimeoutMs: 8000, Enabled: true, CreatedAt: d.now, UpdatedAt: d.now,
 	}
 	if err := phrepo.NewProfileRepository(d.db, d.c.Cipher).Create(d.ctx, profile); err != nil {
 		return err

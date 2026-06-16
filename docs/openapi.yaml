@@ -1349,6 +1349,7 @@ components:
                 usa_extrair_linha_digitavel_pdf:
                     type: boolean
                 usa_pegar_fatura_atrasada:
+                    description: 'How many invoices /cliente returns: false (default) = ALL invoices; true = ONLY the oldest (overdue) one. Most tenants list all; enable only for an oldest-invoice billing flow.'
                     type: boolean
             required:
                 - label
@@ -1857,6 +1858,7 @@ components:
                 usa_extrair_linha_digitavel_pdf:
                     type: boolean
                 usa_pegar_fatura_atrasada:
+                    description: 'How many invoices /cliente returns: false (default) = ALL invoices; true = ONLY the oldest (overdue) one. Most tenants list all; enable only for an oldest-invoice billing flow.'
                     type: boolean
             type: object
         ISPProfileTestResult:
@@ -3541,6 +3543,7 @@ components:
                 usa_extrair_linha_digitavel_pdf:
                     type: boolean
                 usa_pegar_fatura_atrasada:
+                    description: 'How many invoices /cliente returns: false (default) = ALL invoices; true = ONLY the oldest (overdue) one. Most tenants list all; enable only for an oldest-invoice billing flow.'
                     type: boolean
             type: object
         UpdateMcpServerRequest:
