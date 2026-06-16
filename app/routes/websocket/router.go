@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 	ws "github.com/romerito007/chat-smsnet-omnichannel/presenter/websocket"
 )
@@ -15,6 +16,7 @@ import (
 // tenant comes only from the verified token, never a header. The server wiring
 // exposes it at both /realtime/ws (canonical) and /ws (alias).
 func Handler(c *container.Container) http.Handler {
-	h := ws.NewHandler(c.Realtime.Hub, c.Tokens, c.Logger, c.Config.Realtime.MaxConnPerUser, c.Config.Realtime.SendBufferSize)
+	h := ws.NewHandler(c.Realtime.Hub, c.Tokens, c.Logger, c.Config.Realtime.MaxConnPerUser, c.Config.Realtime.SendBufferSize).
+		SetPresence(factories.PresenceService(c))
 	return middleware.Recover(c.Logger)(middleware.RequestID(c.Logger, c.Config.LogRequestBody)(h))
 }

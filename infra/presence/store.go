@@ -20,6 +20,13 @@ type Store struct {
 	rdb redis.Client
 }
 
+// presenceTTL is the liveness window of a presence record. It is renewed on every
+// WS heartbeat (every 20s); chosen equal to the socket's own pongWait (60s) so a
+// presence key expires at the same moment the server would tear down a dead
+// socket — tolerating ~2 missed heartbeats without a false offline on a brief
+// network blip.
+const presenceTTL = 60 * time.Second
+
 // NewStore builds the store.
 func NewStore(rdb redis.Client) *Store {
 	return &Store{rdb: rdb}
@@ -29,7 +36,10 @@ func NewStore(rdb redis.Client) *Store {
 func presenceKey(tenant, user string) string { return "presence:" + tenant + ":" + user }
 func agentsKey(tenant string) string         { return "presence:agents:" + tenant }
 
-// Save upserts the presence hash and registers the agent in the tenant set.
+// Save upserts the presence hash, registers the agent in the tenant set and arms
+// the liveness TTL. The TTL is what makes presence self-expire: the WS heartbeat
+// renews it (Touch) while the socket is alive, and it lapses to offline when the
+// last socket stops renewing.
 func (s *Store) Save(ctx context.Context, p *entity.AgentPresence) error {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
@@ -44,6 +54,40 @@ func (s *Store) Save(ctx context.Context, p *entity.AgentPresence) error {
 		"last_seen_at":         p.LastSeenAt.UnixMilli(),
 	})
 	pipe.SAdd(ctx, agentsKey(tenantID), p.UserID)
+	pipe.Expire(ctx, key, presenceTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return apperror.Internal("presence store error").Wrap(err)
+	}
+	return nil
+}
+
+// Touch renews the liveness TTL of an EXISTING presence record without touching
+// its stored status. Expire on a missing key is a no-op (returns false), which is
+// exactly the desired semantics: a heartbeat keeps an already-declared status
+// alive, but never resurrects a record — so connecting a socket does not promote
+// anyone to online, and a vanished agent stays gone.
+func (s *Store) Touch(ctx context.Context, userID string) error {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return err
+	}
+	if err := s.rdb.Expire(ctx, presenceKey(tenantID, userID), presenceTTL).Err(); err != nil {
+		return apperror.Internal("presence store error").Wrap(err)
+	}
+	return nil
+}
+
+// Remove deletes the presence record and drops the agent from the tenant roster
+// set. Called when an agent vanishes (graceful disconnect or TTL expiry) so the
+// roster never accumulates dead ids. Idempotent.
+func (s *Store) Remove(ctx context.Context, userID string) error {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return err
+	}
+	pipe := s.rdb.TxPipeline()
+	pipe.Del(ctx, presenceKey(tenantID, userID))
+	pipe.SRem(ctx, agentsKey(tenantID), userID)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return apperror.Internal("presence store error").Wrap(err)
 	}

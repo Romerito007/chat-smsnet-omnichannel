@@ -12,8 +12,15 @@ import (
 // PresenceStore persists agent presence in Redis, scoped by the tenant on the
 // context.
 type PresenceStore interface {
-	// Save upserts the presence record.
+	// Save upserts the presence record and arms its liveness TTL.
 	Save(ctx context.Context, p *entity.AgentPresence) error
+	// Touch renews the liveness TTL of an existing record without changing its
+	// stored status. A missing record is a no-op (it is never resurrected), so a
+	// connecting socket is not promoted to online and a vanished agent stays gone.
+	Touch(ctx context.Context, userID string) error
+	// Remove deletes the presence record and drops the agent from the tenant
+	// roster (on graceful disconnect or TTL expiry). Idempotent.
+	Remove(ctx context.Context, userID string) error
 	// Get returns the stored presence, or a not_found AppError when absent.
 	Get(ctx context.Context, userID string) (*entity.AgentPresence, error)
 	// List returns presence for every agent known in the tenant.

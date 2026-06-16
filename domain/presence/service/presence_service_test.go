@@ -20,7 +20,8 @@ type fixedClock struct{ t time.Time }
 func (c fixedClock) Now() time.Time { return c.t }
 
 type fakeStore struct {
-	items map[string]*entity.AgentPresence // key: tenant|user
+	items   map[string]*entity.AgentPresence // key: tenant|user
+	touched int                              // number of Touch calls that hit an existing record
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{items: map[string]*entity.AgentPresence{}} }
@@ -30,6 +31,18 @@ func key(tenant, user string) string { return tenant + "|" + user }
 func (s *fakeStore) Save(ctx context.Context, p *entity.AgentPresence) error {
 	cp := *p
 	s.items[key(p.TenantID, p.UserID)] = &cp
+	return nil
+}
+func (s *fakeStore) Touch(ctx context.Context, userID string) error {
+	tenant, _ := shared.TenantFrom(ctx)
+	if _, ok := s.items[key(tenant, userID)]; ok {
+		s.touched++
+	}
+	return nil
+}
+func (s *fakeStore) Remove(ctx context.Context, userID string) error {
+	tenant, _ := shared.TenantFrom(ctx)
+	delete(s.items, key(tenant, userID))
 	return nil
 }
 func (s *fakeStore) Get(ctx context.Context, userID string) (*entity.AgentPresence, error) {
@@ -280,6 +293,66 @@ func TestList_LoadFromSingleAggregation(t *testing.T) {
 	}
 	if len(s1) != 2 {
 		t.Errorf("sector s1 must return 2 agents, got %d", len(s1))
+	}
+}
+
+// Touch renews liveness only for an existing record and never changes status —
+// so connecting/heartbeating never promotes an agent to online.
+func TestTouch_OnlyRenewsExisting_NeverPromotes(t *testing.T) {
+	svc, store, pub := newPresenceService(0, userWith("t1", "u1", []string{"s1"}, 5))
+	ctx := actorCtx("t1", "u1")
+
+	// No record yet → Touch is a no-op (nothing to resurrect), no event.
+	if err := svc.Touch(ctx, "u1"); err != nil {
+		t.Fatalf("touch (missing): %v", err)
+	}
+	if store.touched != 0 {
+		t.Errorf("touch should not hit a missing record, got %d", store.touched)
+	}
+
+	// Agent goes online, then Touch renews without changing status or emitting an event.
+	_ = mustOnline(t, svc, ctx)
+	pub.events = nil
+	if err := svc.Touch(ctx, "u1"); err != nil {
+		t.Fatalf("touch (existing): %v", err)
+	}
+	if store.touched != 1 {
+		t.Errorf("touch should renew the existing record once, got %d", store.touched)
+	}
+	if store.items[key("t1", "u1")].Status != entity.StatusOnline {
+		t.Errorf("touch must not change status, got %q", store.items[key("t1", "u1")].Status)
+	}
+	if len(pub.events) != 0 {
+		t.Errorf("touch must not publish, got %d events", len(pub.events))
+	}
+}
+
+// Vanished removes the record and publishes offline on both the board and the
+// agent's own room.
+func TestVanished_RemovesAndPublishesOffline(t *testing.T) {
+	svc, store, pub := newPresenceService(0, userWith("t1", "u1", []string{"s1"}, 5))
+	ctx := actorCtx("t1", "u1")
+	_ = mustOnline(t, svc, ctx)
+	pub.events = nil
+
+	if err := svc.Vanished(ctx, "u1"); err != nil {
+		t.Fatalf("vanished: %v", err)
+	}
+	if store.items[key("t1", "u1")] != nil {
+		t.Error("vanished must remove the presence record")
+	}
+	if len(pub.events) != 2 {
+		t.Fatalf("expected 2 offline events (presence + user), got %d", len(pub.events))
+	}
+	for _, e := range pub.events {
+		if e.event != "agent.presence_changed" {
+			t.Errorf("unexpected event %q", e.event)
+		}
+	}
+	// List no longer surfaces the agent.
+	list, _ := svc.List(ctx, "")
+	if len(list) != 0 {
+		t.Errorf("expected empty list after vanish, got %+v", list)
 	}
 }
 

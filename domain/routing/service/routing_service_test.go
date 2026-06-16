@@ -127,6 +127,8 @@ type fakePresence struct {
 }
 
 func (p *fakePresence) Save(context.Context, *presenceentity.AgentPresence) error { return nil }
+func (p *fakePresence) Touch(context.Context, string) error                       { return nil }
+func (p *fakePresence) Remove(context.Context, string) error                      { return nil }
 func (p *fakePresence) Get(_ context.Context, userID string) (*presenceentity.AgentPresence, error) {
 	if pr, ok := p.byUser[userID]; ok {
 		return pr, nil

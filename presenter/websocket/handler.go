@@ -10,6 +10,7 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -29,7 +30,21 @@ const (
 	heartbeatWait     = 20 * time.Second // app-level keepalive ({event:"ping"})
 	defaultSendBuffer = 256              // per-connection outbound buffer (configurable)
 	maxReadBytes      = 4096
+	// disconnectGrace debounces the offline fast-path: when the last socket closes
+	// we wait this long before marking the agent offline, so a page refresh
+	// (disconnect immediately followed by reconnect) does not flicker the agent
+	// offline. A real close still drops within the grace + nothing reconnects.
+	disconnectGrace = 5 * time.Second
 )
+
+// PresenceLifecycle ties an agent's presence liveness to its WS session: Touch
+// renews the TTL while the socket is open; Vanished marks the agent offline when
+// the last socket closes gracefully. Both require the tenant on the context.
+// Optional — when unset, the WS handler runs without presence side effects.
+type PresenceLifecycle interface {
+	Touch(ctx context.Context, userID string) error
+	Vanished(ctx context.Context, userID string) error
+}
 
 // pingEnvelope is the app-level keepalive frame, sent on the same {event, ts, data}
 // envelope as every other realtime event. Browser clients reset their silence
@@ -69,6 +84,7 @@ type Handler struct {
 	hub            *realtime.Hub
 	tokens         auth.TokenManager
 	logger         shared.Logger
+	presence       PresenceLifecycle
 	maxConnPerUser int
 	sendBufferSize int
 	upgrader       websocket.Upgrader
@@ -93,6 +109,53 @@ func NewHandler(hub *realtime.Hub, tokens auth.TokenManager, logger shared.Logge
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 	}
+}
+
+// SetPresence wires the presence lifecycle so an open socket renews the agent's
+// presence TTL and a graceful close marks it offline. Optional.
+func (h *Handler) SetPresence(p PresenceLifecycle) *Handler {
+	h.presence = p
+	return h
+}
+
+// tenantCtx builds a short-lived, tenant-scoped context for a presence side
+// effect outside an HTTP request (heartbeat/disconnect run on their own goroutines).
+func tenantCtx(client *realtime.Client) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), writeWait)
+	return shared.WithTenant(ctx, client.TenantID), cancel
+}
+
+// touchPresence renews the agent's presence TTL (best-effort). No-op when no
+// presence lifecycle is wired.
+func (h *Handler) touchPresence(client *realtime.Client) {
+	if h.presence == nil {
+		return
+	}
+	ctx, cancel := tenantCtx(client)
+	defer cancel()
+	_ = h.presence.Touch(ctx, client.UserID)
+}
+
+// scheduleVanish runs the debounced offline fast-path after the last local socket
+// of a user closes. It waits disconnectGrace and, only if the user still has no
+// connection (i.e. it was a real close, not a refresh), marks the agent offline so
+// boards update without waiting for the TTL. Abrupt kills where this never runs
+// are still covered by the Redis key TTL + the expiry watcher.
+func (h *Handler) scheduleVanish(client *realtime.Client) {
+	if h.presence == nil || h.hub.ConnectionsFor(client.TenantID, client.UserID) > 0 {
+		return
+	}
+	go func() {
+		timer := time.NewTimer(disconnectGrace)
+		defer timer.Stop()
+		<-timer.C
+		if h.hub.ConnectionsFor(client.TenantID, client.UserID) > 0 {
+			return // reconnected within the grace (e.g. a refresh) — stay as is
+		}
+		ctx, cancel := tenantCtx(client)
+		defer cancel()
+		_ = h.presence.Vanished(ctx, client.UserID)
+	}()
 }
 
 // ServeHTTP authenticates the request, enforces the connection limit, upgrades
@@ -135,6 +198,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ac := authz.NewAuthContext(claims.TenantID, claims.UserID, claims.Permissions, claims.SectorIDs, claims.SectorScope)
 
 	h.joinDefaultRooms(client, claims)
+	// Renew presence liveness immediately on connect (don't wait for the first
+	// heartbeat). Status-agnostic: it keeps an already-declared status alive, never
+	// promotes the connection to online.
+	h.touchPresence(client)
 	h.logger.Info("ws connected",
 		"client_id", client.ID,
 		"tenant_id", client.TenantID,
@@ -169,6 +236,9 @@ func (h *Handler) joinDefaultRooms(client *realtime.Client, claims auth.AccessCl
 func (h *Handler) readPump(conn *websocket.Conn, client *realtime.Client, ac authz.AuthContext) {
 	defer func() {
 		h.hub.Remove(client)
+		// If this was the user's last socket, mark them offline after a short grace
+		// (debounced so a refresh doesn't flicker offline).
+		h.scheduleVanish(client)
 		_ = conn.Close()
 		h.logger.Info("ws disconnected", "client_id", client.ID, "user_id", client.UserID)
 	}()
@@ -235,6 +305,10 @@ func (h *Handler) writePump(conn *websocket.Conn, client *realtime.Client) {
 				return
 			}
 		case <-heartbeat.C:
+			// Renew presence liveness while the socket is open, then send the
+			// app-level keepalive. A write failure below tears down the pump, so
+			// renewals stop and the presence key lapses to offline.
+			h.touchPresence(client)
 			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteMessage(websocket.TextMessage, pingFrame()); err != nil {
 				return

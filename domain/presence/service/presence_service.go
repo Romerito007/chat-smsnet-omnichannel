@@ -146,6 +146,45 @@ func (s *Service) List(ctx context.Context, sectorID string) ([]*entity.AgentPre
 	return items, nil
 }
 
+// Touch renews the liveness TTL for an agent's presence. The WS transport calls
+// it on connect and on every heartbeat while the socket is open. It NEVER changes
+// the stored status, so it neither promotes a freshly connected socket to "online"
+// (availability is an explicit choice, not a side effect of connecting) nor
+// overrides a deliberate "offline": it only keeps an already-declared status alive
+// while the socket is. A missing record is a no-op. Best-effort.
+func (s *Service) Touch(ctx context.Context, userID string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	return s.store.Touch(ctx, userID)
+}
+
+// Vanished records that an agent's session disappeared — a graceful WS disconnect
+// or a TTL expiry caught by the keyspace watcher. It drops the presence record and
+// the roster entry, then publishes the offline event (presence board + the agent's
+// own user room) so open dashboards update live instead of waiting for a refetch.
+// Idempotent: a redundant call (e.g. the expiry firing after a graceful close
+// already removed the key) simply republishes offline.
+func (s *Service) Vanished(ctx context.Context, userID string) error {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return err
+	}
+	if err := s.store.Remove(ctx, userID); err != nil {
+		return err
+	}
+	offline := &entity.AgentPresence{
+		TenantID:   tenantID,
+		UserID:     userID,
+		Status:     entity.StatusOffline,
+		LastSeenAt: s.clock.Now(),
+	}
+	event := contracts.NewPresenceChanged(offline)
+	_ = s.publisher.Publish(ctx, shared.TopicPresence(tenantID), contracts.EventPresenceChanged, event)
+	_ = s.publisher.Publish(ctx, shared.TopicUser(tenantID, userID), contracts.EventPresenceChanged, event)
+	return nil
+}
+
 // currentStatus returns the stored status, or offline when no record exists.
 func (s *Service) currentStatus(ctx context.Context, userID string) entity.Status {
 	cur, err := s.store.Get(ctx, userID)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/app/config"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	"github.com/romerito007/chat-smsnet-omnichannel/app/factories"
 	"github.com/romerito007/chat-smsnet-omnichannel/app/providers"
 	httproutes "github.com/romerito007/chat-smsnet-omnichannel/app/routes/http"
 	wsroutes "github.com/romerito007/chat-smsnet-omnichannel/app/routes/websocket"
@@ -79,6 +80,16 @@ func Start(ctx context.Context, cfg config.Config) error {
 	if cfg.RunsRole(config.RoleWS) {
 		g.Go(func() error {
 			err := c.Realtime.Run(gctx)
+			if err == context.Canceled {
+				return nil
+			}
+			return err
+		})
+		// Watch Redis presence-key expirations and fan out the resulting offline
+		// events, so agents whose socket died abruptly drop off the boards live.
+		expiry := factories.PresenceExpiryWatcher(c)
+		g.Go(func() error {
+			err := expiry.Run(gctx)
 			if err == context.Canceled {
 				return nil
 			}

@@ -59,6 +59,12 @@ func PresenceController(c *container.Container) *presencectl.Controller {
 		SetAgentDirectory(UserService(c))
 }
 
+// PresenceExpiryWatcher builds the Redis keyspace watcher that turns an expired
+// presence TTL (an agent whose WS heartbeat stopped) into a live offline event.
+func PresenceExpiryWatcher(c *container.Container) *presencestore.ExpiryWatcher {
+	return presencestore.NewExpiryWatcher(c.Redis, c.Config.Redis.DB, PresenceService(c), c.Logger)
+}
+
 // AgentsController builds the assignable-agents directory controller (users +
 // presence), read by the assignment selector under conversation.assign.
 func AgentsController(c *container.Container) *agentsctl.Controller {
