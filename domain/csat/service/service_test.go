@@ -302,6 +302,22 @@ func TestExpire_OnlyWhenStillSent(t *testing.T) {
 	}
 }
 
+// Orphan tasks (response gone after a DB reset / deletion) must succeed as a
+// no-op, not error — otherwise Asynq retries to exhaustion and floods the logs.
+func TestExpireAndSend_OrphanTaskIsNoOp(t *testing.T) {
+	fx := newFixture()
+
+	if err := fx.svc.Expire(ctxT(), contracts.ExpireTask{TenantID: "t1", ResponseID: "ghost"}); err != nil {
+		t.Errorf("expire of a missing response must be a no-op, got %v", err)
+	}
+	if err := fx.svc.Send(ctxT(), contracts.SendTask{TenantID: "t1", ResponseID: "ghost"}); err != nil {
+		t.Errorf("send of a missing response must be a no-op, got %v", err)
+	}
+	if fx.sender.calls != 0 {
+		t.Errorf("orphan send must not deliver anything, got %d calls", fx.sender.calls)
+	}
+}
+
 func TestScale_ValidScore(t *testing.T) {
 	cases := []struct {
 		scale entity.Scale

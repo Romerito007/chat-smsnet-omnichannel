@@ -96,6 +96,9 @@ func (s *Service) OnConversationClosed(ctx context.Context, conv *conventity.Con
 func (s *Service) Send(ctx context.Context, task contracts.SendTask) error {
 	resp, err := s.responses.FindByID(ctx, task.ResponseID)
 	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return nil // orphan task (response deleted or DB reset) — nothing to send
+		}
 		return err
 	}
 	if resp.Status != entity.StatusSent || resp.SentAt != nil {
@@ -124,9 +127,18 @@ func (s *Service) Send(ctx context.Context, task contracts.SendTask) error {
 }
 
 // Expire (csat.expire handler) marks a still-unanswered response expired.
+//
+// A missing response is NOT an error: the survey may have been answered and
+// cleaned up, the conversation deleted, or the database reset while an orphan
+// task lingered in Redis. Expiring something that no longer exists is a no-op, so
+// we succeed silently instead of failing — otherwise Asynq retries to exhaustion
+// and floods the logs with ERRORs for every orphan task.
 func (s *Service) Expire(ctx context.Context, task contracts.ExpireTask) error {
 	resp, err := s.responses.FindByID(ctx, task.ResponseID)
 	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return nil // orphan task — nothing to expire
+		}
 		return err
 	}
 	if resp.Status != entity.StatusSent {
