@@ -60,10 +60,16 @@ components:
             properties:
                 agent_id:
                     type: string
+                avatar_url:
+                    description: 'Read-only, derived: the agent''s short-lived signed avatar URL (no Authorization). Empty when the agent has no ready avatar.'
+                    type: string
                 avg_resolution_seconds:
                     type: number
                 conversations:
                     type: integer
+                name:
+                    description: 'Read-only, derived: the agent''s display name, resolved in batch so the report renders the agent instead of a raw id. Empty when unresolved.'
+                    type: string
             type: object
         ApplyTagsRequest:
             properties:
@@ -2495,6 +2501,9 @@ components:
             type: object
         Presence:
             properties:
+                avatar_url:
+                    description: 'Read-only, derived: the agent''s short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar.'
+                    type: string
                 current_load:
                     type: integer
                 last_seen_at:
@@ -2502,6 +2511,9 @@ components:
                     type: string
                 max_concurrent_chats:
                     type: integer
+                name:
+                    description: 'Read-only, derived: the agent''s display name, resolved in batch so the dashboard renders the agent instead of a raw user id. Empty when unresolved.'
+                    type: string
                 status:
                     type: string
                 tenant_id:
@@ -3038,6 +3050,9 @@ components:
             properties:
                 conversations:
                     type: integer
+                name:
+                    description: 'Read-only, derived: the sector''s display name, resolved in batch so the report renders the sector instead of a raw id. Empty for sector-less conversations or when unresolved.'
+                    type: string
                 sector_id:
                     type: string
             type: object

@@ -48,6 +48,24 @@ func (r *fakeSectorRepo) FindByID(ctx context.Context, id string) (*entity.Secto
 	}
 	return nil, apperror.NotFound("resource not found")
 }
+func (r *fakeSectorRepo) FindByIDs(ctx context.Context, ids []string) ([]*entity.Sector, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	want := map[string]struct{}{}
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	var out []*entity.Sector
+	for _, s := range r.sectors {
+		if s.TenantID != tenant {
+			continue
+		}
+		if _, ok := want[s.ID]; ok {
+			cp := *s
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
 func (r *fakeSectorRepo) List(ctx context.Context, _ shared.PageRequest) ([]*entity.Sector, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	var out []*entity.Sector
@@ -98,6 +116,27 @@ func TestSector_TenantIsolation(t *testing.T) {
 	}
 	if _, err := svc.Get(tenantCtx("t2"), s.ID); apperror.From(err).Code != apperror.CodeNotFound {
 		t.Errorf("expected not_found cross-tenant, got %v", err)
+	}
+}
+
+func TestSectorNames_ResolvesAndScopes(t *testing.T) {
+	svc, _ := newSectorService()
+	sup, _ := svc.Create(tenantCtx("t1"), contracts.CreateSector{Name: "Support"})
+	sales, _ := svc.Create(tenantCtx("t1"), contracts.CreateSector{Name: "Sales"})
+	other, _ := svc.Create(tenantCtx("t2"), contracts.CreateSector{Name: "Other"})
+
+	names, err := svc.Names(tenantCtx("t1"), []string{sup.ID, sales.ID, other.ID, "", "missing"})
+	if err != nil {
+		t.Fatalf("names: %v", err)
+	}
+	if names[sup.ID] != "Support" || names[sales.ID] != "Sales" {
+		t.Errorf("unexpected names: %+v", names)
+	}
+	if _, ok := names[other.ID]; ok {
+		t.Errorf("cross-tenant sector leaked: %+v", names)
+	}
+	if _, ok := names["missing"]; ok {
+		t.Errorf("missing id should be absent: %+v", names)
 	}
 }
 

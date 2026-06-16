@@ -78,6 +78,16 @@ func (r fakeSectorRepo) FindByID(ctx context.Context, id string) (*sectorentity.
 	}
 	return nil, apperror.NotFound("none")
 }
+func (r fakeSectorRepo) FindByIDs(ctx context.Context, ids []string) ([]*sectorentity.Sector, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	var out []*sectorentity.Sector
+	for _, id := range ids {
+		if r.exists[id] {
+			out = append(out, &sectorentity.Sector{ID: id, TenantID: tenant})
+		}
+	}
+	return out, nil
+}
 func (r fakeSectorRepo) List(context.Context, shared.PageRequest) ([]*sectorentity.Sector, error) {
 	return nil, nil
 }

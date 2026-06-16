@@ -99,7 +99,10 @@ func schemas() M {
 		"CreateQueueRequest": object(M{"sector_id": str(), "name": str(), "strategy": str(), "max_wait_seconds": integer(), "enabled": boolean()}, "sector_id", "name"),
 		"UpdateQueueRequest": object(M{"name": str(), "strategy": str(), "max_wait_seconds": integer(), "enabled": boolean()}),
 		"Presence": object(M{
-			"tenant_id": str(), "user_id": str(), "status": str(), "current_load": integer(),
+			"tenant_id": str(), "user_id": str(),
+			"name":       describedStr("Read-only, derived: the agent's display name, resolved in batch so the dashboard renders the agent instead of a raw user id. Empty when unresolved."),
+			"avatar_url": describedStr("Read-only, derived: the agent's short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar."),
+			"status":     str(), "current_load": integer(),
 			"max_concurrent_chats": integer(), "last_seen_at": dateTime(),
 		}),
 		"SetStatusRequest": object(M{"user_id": str(), "status": str()}, "status"),
@@ -846,10 +849,19 @@ func schemas() M {
 		"MessageHit":      object(M{"id": str(), "conversation_id": str(), "sender_type": str(), "direction": str(), "text": str(), "created_at": dateTime()}),
 
 		// ── reports ────────────────────────────────────────────────────────────
-		"Bucket":     object(M{"key": str(), "count": integer()}),
-		"DateCount":  object(M{"date": str(), "count": integer()}),
-		"AgentStat":  object(M{"agent_id": str(), "conversations": integer(), "avg_resolution_seconds": number()}),
-		"SectorStat": object(M{"sector_id": str(), "conversations": integer()}),
+		"Bucket":    object(M{"key": str(), "count": integer()}),
+		"DateCount": object(M{"date": str(), "count": integer()}),
+		"AgentStat": object(M{
+			"agent_id":      str(),
+			"name":          describedStr("Read-only, derived: the agent's display name, resolved in batch so the report renders the agent instead of a raw id. Empty when unresolved."),
+			"avatar_url":    describedStr("Read-only, derived: the agent's short-lived signed avatar URL (no Authorization). Empty when the agent has no ready avatar."),
+			"conversations": integer(), "avg_resolution_seconds": number(),
+		}),
+		"SectorStat": object(M{
+			"sector_id":     str(),
+			"name":          describedStr("Read-only, derived: the sector's display name, resolved in batch so the report renders the sector instead of a raw id. Empty for sector-less conversations or when unresolved."),
+			"conversations": integer(),
+		}),
 		"ReportOverview": object(M{
 			"from": dateTime(), "to": dateTime(), "total_conversations": integer(),
 			"open_by_status": arr(ref("Bucket")), "messages": integer(),

@@ -84,6 +84,30 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*entity.Sector, e
 	return toEntity(&m), nil
 }
 
+func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]*entity.Sector, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	c, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}, "tenant_id": tenantID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = c.Close(ctx) }()
+	var out []*entity.Sector
+	for c.Next(ctx) {
+		var m models.Sector
+		if err := c.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, toEntity(&m))
+	}
+	return out, mongodb.MapError(c.Err())
+}
+
 func (r *Repository) List(ctx context.Context, page shared.PageRequest) ([]*entity.Sector, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

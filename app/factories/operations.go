@@ -51,9 +51,12 @@ func QueueController(c *container.Container) *queuectl.Controller {
 	return queuectl.NewController(QueueService(c))
 }
 
-// PresenceController builds the presence controller.
+// PresenceController builds the presence controller, wired with the IAM user
+// directory so each presence row resolves the agent name + avatar instead of
+// returning a raw user id.
 func PresenceController(c *container.Container) *presencectl.Controller {
-	return presencectl.NewController(PresenceService(c))
+	return presencectl.NewController(PresenceService(c)).
+		SetAgentDirectory(UserService(c))
 }
 
 // AgentsController builds the assignable-agents directory controller (users +

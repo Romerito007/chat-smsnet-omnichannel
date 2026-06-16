@@ -31,16 +31,21 @@ type DateCount struct {
 	Count int    `json:"count"`
 }
 
-// AgentStat is per-agent productivity.
+// AgentStat is per-agent productivity. Name is the resolved display name (filled
+// at the presenter so the dashboard never shows a raw id); empty when unknown.
 type AgentStat struct {
 	AgentID              string  `json:"agent_id"`
+	Name                 string  `json:"name,omitempty"`
+	AvatarURL            string  `json:"avatar_url,omitempty"`
 	Conversations        int     `json:"conversations"`
 	AvgResolutionSeconds float64 `json:"avg_resolution_seconds"`
 }
 
-// SectorStat is per-sector volume.
+// SectorStat is per-sector volume. Name is the resolved sector name (filled at the
+// presenter); empty when unknown or for sector-less conversations.
 type SectorStat struct {
 	SectorID      string `json:"sector_id"`
+	Name          string `json:"name,omitempty"`
 	Conversations int    `json:"conversations"`
 }
 

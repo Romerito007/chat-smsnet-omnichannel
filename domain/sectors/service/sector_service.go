@@ -102,6 +102,34 @@ func (s *Service) Get(ctx context.Context, id string) (*entity.Sector, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
+// Names batch-resolves a set of sector ids to their display names, keyed by id.
+// Used by report/dashboard presenters so a per-sector row renders the name
+// instead of a raw id. Best-effort and nil-safe: blank ids are skipped and
+// unknown ids are simply absent from the returned map.
+func (s *Service) Names(ctx context.Context, ids []string) (map[string]string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	wanted := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if strings.TrimSpace(id) != "" {
+			wanted = append(wanted, id)
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+	sectors, err := s.repo.FindByIDs(ctx, wanted)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(sectors))
+	for _, sec := range sectors {
+		out[sec.ID] = sec.Name
+	}
+	return out, nil
+}
+
 // List returns a page of sectors.
 func (s *Service) List(ctx context.Context, page shared.PageRequest) ([]*entity.Sector, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {

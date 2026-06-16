@@ -14,5 +14,8 @@ type SectorRepository interface {
 	Update(ctx context.Context, s *entity.Sector) error
 	Delete(ctx context.Context, id string) error
 	FindByID(ctx context.Context, id string) (*entity.Sector, error)
+	// FindByIDs batch-loads sectors by id within the tenant (order unspecified;
+	// missing ids are simply absent). Used to resolve sector display names.
+	FindByIDs(ctx context.Context, ids []string) ([]*entity.Sector, error)
 	List(ctx context.Context, page shared.PageRequest) ([]*entity.Sector, error)
 }

@@ -125,6 +125,9 @@ func (fakeSectorRepo) Delete(context.Context, string) error               { retu
 func (fakeSectorRepo) FindByID(context.Context, string) (*sectorentity.Sector, error) {
 	return nil, apperror.NotFound("none")
 }
+func (fakeSectorRepo) FindByIDs(context.Context, []string) ([]*sectorentity.Sector, error) {
+	return nil, nil
+}
 func (fakeSectorRepo) List(context.Context, shared.PageRequest) ([]*sectorentity.Sector, error) {
 	return nil, nil
 }
