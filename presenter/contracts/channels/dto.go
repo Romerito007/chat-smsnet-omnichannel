@@ -25,6 +25,7 @@ type CreateConnectionRequest struct {
 	Secret            string                `json:"secret"`
 	OutboundSecret    string                `json:"outbound_secret"`
 	BusinessHours     map[string]any        `json:"business_hours"`
+	OutOfHoursMessage string                `json:"out_of_hours_message"`
 	UsesProtocol      bool                  `json:"uses_protocol"`
 	WhatsAppTemplates []WhatsAppTemplateDTO `json:"whatsapp_templates"`
 }
@@ -47,6 +48,7 @@ func (r CreateConnectionRequest) ToCommand() chcontracts.CreateConnection {
 		AuthType:          chentity.AuthType(r.AuthType),
 		Secret:            secret,
 		BusinessHours:     r.BusinessHours,
+		OutOfHoursMessage: r.OutOfHoursMessage,
 		UsesProtocol:      r.UsesProtocol,
 		WhatsAppTemplates: templatesToEntity(r.WhatsAppTemplates),
 	}
@@ -62,6 +64,7 @@ type UpdateConnectionRequest struct {
 	Secret            *string                `json:"secret"`
 	OutboundSecret    *string                `json:"outbound_secret"`
 	BusinessHours     *map[string]any        `json:"business_hours"`
+	OutOfHoursMessage *string                `json:"out_of_hours_message"`
 	Enabled           *bool                  `json:"enabled"`
 	UsesProtocol      *bool                  `json:"uses_protocol"`
 	WhatsAppTemplates *[]WhatsAppTemplateDTO `json:"whatsapp_templates"`
@@ -79,12 +82,13 @@ func (r UpdateConnectionRequest) ToCommand() chcontracts.UpdateConnection {
 		secret = r.OutboundSecret
 	}
 	cmd := chcontracts.UpdateConnection{
-		Name:          r.Name,
-		BaseURL:       baseURL,
-		Secret:        secret,
-		BusinessHours: r.BusinessHours,
-		Enabled:       r.Enabled,
-		UsesProtocol:  r.UsesProtocol,
+		Name:              r.Name,
+		BaseURL:           baseURL,
+		Secret:            secret,
+		BusinessHours:     r.BusinessHours,
+		OutOfHoursMessage: r.OutOfHoursMessage,
+		Enabled:           r.Enabled,
+		UsesProtocol:      r.UsesProtocol,
 	}
 	if r.Status != nil {
 		st := chentity.Status(*r.Status)
@@ -115,6 +119,7 @@ type ConnectionResponse struct {
 	HasSecret         bool                  `json:"has_secret"`
 	HasInboundToken   bool                  `json:"has_inbound_token"`
 	BusinessHours     map[string]any        `json:"business_hours,omitempty"`
+	OutOfHoursMessage string                `json:"out_of_hours_message,omitempty"`
 	Enabled           bool                  `json:"enabled"`
 	UsesProtocol      bool                  `json:"uses_protocol"`
 	WhatsAppTemplates []WhatsAppTemplateDTO `json:"whatsapp_templates,omitempty"`
@@ -135,6 +140,7 @@ func NewConnectionResponse(c *chentity.ChannelConnection) ConnectionResponse {
 		HasSecret:         c.Secret != "",
 		HasInboundToken:   c.InboundTokenHash != "",
 		BusinessHours:     c.BusinessHours,
+		OutOfHoursMessage: c.OutOfHoursMessage,
 		Enabled:           c.Enabled,
 		UsesProtocol:      c.UsesProtocol,
 		WhatsAppTemplates: templatesFromEntity(c.WhatsAppTemplates),

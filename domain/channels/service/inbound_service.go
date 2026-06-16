@@ -41,7 +41,40 @@ type InboundService struct {
 	webhooks      shared.WebhookEmitter
 	enricher      convcontracts.WebhookEnricher
 	media         shared.IntegrationMediaResolver
+	businessHours BusinessHoursChecker
+	outOfHours    OutOfHoursSender
 	logger        shared.Logger
+}
+
+// BusinessHoursChecker reports whether a channel is open at an instant (timezone +
+// weekly schedule + holidays). Implemented by the businesshours service. A channel
+// with no schedule is always open (24/7) → out-of-hours never fires.
+type BusinessHoursChecker interface {
+	IsWithinBusinessHours(ctx context.Context, channelID string, at time.Time) (bool, error)
+}
+
+// OutOfHoursSender sends the out-of-hours notice as an outbound message through the
+// normal pipeline (webhook → gateway → customer). Implemented by the conversations
+// service (SendAutomationMessage): SenderType=automation, so it is delivered but
+// never re-triggers automation rules. ruleID is empty for the out-of-hours notice.
+type OutOfHoursSender interface {
+	SendAutomationMessage(ctx context.Context, conversationID, ruleID, text string) error
+}
+
+// SetBusinessHours wires the open/closed checker for the out-of-hours notice.
+// Optional: without it (or without an OutOfHoursSender) the feature is off.
+func (s *InboundService) SetBusinessHours(c BusinessHoursChecker) {
+	if c != nil {
+		s.businessHours = c
+	}
+}
+
+// SetOutOfHoursSender wires the sender used to deliver the out-of-hours notice.
+// Optional.
+func (s *InboundService) SetOutOfHoursSender(o OutOfHoursSender) {
+	if o != nil {
+		s.outOfHours = o
+	}
 }
 
 // SetLogger wires the structured logger used to record an inbound attachment
@@ -217,6 +250,13 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		return chcontracts.InboundResult{}, err
 	}
 
+	// Out-of-hours notice: only on a NEW conversation, only when the channel has a
+	// message configured AND is currently closed. Best-effort — it must never block
+	// or fail the inbound (the conversation already entered normally).
+	if isNew {
+		s.maybeSendOutOfHours(ctx, conn, conv)
+	}
+
 	// Record idempotency last; a duplicate here (race despite the lock) is benign.
 	rec := &chentity.InboundRecord{
 		ID:                shared.NewID(),
@@ -365,6 +405,28 @@ func (s *InboundService) nextProtocol(ctx context.Context, tenantID string, now 
 		return "", err
 	}
 	return fmt.Sprintf("%d-%06d", year, seq), nil
+}
+
+// maybeSendOutOfHours sends the channel's out-of-hours notice to the customer when
+// a NEW conversation opens outside business hours. Off when the channel has no
+// message, or no checker/sender is wired. Best-effort: any error is logged and
+// swallowed so the inbound flow is never affected.
+func (s *InboundService) maybeSendOutOfHours(ctx context.Context, conn *chentity.ChannelConnection, conv *conventity.Conversation) {
+	text := strings.TrimSpace(conn.OutOfHoursMessage)
+	if text == "" || s.businessHours == nil || s.outOfHours == nil {
+		return
+	}
+	open, err := s.businessHours.IsWithinBusinessHours(ctx, conn.ID, s.clock.Now())
+	if err != nil {
+		shared.LoggerFrom(ctx, s.logger).Warn("OUT_OF_HOURS_CHECK_FAILED", "channel_id", conn.ID, "conversation_id", conv.ID, "error", err.Error())
+		return
+	}
+	if open {
+		return // within business hours → no notice
+	}
+	if err := s.outOfHours.SendAutomationMessage(ctx, conv.ID, "", text); err != nil {
+		shared.LoggerFrom(ctx, s.logger).Warn("OUT_OF_HOURS_SEND_FAILED", "channel_id", conn.ID, "conversation_id", conv.ID, "error", err.Error())
+	}
 }
 
 // emitRule forwards an inbound lifecycle event to the automation-rules sink (best

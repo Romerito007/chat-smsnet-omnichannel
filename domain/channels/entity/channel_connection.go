@@ -72,7 +72,11 @@ type ChannelConnection struct {
 	// BusinessHours is the channel's free-form weekly schedule + timezone (parsed
 	// by businesshours/entity.ParseSchedule). Empty/absent = 24/7.
 	BusinessHours map[string]any
-	Enabled       bool
+	// OutOfHoursMessage, when non-empty, is auto-sent to the customer once on a NEW
+	// inbound conversation opened while the channel is OUTSIDE business hours (the
+	// conversation still enters normally — this is only a notice). Empty = disabled.
+	OutOfHoursMessage string
+	Enabled           bool
 	// UsesProtocol turns on per-conversation protocol numbering for this channel.
 	// When true, a new inbound conversation (no open one) gets a fresh protocol and
 	// a closed last conversation is NOT reopened (a new one is created). When false

@@ -531,3 +531,103 @@ func (r *fakeMsgRepo) FindByExternalMessageID(_ context.Context, convID, ext str
 	}
 	return nil, apperror.NotFound("nf")
 }
+
+// ── out-of-hours notice ──────────────────────────────────────────────────────
+
+type fakeBusinessHours struct {
+	open bool
+	err  error
+}
+
+func (f fakeBusinessHours) IsWithinBusinessHours(context.Context, string, time.Time) (bool, error) {
+	return f.open, f.err
+}
+
+type fakeOOHSender struct {
+	mu   sync.Mutex
+	sent []string // texts sent
+}
+
+func (s *fakeOOHSender) SendAutomationMessage(_ context.Context, _, _, text string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sent = append(s.sent, text)
+	return nil
+}
+
+func (s *fakeOOHSender) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sent)
+}
+
+func connOOH(msg string) *chentity.ChannelConnection {
+	c := conn("")
+	c.OutOfHoursMessage = msg
+	return c
+}
+
+// wireOOH attaches a business-hours checker (open/closed) and a recording sender.
+func wireOOH(fx inboundFixture, open bool) *fakeOOHSender {
+	fx.svc.SetBusinessHours(fakeBusinessHours{open: open})
+	sender := &fakeOOHSender{}
+	fx.svc.SetOutOfHoursSender(sender)
+	return sender
+}
+
+func TestInbound_OutOfHours_NewConversationClosedChannelSends(t *testing.T) {
+	fx := newInboundFixture()
+	sender := wireOOH(fx, false) // outside business hours
+	if _, err := fx.svc.Handle(tenantCtx(), connOOH("Estamos fora do horário."), inMsg("ooh-1")); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if sender.count() != 1 || sender.sent[0] != "Estamos fora do horário." {
+		t.Fatalf("a new conversation outside hours must send the configured notice once, got %v", sender.sent)
+	}
+}
+
+func TestInbound_OutOfHours_WithinHoursDoesNotSend(t *testing.T) {
+	fx := newInboundFixture()
+	sender := wireOOH(fx, true) // within business hours
+	if _, err := fx.svc.Handle(tenantCtx(), connOOH("Fora do horário."), inMsg("ooh-2")); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if sender.count() != 0 {
+		t.Errorf("within business hours must NOT send the notice, got %v", sender.sent)
+	}
+}
+
+func TestInbound_OutOfHours_EmptyMessageDoesNotSend(t *testing.T) {
+	fx := newInboundFixture()
+	sender := wireOOH(fx, false) // closed, but no message configured
+	if _, err := fx.svc.Handle(tenantCtx(), connOOH(""), inMsg("ooh-3")); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if sender.count() != 0 {
+		t.Errorf("an empty out_of_hours_message disables the feature, got %v", sender.sent)
+	}
+}
+
+// Reopen of a closed conversation is NOT a new conversation → the notice fires only
+// once, on the original creation.
+func TestInbound_OutOfHours_ReopenDoesNotSend(t *testing.T) {
+	fx := newInboundFixture()
+	sender := wireOOH(fx, false) // outside hours the whole time
+	ctx := tenantCtx()
+
+	first, err := fx.svc.Handle(ctx, connOOH("Fora do horário."), inMsg("ooh-a"))
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if sender.count() != 1 {
+		t.Fatalf("the NEW conversation must send once, got %d", sender.count())
+	}
+	fx.closeConv(first.ConversationID)
+
+	if _, err := fx.svc.Handle(ctx, connOOH("Fora do horário."), inMsg("ooh-b")); err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if sender.count() != 1 {
+		t.Errorf("reopen must NOT send the notice again (fires only on creation), total sends=%d", sender.count())
+	}
+}

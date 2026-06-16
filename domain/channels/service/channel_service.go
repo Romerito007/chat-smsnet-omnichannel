@@ -140,6 +140,7 @@ func (s *ConnectionService) Create(ctx context.Context, cmd contracts.CreateConn
 		InboundToken:      token,
 		InboundTokenHash:  hashInboundToken(token),
 		BusinessHours:     cmd.BusinessHours,
+		OutOfHoursMessage: strings.TrimSpace(cmd.OutOfHoursMessage),
 		Enabled:           true,
 		UsesProtocol:      cmd.UsesProtocol,
 		WhatsAppTemplates: cmd.WhatsAppTemplates,
@@ -256,6 +257,9 @@ func (s *ConnectionService) Update(ctx context.Context, id string, cmd contracts
 			return nil, apperror.Validation(err.Error()).WithDetails(map[string]any{"business_hours": err.Error()})
 		}
 		conn.BusinessHours = *cmd.BusinessHours
+	}
+	if cmd.OutOfHoursMessage != nil {
+		conn.OutOfHoursMessage = strings.TrimSpace(*cmd.OutOfHoursMessage)
 	}
 	if cmd.Enabled != nil {
 		conn.Enabled = *cmd.Enabled

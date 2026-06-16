@@ -10,6 +10,7 @@ type CreateConnection struct {
 	AuthType          chentity.AuthType
 	Secret            string
 	BusinessHours     map[string]any
+	OutOfHoursMessage string
 	UsesProtocol      bool
 	WhatsAppTemplates []chentity.WhatsAppTemplate
 }
@@ -22,6 +23,7 @@ type UpdateConnection struct {
 	AuthType          *chentity.AuthType
 	Secret            *string
 	BusinessHours     *map[string]any
+	OutOfHoursMessage *string
 	Enabled           *bool
 	UsesProtocol      *bool
 	WhatsAppTemplates *[]chentity.WhatsAppTemplate

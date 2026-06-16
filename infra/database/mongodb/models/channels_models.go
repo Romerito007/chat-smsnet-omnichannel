@@ -15,6 +15,7 @@ type ChannelConnection struct {
 	EncryptedSecret   string             `bson:"encrypted_secret,omitempty"`
 	InboundTokenHash  string             `bson:"inbound_token_hash"`
 	BusinessHours     map[string]any     `bson:"business_hours,omitempty"`
+	OutOfHoursMessage string             `bson:"out_of_hours_message,omitempty"`
 	Enabled           bool               `bson:"enabled"`
 	UsesProtocol      bool               `bson:"uses_protocol,omitempty"`
 	WhatsAppTemplates []WhatsAppTemplate `bson:"whatsapp_templates,omitempty"`

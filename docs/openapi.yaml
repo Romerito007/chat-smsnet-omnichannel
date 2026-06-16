@@ -496,6 +496,9 @@ components:
                     type: string
                 name:
                     type: string
+                out_of_hours_message:
+                    description: Auto-sent to the customer ONCE when a NEW inbound conversation opens while the channel is OUTSIDE business hours (the conversation still enters normally — this is only a notice). Empty = disabled.
+                    type: string
                 status:
                     type: string
                 tenant_id:
@@ -535,6 +538,8 @@ components:
                 inbound_token:
                     type: string
                 name:
+                    type: string
+                out_of_hours_message:
                     type: string
                 outbound_secret:
                     type: string
@@ -1103,6 +1108,9 @@ components:
                 business_hours:
                     $ref: '#/components/schemas/BusinessHours'
                 name:
+                    type: string
+                out_of_hours_message:
+                    description: Optional. Auto-sent to the customer when a NEW conversation opens outside business hours. Empty/omitted = disabled.
                     type: string
                 outbound_secret:
                     type: string
@@ -3335,6 +3343,9 @@ components:
                 enabled:
                     type: boolean
                 name:
+                    type: string
+                out_of_hours_message:
+                    description: When set, replaces the out-of-hours auto-message (empty string disables it).
                     type: string
                 outbound_secret:
                     type: string
