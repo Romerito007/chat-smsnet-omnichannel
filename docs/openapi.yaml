@@ -1692,6 +1692,9 @@ components:
             type: object
         Fatura:
             properties:
+                dias_atraso:
+                    description: 'Read-only, derived: whole days overdue (0 when not overdue or the date is unparseable). Due today → 0; due yesterday → 1.'
+                    type: integer
                 linha_digitavel:
                     type: string
                 link:
@@ -1700,7 +1703,11 @@ components:
                     type: string
                 valor:
                     type: number
+                vencida:
+                    description: 'Read-only, derived server-side: true when overdue (vencimento before today in America/Sao_Paulo, compared by day). The front renders state/colour from this — it does not re-decide the rule.'
+                    type: boolean
                 vencimento:
+                    description: Due date, dd/mm/aaaa (e.g. "15/03/2026").
                     type: string
             required:
                 - valor

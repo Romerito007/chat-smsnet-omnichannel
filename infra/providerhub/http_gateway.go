@@ -38,11 +38,20 @@ const (
 type Gateway struct {
 	client *http.Client
 	logger shared.Logger
+	clock  shared.Clock
 }
 
 // NewGateway builds the gateway.
 func NewGateway() *Gateway {
-	return &Gateway{client: infrahttp.New(20 * time.Second), logger: slog.Default()}
+	return &Gateway{client: infrahttp.New(20 * time.Second), logger: slog.Default(), clock: shared.SystemClock{}}
+}
+
+// SetClock overrides the clock used to derive a fatura's vencida/dias_atraso
+// (defaults to the system clock). For tests.
+func (g *Gateway) SetClock(c shared.Clock) {
+	if c != nil {
+		g.clock = c
+	}
 }
 
 // SetLogger wires the structured logger used to record the REAL cause of a gateway
@@ -97,7 +106,7 @@ func (g *Gateway) ConsultarCliente(ctx context.Context, cfg *phentity.ProviderIn
 		if err := json.Unmarshal(env.Data, &raw); err != nil {
 			return phcontracts.ClienteResult{}, apperror.Integration(friendly)
 		}
-		cli := mapCliente(raw)
+		cli := mapCliente(raw, g.clock.Now())
 		// Diagnostic: how many invoices the gateway actually returned to us, and the
 		// option flags we sent. If faturas_count is 1 while a direct gateway call (no
 		// flags) returns more, the gateway is honoring usa_pegar_fatura_atrasada — the
@@ -336,7 +345,7 @@ type smsnetChamado struct {
 	Msg       string `json:"msg"`
 }
 
-func mapCliente(s smsnetCliente) phcontracts.Cliente {
+func mapCliente(s smsnetCliente, now time.Time) phcontracts.Cliente {
 	out := phcontracts.Cliente{
 		Nome:                  s.Nome,
 		CpfCnpj:               s.CpfCnpj,
@@ -344,15 +353,72 @@ func mapCliente(s smsnetCliente) phcontracts.Cliente {
 		ValorCheckOut:         looseFloat(s.ValorCheckOut),
 	}
 	for _, f := range s.Faturas {
+		vencida, dias := dueState(f.Vencimento, now)
 		out.Faturas = append(out.Faturas, phcontracts.Fatura{
 			Valor:          looseFloat(f.Valor),
 			Vencimento:     f.Vencimento,
+			Vencida:        vencida,
+			DiasAtraso:     dias,
 			Link:           f.Link,
 			LinhaDigitavel: f.LinhaDigitavel,
 			Pix:            f.Pix,
 		})
 	}
 	return out
+}
+
+// brLocation is America/Sao_Paulo; the fatura due-state is computed in the
+// tenant's local calendar day. Falls back to UTC if the zone db is unavailable.
+var brLocation = loadBR()
+
+func loadBR() *time.Location {
+	if loc, err := time.LoadLocation("America/Sao_Paulo"); err == nil {
+		return loc
+	}
+	return time.UTC
+}
+
+// dueState reports whether an invoice is overdue and by how many days, comparing
+// the parsed vencimento with `now`, BOTH reduced to a calendar DAY in
+// America/Sao_Paulo (time-of-day ignored). due today → not overdue; due yesterday
+// → overdue, dias=1. An unparseable date degrades safe to (false, 0).
+func dueState(vencimento string, now time.Time) (vencida bool, diasAtraso int) {
+	due, ok := looseDate(vencimento)
+	if !ok {
+		return false, 0
+	}
+	today := startOfDayBR(now)
+	dueDay := time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, brLocation)
+	days := int((today.Sub(dueDay) + 12*time.Hour) / (24 * time.Hour)) // round to whole days (DST-safe)
+	if days > 0 {
+		return true, days
+	}
+	return false, 0
+}
+
+func startOfDayBR(t time.Time) time.Time {
+	b := t.In(brLocation)
+	return time.Date(b.Year(), b.Month(), b.Day(), 0, 0, 0, 0, brLocation)
+}
+
+// looseDate parses an invoice due date. PRIMARY format is dd/mm/aaaa (the
+// confirmed SMSNET format, e.g. "15/03/2026"); a few alternatives are tolerated as
+// fallbacks in case one of the 19 ISPs varies. ok is false when none parse.
+func looseDate(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{
+		"02/01/2006", // dd/mm/aaaa — PRIMARY
+		"2006-01-02", // aaaa-mm-dd — ISO fallback
+		"02/01/06",   // dd/mm/aa — 2-digit year fallback
+	} {
+		if t, err := time.ParseInLocation(layout, s, brLocation); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func mapPlano(p smsnetPlano) phcontracts.Plano {

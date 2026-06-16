@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	phcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/contracts"
@@ -244,5 +245,60 @@ func TestGateway_FixedPlanosSkipHTTP(t *testing.T) {
 	planos, err := g.ListarPlanos(context.Background(), cfg)
 	if err != nil || len(planos) != 1 || planos[0].Nome != "Fixo" {
 		t.Fatalf("fixed planos: %v %+v", err, planos)
+	}
+}
+
+// fixedNow returns a clock-like time at the given BR date for due-state tests.
+func brAt(y int, m time.Month, d, hh int) time.Time {
+	return time.Date(y, m, d, hh, 0, 0, 0, brLocation)
+}
+
+func TestDueState(t *testing.T) {
+	now := brAt(2026, time.March, 15, 2) // early morning → time-of-day must be ignored
+	cases := []struct {
+		name       string
+		vencimento string
+		wantVenc   bool
+		wantDias   int
+	}{
+		{"past", "10/03/2026", true, 5},
+		{"yesterday", "14/03/2026", true, 1},
+		{"today (by day, not overdue)", "15/03/2026", false, 0},
+		{"future", "20/03/2026", false, 0},
+		{"iso fallback past", "2026-03-13", true, 2},
+		{"2-digit-year fallback past", "10/03/26", true, 5},
+		{"unparseable degrades safe", "amanhã", false, 0},
+		{"empty degrades safe", "", false, 0},
+	}
+	for _, c := range cases {
+		venc, dias := dueState(c.vencimento, now)
+		if venc != c.wantVenc || dias != c.wantDias {
+			t.Errorf("%s: dueState(%q) = (%v, %d), want (%v, %d)", c.name, c.vencimento, venc, dias, c.wantVenc, c.wantDias)
+		}
+	}
+}
+
+func TestMapCliente_DerivesFaturaDueState(t *testing.T) {
+	now := brAt(2026, time.March, 15, 10)
+	raw := smsnetCliente{
+		Nome: "Pedro",
+		Faturas: []smsnetFatura{
+			{Vencimento: "10/03/2026"}, // past
+			{Vencimento: "20/03/2026"}, // future
+			{Vencimento: "lixo"},       // unparseable
+		},
+	}
+	cli := mapCliente(raw, now)
+	if len(cli.Faturas) != 3 {
+		t.Fatalf("expected 3 faturas, got %d", len(cli.Faturas))
+	}
+	if !cli.Faturas[0].Vencida || cli.Faturas[0].DiasAtraso != 5 {
+		t.Errorf("past fatura: %+v, want vencida=true dias=5", cli.Faturas[0])
+	}
+	if cli.Faturas[1].Vencida || cli.Faturas[1].DiasAtraso != 0 {
+		t.Errorf("future fatura: %+v, want vencida=false dias=0", cli.Faturas[1])
+	}
+	if cli.Faturas[2].Vencida || cli.Faturas[2].DiasAtraso != 0 {
+		t.Errorf("unparseable fatura: %+v, want vencida=false dias=0", cli.Faturas[2])
 	}
 }

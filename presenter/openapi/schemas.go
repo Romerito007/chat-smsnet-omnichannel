@@ -494,8 +494,10 @@ func schemas() M {
 
 		// ── Customer 360 (smsnet-integrations on-demand results) ────────────────
 		"Fatura": object(M{
-			"valor": number(), "vencimento": str(), "link": str(),
-			"linha_digitavel": str(), "pix": str(),
+			"valor": number(), "vencimento": describedStr("Due date, dd/mm/aaaa (e.g. \"15/03/2026\")."),
+			"vencida":     describedBool("Read-only, derived server-side: true when overdue (vencimento before today in America/Sao_Paulo, compared by day). The front renders state/colour from this — it does not re-decide the rule."),
+			"dias_atraso": describedInt("Read-only, derived: whole days overdue (0 when not overdue or the date is unparseable). Due today → 0; due yesterday → 1."),
+			"link":        str(), "linha_digitavel": str(), "pix": str(),
 		}, "valor"),
 		"Cliente": object(M{
 			"nome": str(), "cpfcnpj": str(), "contrato_status_display": str(),

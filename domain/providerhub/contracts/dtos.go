@@ -46,10 +46,14 @@ type ContratoOption struct {
 	Status    string `json:"status,omitempty"`
 }
 
-// Fatura is a normalized invoice line.
+// Fatura is a normalized invoice line. Vencida and DiasAtraso are derived
+// server-side (vencimento vs. today in America/Sao_Paulo, by day) so the front
+// renders state/colour without re-parsing dates or deciding the rule.
 type Fatura struct {
 	Valor          float64 `json:"valor"`
 	Vencimento     string  `json:"vencimento,omitempty"`
+	Vencida        bool    `json:"vencida"`
+	DiasAtraso     int     `json:"dias_atraso"`
 	Link           string  `json:"link,omitempty"`
 	LinhaDigitavel string  `json:"linha_digitavel,omitempty"`
 	Pix            string  `json:"pix,omitempty"`
