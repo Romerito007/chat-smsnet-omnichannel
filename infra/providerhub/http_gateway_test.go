@@ -31,7 +31,7 @@ func newMock(t *testing.T) (*httptest.Server, *capture) {
 		_ = json.NewDecoder(r.Body).Decode(&cap.body)
 		// Second step: a chosen contract (idCliente) returns that specific contract.
 		if id, ok := cap.body["idCliente"].(string); ok && id != "" {
-			writeJSON(w, `{"status":"success","data":{"nome":"Cliente Contrato `+id+`","cpfcnpj":"123","contratoStatusDisplay":"Ativo `+id+`"}}`)
+			writeJSON(w, `{"status":"success","data":{"nome":"Cliente Contrato `+id+`","cpf_cnpj":"123","contrato_status_display":"Ativo `+id+`"}}`)
 			return
 		}
 		switch cap.body["cpfcnpj"] {
@@ -41,8 +41,8 @@ func newMock(t *testing.T) (*httptest.Server, *capture) {
 			writeJSON(w, `{"status":"needs_input","selectionType":"contrato","options":[{"label":"Contrato A","value":"A"},{"label":"Contrato B","value":"B"}]}`)
 		case "boom": // fallback
 			writeJSON(w, `{"status":"fallback","message":"erro upstream"}`)
-		default: // success — camelCase keys, valorCheckOut as a string
-			writeJSON(w, `{"status":"success","data":{"nome":"João Silva","cpfcnpj":"123","contratoStatusDisplay":"Ativo","valorCheckOut":"99.900000","faturas":[{"valor":50.0,"vencimento":"2026-07-01","linhaDigitavel":"34191..."}]}}`)
+		default: // success — snake_case keys (the live gateway format), valor_check_out as a string
+			writeJSON(w, `{"status":"success","data":{"nome":"João Silva","cpf_cnpj":"123","contrato_status_display":"Ativo","valor_check_out":"99.900000","faturas":[{"valor":50.0,"vencimento":"2026-07-01","linhaDigitavel":"34191..."}]}}`)
 		}
 	})
 	mux.HandleFunc("/planos", func(w http.ResponseWriter, r *http.Request) {
@@ -90,8 +90,13 @@ func TestGateway_ConsultarCliente_Success(t *testing.T) {
 	if cap.path != "/cliente" {
 		t.Fatalf("must call the SMSNET /cliente path, got %q", cap.path)
 	}
+	// The live gateway returns snake_case cliente fields (cpf_cnpj /
+	// contrato_status_display / valor_check_out); they must decode.
 	if res.Cliente == nil || res.Cliente.Nome != "João Silva" || res.Cliente.ValorCheckOut != 99.9 {
 		t.Fatalf("unexpected cliente: %+v", res.Cliente)
+	}
+	if res.Cliente.CpfCnpj != "123" || res.Cliente.ContratoStatusDisplay != "Ativo" {
+		t.Errorf("snake_case cliente fields not decoded: %+v", res.Cliente)
 	}
 	if len(res.Cliente.Faturas) != 1 || res.Cliente.Faturas[0].LinhaDigitavel != "34191..." {
 		t.Errorf("faturas not decoded: %+v", res.Cliente.Faturas)
@@ -106,6 +111,35 @@ func TestGateway_ConsultarCliente_Success(t *testing.T) {
 	conf, _ := cap.body["config"].(map[string]any)
 	if conf["type"] != phentity.ISPHubsoft || conf["hubsoft_host"] != "h" {
 		t.Errorf("config body not built: %+v", conf)
+	}
+}
+
+// TestGateway_ConsultarCliente_MapsAllFaturas proves the backend maps EVERY invoice
+// the gateway returns — there is no per-invoice truncation on the HTTP path. (When
+// the front shows only one invoice while a flag-less direct call shows several, the
+// gateway is limiting via usa_pegar_fatura_atrasada, not this backend.)
+func TestGateway_ConsultarCliente_MapsAllFaturas(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/cliente", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, `{"status":"success","data":{"nome":"Pedro","cpf_cnpj":"9","faturas":[
+			{"valor":124.9,"vencimento":"24/06/2026","link":"https://b/1","pix":"p1"},
+			{"valor":124.9,"vencimento":"24/07/2026","link":"https://b/2","pix":"p2"},
+			{"valor":124.9,"vencimento":"24/08/2026","link":"https://b/3","pix":"p3"}
+		]}}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	g := NewGateway()
+	res, err := g.ConsultarCliente(context.Background(), cfgFor(srv.URL), phcontracts.ConsultaClienteRequest{CpfCnpj: "9"})
+	if err != nil {
+		t.Fatalf("consulta: %v", err)
+	}
+	if res.Cliente == nil || len(res.Cliente.Faturas) != 3 {
+		t.Fatalf("backend must map ALL faturas the gateway returns, got %d: %+v", len(res.Cliente.Faturas), res.Cliente)
+	}
+	if res.Cliente.Faturas[2].Vencimento != "24/08/2026" || res.Cliente.Faturas[2].Pix != "p3" {
+		t.Errorf("last fatura not mapped correctly: %+v", res.Cliente.Faturas[2])
 	}
 }
 

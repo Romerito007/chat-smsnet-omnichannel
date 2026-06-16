@@ -98,6 +98,15 @@ func (g *Gateway) ConsultarCliente(ctx context.Context, cfg *phentity.ProviderIn
 			return phcontracts.ClienteResult{}, apperror.Integration(friendly)
 		}
 		cli := mapCliente(raw)
+		// Diagnostic: how many invoices the gateway actually returned to us, and the
+		// option flags we sent. If faturas_count is 1 while a direct gateway call (no
+		// flags) returns more, the gateway is honoring usa_pegar_fatura_atrasada — the
+		// backend maps every fatura it receives (no truncation here).
+		shared.LoggerFrom(ctx, g.logger).Info("SMSNET_CLIENTE_RESPONSE",
+			"faturas_count", len(raw.Faturas),
+			"usa_pegar_fatura_atrasada", cfg.Options.UsaPegarFaturaAtrasada,
+			"usa_extrair_linha_digitavel_pdf", cfg.Options.UsaExtrairLinhaDigitavelPDF,
+			"data_bytes", len(env.Data))
 		return phcontracts.ClienteResult{Cliente: &cli}, nil
 	case statusNeedsInput:
 		opts := make([]phcontracts.ContratoOption, 0, len(env.Options))
@@ -289,9 +298,9 @@ func truncate(s string, n int) string {
 
 type smsnetCliente struct {
 	Nome                  string          `json:"nome"`
-	CpfCnpj               string          `json:"cpfcnpj"`
-	ContratoStatusDisplay string          `json:"contratoStatusDisplay"`
-	ValorCheckOut         json.RawMessage `json:"valorCheckOut"` // string or number
+	CpfCnpj               string          `json:"cpf_cnpj"`
+	ContratoStatusDisplay string          `json:"contrato_status_display"`
+	ValorCheckOut         json.RawMessage `json:"valor_check_out"` // string or number
 	Faturas               []smsnetFatura  `json:"faturas"`
 }
 type smsnetFatura struct {
