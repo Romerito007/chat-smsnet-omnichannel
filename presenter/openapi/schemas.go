@@ -864,6 +864,7 @@ func schemas() M {
 		"ReportAgents":       object(M{"agents": arr(ref("AgentStat"))}),
 		"ReportSectors":      object(M{"sectors": arr(ref("SectorStat"))}),
 		"ReportCopilot":      object(M{"total_calls": integer(), "by_action": arr(ref("Bucket")), "tokens_input": integer(), "tokens_output": integer(), "estimated_cost": number()}),
+		"ReportAutomation":   object(M{"total_evaluations": integer(), "by_status": arr(ref("Bucket")), "by_event": arr(ref("Bucket")), "by_action": arr(ref("Bucket"))}),
 		"ReportSLA":          object(M{"tracked": integer(), "first_response_breached": integer(), "resolution_breached": integer(), "met": integer(), "first_response_breach_rate": number(), "resolution_breach_rate": number()}),
 		"ReportCSAT":         object(M{"sent": integer(), "responded": integer(), "expired": integer(), "avg_score": number(), "response_rate": number(), "by_score": arr(ref("Bucket"))}),
 		"ReportExportResult": object(M{"report": str(), "format": enum("json", "csv"), "filename": str(), "download_url": str(), "expires_at": dateTime(), "bytes": integer()}),

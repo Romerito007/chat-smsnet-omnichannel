@@ -26,6 +26,7 @@ type Repository struct {
 	slaTrackings  *mongo.Collection
 	copilot       *mongo.Collection
 	csat          *mongo.Collection
+	ruleLogs      *mongo.Collection
 }
 
 // New builds the repository.
@@ -37,6 +38,7 @@ func New(db *mongo.Database) *Repository {
 		slaTrackings:  db.Collection("sla_trackings"),
 		copilot:       db.Collection("copilot_logs"),
 		csat:          db.Collection("csat_responses"),
+		ruleLogs:      db.Collection("rule_evaluation_logs"),
 	}
 }
 
@@ -318,6 +320,32 @@ func (r *Repository) CopilotUsage(ctx context.Context, f contracts.Filter) (cont
 		rep.EstimatedCost = round4(row.Cost)
 	}
 	return rep, mongodb.MapError(cur.Err())
+}
+
+// AutomationUsage aggregates rule_evaluation_logs over the period: total firings
+// plus breakdowns by status, triggering event and action type.
+func (r *Repository) AutomationUsage(ctx context.Context, f contracts.Filter) (contracts.AutomationReport, error) {
+	tenant, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return contracts.AutomationReport{}, err
+	}
+	match := bson.M{"tenant_id": tenant, "created_at": period(f)}
+	rep := contracts.AutomationReport{}
+	if rep.ByStatus, err = r.groupCount(ctx, r.ruleLogs, match, "$status"); err != nil {
+		return contracts.AutomationReport{}, err
+	}
+	if rep.ByEvent, err = r.groupCount(ctx, r.ruleLogs, match, "$event"); err != nil {
+		return contracts.AutomationReport{}, err
+	}
+	if rep.ByAction, err = r.groupCount(ctx, r.ruleLogs, match, "$action_type"); err != nil {
+		return contracts.AutomationReport{}, err
+	}
+	total, err := r.ruleLogs.CountDocuments(ctx, match)
+	if err != nil {
+		return contracts.AutomationReport{}, mongodb.MapError(err)
+	}
+	rep.TotalEvaluations = int(total)
+	return rep, nil
 }
 
 func (r *Repository) SLACounts(ctx context.Context, f contracts.Filter) (contracts.SLAReport, error) {

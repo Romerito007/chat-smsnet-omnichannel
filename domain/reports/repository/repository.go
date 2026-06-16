@@ -35,6 +35,8 @@ type Repository interface {
 	AgentStats(ctx context.Context, f contracts.Filter) ([]contracts.AgentStat, error)
 	SectorStats(ctx context.Context, f contracts.Filter) ([]contracts.SectorStat, error)
 	CopilotUsage(ctx context.Context, f contracts.Filter) (contracts.CopilotReport, error)
+	// AutomationUsage aggregates rule_evaluation_logs (firings) over the period.
+	AutomationUsage(ctx context.Context, f contracts.Filter) (contracts.AutomationReport, error)
 	// SLACounts returns the raw tracking counts (rates derived by the service).
 	SLACounts(ctx context.Context, f contracts.Filter) (contracts.SLAReport, error)
 	// CSAT returns the raw survey aggregation (average/rate derived by the service).

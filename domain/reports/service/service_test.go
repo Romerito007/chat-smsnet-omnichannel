@@ -17,22 +17,23 @@ func (c fixedClock) Now() time.Time { return c.t }
 
 // fakeRepo returns canned aggregates and records the filter it received.
 type fakeRepo struct {
-	gotFilter contracts.Filter
-	total     int
-	open      []contracts.Bucket
-	msgs      int
-	frAvg     float64
-	resAvg    float64
-	csat      repository.CSATRaw
-	sla       contracts.SLAReport
-	byStatus  []contracts.Bucket
-	bySector  []contracts.Bucket
-	daily     []contracts.DateCount
-	byChannel []contracts.Bucket
-	closedBy  []contracts.Bucket
-	agents    []contracts.AgentStat
-	sectors   []contracts.SectorStat
-	copilot   contracts.CopilotReport
+	gotFilter  contracts.Filter
+	total      int
+	open       []contracts.Bucket
+	msgs       int
+	frAvg      float64
+	resAvg     float64
+	csat       repository.CSATRaw
+	sla        contracts.SLAReport
+	byStatus   []contracts.Bucket
+	bySector   []contracts.Bucket
+	daily      []contracts.DateCount
+	byChannel  []contracts.Bucket
+	closedBy   []contracts.Bucket
+	agents     []contracts.AgentStat
+	sectors    []contracts.SectorStat
+	copilot    contracts.CopilotReport
+	automation contracts.AutomationReport
 }
 
 func (r *fakeRepo) CountConversations(_ context.Context, f contracts.Filter) (int, error) {
@@ -72,6 +73,10 @@ func (r *fakeRepo) SectorStats(context.Context, contracts.Filter) ([]contracts.S
 }
 func (r *fakeRepo) CopilotUsage(context.Context, contracts.Filter) (contracts.CopilotReport, error) {
 	return r.copilot, nil
+}
+func (r *fakeRepo) AutomationUsage(_ context.Context, f contracts.Filter) (contracts.AutomationReport, error) {
+	r.gotFilter = f
+	return r.automation, nil
 }
 func (r *fakeRepo) SLACounts(context.Context, contracts.Filter) (contracts.SLAReport, error) {
 	return r.sla, nil
@@ -195,5 +200,25 @@ func TestReports_RequireTenant(t *testing.T) {
 	svc := NewService(&fakeRepo{}, clk(t))
 	if _, err := svc.Overview(context.Background(), contracts.Filter{}); apperror.From(err).Code != apperror.CodeForbidden {
 		t.Errorf("expected forbidden without tenant, got %v", err)
+	}
+}
+
+func TestAutomation_DelegatesAndNormalizes(t *testing.T) {
+	repo := &fakeRepo{automation: contracts.AutomationReport{
+		TotalEvaluations: 3,
+		ByStatus:         []contracts.Bucket{{Key: "applied", Count: 2}, {Key: "failed", Count: 1}},
+		ByAction:         []contracts.Bucket{{Key: "send_message", Count: 2}},
+	}}
+	svc := NewService(repo, clk(t))
+	out, err := svc.Automation(ctxT(), contracts.Filter{})
+	if err != nil {
+		t.Fatalf("automation: %v", err)
+	}
+	if out.TotalEvaluations != 3 || len(out.ByStatus) != 2 || out.ByAction[0].Key != "send_message" {
+		t.Fatalf("unexpected automation report: %+v", out)
+	}
+	// The empty period must be normalized (From/To set) before hitting the repo.
+	if repo.gotFilter.From.IsZero() || repo.gotFilter.To.IsZero() {
+		t.Errorf("filter not normalized: %+v", repo.gotFilter)
 	}
 }

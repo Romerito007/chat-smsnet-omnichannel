@@ -221,6 +221,15 @@ func (s *Service) Copilot(ctx context.Context, f contracts.Filter) (contracts.Co
 	return s.repo.CopilotUsage(ctx, f)
 }
 
+// Automation summarizes automation-rule firings over the period.
+func (s *Service) Automation(ctx context.Context, f contracts.Filter) (contracts.AutomationReport, error) {
+	if err := s.guard(ctx); err != nil {
+		return contracts.AutomationReport{}, err
+	}
+	f = s.normalize(f)
+	return s.repo.AutomationUsage(ctx, f)
+}
+
 // SLA summarizes SLA outcomes with derived breach rates.
 func (s *Service) SLA(ctx context.Context, f contracts.Filter) (contracts.SLAReport, error) {
 	if err := s.guard(ctx); err != nil {

@@ -386,6 +386,8 @@ func registerInsights(p *paths) {
 		responses: M{"200": jsonResp("Report", ref("ReportSectors"))}}))
 	p.add("GET", "/v1/reports/copilot", op(opConfig{tag: "reports", summary: "Copilot usage", params: q(),
 		responses: M{"200": jsonResp("Report", ref("ReportCopilot"))}}))
+	p.add("GET", "/v1/reports/automation", op(opConfig{tag: "reports", summary: "Automation-rule firings", params: q(),
+		responses: M{"200": jsonResp("Report", ref("ReportAutomation"))}}))
 	p.add("GET", "/v1/reports/sla", op(opConfig{tag: "reports", summary: "SLA outcomes", params: q(),
 		responses: M{"200": jsonResp("Report", ref("ReportSLA"))}}))
 	p.add("GET", "/v1/reports/csat", op(opConfig{tag: "reports", summary: "CSAT summary", params: q(),

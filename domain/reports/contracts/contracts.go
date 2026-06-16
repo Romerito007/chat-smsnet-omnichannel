@@ -87,6 +87,15 @@ type CopilotReport struct {
 	EstimatedCost float64  `json:"estimated_cost"`
 }
 
+// AutomationReport summarizes automation-rule firings (one row per executed action
+// in rule_evaluation_logs) over the period.
+type AutomationReport struct {
+	TotalEvaluations int      `json:"total_evaluations"`
+	ByStatus         []Bucket `json:"by_status"` // applied | skipped_missing_ref | failed | …
+	ByEvent          []Bucket `json:"by_event"`  // conversation.created | message.created | …
+	ByAction         []Bucket `json:"by_action"` // send_message | assign_agent | …
+}
+
 // SLAReport summarizes SLA tracking outcomes.
 type SLAReport struct {
 	Tracked                 int     `json:"tracked"`
@@ -135,6 +144,7 @@ type ReportService interface {
 	Agents(ctx context.Context, f Filter) (AgentsReport, error)
 	Sectors(ctx context.Context, f Filter) (SectorsReport, error)
 	Copilot(ctx context.Context, f Filter) (CopilotReport, error)
+	Automation(ctx context.Context, f Filter) (AutomationReport, error)
 	SLA(ctx context.Context, f Filter) (SLAReport, error)
 	CSAT(ctx context.Context, f Filter) (CSATReport, error)
 	// Export renders the named report (json|csv), stores the file and returns a

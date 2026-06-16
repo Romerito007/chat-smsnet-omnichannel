@@ -78,6 +78,12 @@ func (c *Controller) Copilot(w http.ResponseWriter, r *http.Request) {
 	write(w, r, res, err)
 }
 
+// Automation handles GET /v1/reports/automation.
+func (c *Controller) Automation(w http.ResponseWriter, r *http.Request) {
+	res, err := c.svc.Automation(r.Context(), filter(r))
+	write(w, r, res, err)
+}
+
 // SLA handles GET /v1/reports/sla.
 func (c *Controller) SLA(w http.ResponseWriter, r *http.Request) {
 	res, err := c.svc.SLA(r.Context(), filter(r))

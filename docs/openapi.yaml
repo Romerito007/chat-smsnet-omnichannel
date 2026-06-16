@@ -2658,6 +2658,23 @@ components:
                         $ref: '#/components/schemas/AgentStat'
                     type: array
             type: object
+        ReportAutomation:
+            properties:
+                by_action:
+                    items:
+                        $ref: '#/components/schemas/Bucket'
+                    type: array
+                by_event:
+                    items:
+                        $ref: '#/components/schemas/Bucket'
+                    type: array
+                by_status:
+                    items:
+                        $ref: '#/components/schemas/Bucket'
+                    type: array
+                total_evaluations:
+                    type: integer
+            type: object
         ReportCSAT:
             properties:
                 avg_score:
@@ -9055,6 +9072,42 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Per-agent productivity
+            tags:
+                - reports
+    /v1/reports/automation:
+        get:
+            operationId: getReportsAutomation
+            parameters:
+                - description: RFC3339 period start
+                  in: query
+                  name: from
+                  required: false
+                  schema:
+                    type: string
+                - description: RFC3339 period end
+                  in: query
+                  name: to
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ReportAutomation'
+                    description: Report
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Automation-rule firings
             tags:
                 - reports
     /v1/reports/conversations:

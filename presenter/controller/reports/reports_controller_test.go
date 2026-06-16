@@ -52,6 +52,9 @@ func (s *fakeReportSvc) Sectors(context.Context, rcontracts.Filter) (rcontracts.
 func (s *fakeReportSvc) Copilot(context.Context, rcontracts.Filter) (rcontracts.CopilotReport, error) {
 	return rcontracts.CopilotReport{}, nil
 }
+func (s *fakeReportSvc) Automation(context.Context, rcontracts.Filter) (rcontracts.AutomationReport, error) {
+	return rcontracts.AutomationReport{}, nil
+}
 func (s *fakeReportSvc) SLA(context.Context, rcontracts.Filter) (rcontracts.SLAReport, error) {
 	return rcontracts.SLAReport{}, nil
 }
