@@ -105,6 +105,13 @@ make run              # RUN_ROLE=all por padrão
 O seed também roda automaticamente no boot dos papéis `api`/`all`; `make seed`
 (equivalente a `chat-backend seed`) é o atalho para rodá-lo isoladamente.
 
+> **⚠️ Pré-requisito de infra (presença ao vivo):** o Redis precisa emitir
+> *keyspace expired events* (`notify-keyspace-events` contendo `E`+`x`), senão
+> agentes que caem de forma abrupta continuam "Online" no painel até um refresh.
+> O evento é **por database** — o subscriber escuta `__keyevent@{REDIS_DB}__:expired`,
+> então mantenha o `REDIS_DB` consistente. Como habilitar (e como **não**
+> sobrescrever uma config existente): ver **[docs/operations.md](docs/operations.md)**.
+
 Endpoints de saúde:
 
 ```bash

@@ -159,6 +159,16 @@ delivery_status, external_message_id, created_at, edited_at }`.
 |---|---|---|
 | `agent.presence_changed` | `presence`, `user` | `{ tenant_id, user_id, status, current_load, max_concurrent_chats, last_seen_at }` |
 
+A presença separa **liveness** (TTL de 60s da chave Redis `presence:<tenant>:<user>`,
+renovado a cada heartbeat do WS) de **intenção** (o `status` gravado, alterado só
+pelo toggle). Um agente cai para `offline` ao vivo de três formas: toggle
+explícito; *fast-path* de disconnect gracioso (debounce de ~5s no fechamento da
+última conexão); e expiração do TTL em quedas abruptas, captada via *keyspace
+expired events* do Redis. **Esse último caminho exige configuração de infra no
+Redis** (`notify-keyspace-events` com `E`+`x`, escutado em
+`__keyevent@{REDIS_DB}__:expired`) — ver **[operations.md](operations.md)**; sem
+isso, quedas abruptas só atualizam no refresh.
+
 ### Filas (`queues`)
 | Evento | Tópico | Payload |
 |---|---|---|
