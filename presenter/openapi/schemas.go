@@ -124,10 +124,15 @@ func schemas() M {
 			"contact_avatar_url": describedStr("Read-only, derived: the conversation contact's short-lived signed avatar URL (loadable in <img src>, no Authorization), resolved in batch for the inbox. Empty when the contact has no ready avatar."),
 			"agent_name":         describedStr("Read-only, derived: the assignee's display name, resolved in batch. Empty when the conversation is unassigned."),
 			"agent_avatar_url":   describedStr("Read-only, derived: the assignee's short-lived signed avatar URL (no Authorization), resolved in batch. Empty when unassigned or no ready avatar."),
+			"whatsapp_window":    ref("WhatsAppWindow"),
 		}),
 		"LastMessage": object(M{
 			"preview": str(), "sender_type": str(), "message_type": str(), "created_at": dateTime(),
 		}),
+		"WhatsAppWindow": withDesc(object(M{
+			"open":       describedBool("True when the customer messaged in the last 24h (free-form text/media is deliverable). False otherwise — only a template can be sent."),
+			"expires_at": describedStr("When the 24h window closes = last inbound customer message + 24h (ISO 8601). Absent when the customer has never messaged."),
+		}, "open"), "Read-only, derived server-side. Present ONLY on WhatsApp channels (omitted for other channel types — the 24h window does not apply). The front uses it to warn \"outside the window, use a template\"; the backend does NOT block free-form sends (the provider rejects and reports failed via delivery receipt)."),
 		"AssignableAgent": object(M{
 			"id": str(), "name": str(),
 			"status":       describedStr("Presence status: online | available | busy | away | paused | lunch | training | offline (\"offline\" when the agent has no live presence). The list ALWAYS includes offline agents of the sector — they are selectable for manual assign/transfer (the operator sees the status and chooses). Render a presence badge; do NOT hide or disable offline agents."),

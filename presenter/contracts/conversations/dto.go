@@ -172,6 +172,10 @@ type ConversationResponse struct {
 	ContactAvatarURL string `json:"contact_avatar_url,omitempty"`
 	AgentName        string `json:"agent_name,omitempty"`
 	AgentAvatarURL   string `json:"agent_avatar_url,omitempty"`
+	// WhatsAppWindow is the WhatsApp 24h service-window state — present ONLY for
+	// WhatsApp channels (omitted otherwise). Derived server-side; the front uses it
+	// to warn "outside the window, use a template".
+	WhatsAppWindow *entity.WhatsAppWindow `json:"whatsapp_window,omitempty"`
 }
 
 // LastMessage is a light preview of a conversation's most recent message, used on
@@ -249,6 +253,7 @@ func NewConversationResponse(c *entity.Conversation) ConversationResponse {
 		CreatedAt:        c.CreatedAt,
 		UpdatedAt:        c.UpdatedAt,
 		ClosedAt:         c.ClosedAt,
+		WhatsAppWindow:   c.WhatsAppWindowState(time.Now()),
 	}
 }
 

@@ -886,6 +886,8 @@ components:
                 updated_at:
                     format: date-time
                     type: string
+                whatsapp_window:
+                    $ref: '#/components/schemas/WhatsAppWindow'
             type: object
         ConversationEvent:
             properties:
@@ -4247,6 +4249,18 @@ components:
                 - id
                 - name
             type: object
+        WhatsAppWindow:
+            description: Read-only, derived server-side. Present ONLY on WhatsApp channels (omitted for other channel types — the 24h window does not apply). The front uses it to warn "outside the window, use a template"; the backend does NOT block free-form sends (the provider rejects and reports failed via delivery receipt).
+            properties:
+                expires_at:
+                    description: When the 24h window closes = last inbound customer message + 24h (ISO 8601). Absent when the customer has never messaged.
+                    type: string
+                open:
+                    description: True when the customer messaged in the last 24h (free-form text/media is deliverable). False otherwise — only a template can be sent.
+                    type: boolean
+            required:
+                - open
+            type: object
     securitySchemes:
         bearerAuth:
             bearerFormat: JWT
@@ -6710,7 +6724,7 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Send a message
+            summary: Send a message. message_type=interactive and message_type=template are WhatsApp-only (Meta Cloud API features) → 422 on a non-whatsapp channel. text/image/file/audio/video/contact/location work on any channel.
             tags:
                 - conversations
     /v1/conversations/{id}/messages/{mid}:

@@ -522,6 +522,17 @@ func (s *Service) SendMessage(ctx context.Context, conversationID string, cmd co
 		return nil, apperror.Validation("invalid message_type")
 	}
 
+	// WhatsApp-only message kinds: interactive (buttons/list) and template are Meta
+	// Cloud API features. conv.Channel is the channel TYPE, so the check is free.
+	if conv.Channel != entity.ChannelTypeWhatsApp {
+		switch mtype {
+		case entity.MessageInteractive:
+			return nil, apperror.Validation("interactive messages are only supported on WhatsApp channels")
+		case entity.MessageTemplate:
+			return nil, apperror.Validation("templates are only supported on WhatsApp channels")
+		}
+	}
+
 	// Each kind has its own required payload: a template resolves from the channel's
 	// template mirror; contact needs contacts[]; location needs a location; a normal
 	// message needs text or attachments.

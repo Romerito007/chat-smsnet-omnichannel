@@ -175,3 +175,26 @@ func TestSendAutomationInteractive(t *testing.T) {
 		t.Errorf("no buttons must be a validation error, got %v", err)
 	}
 }
+
+// TestSendMessage_InteractiveTemplateGatedToWhatsApp: interactive and template are
+// WhatsApp-only — rejected on a non-whatsapp channel; the other kinds are fine.
+func TestSendMessage_InteractiveTemplateGatedToWhatsApp(t *testing.T) {
+	svc, cr, _, _, _ := newService(map[string]string{"s1": "t1"})
+	id := openConv(t, svc)
+	cr.items[id].Channel = "api" // a generic API channel (not whatsapp)
+
+	if _, err := svc.SendMessage(adminCtx(), id, contracts.SendMessage{
+		MessageType: entity.MessageInteractive, Interactive: buttonsMenu(),
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("interactive on a non-whatsapp channel must be 422, got %v", err)
+	}
+	if _, err := svc.SendMessage(adminCtx(), id, contracts.SendMessage{
+		MessageType: entity.MessageTemplate,
+	}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("template on a non-whatsapp channel must be 422, got %v", err)
+	}
+	// A plain text message is unaffected on the same channel.
+	if _, err := svc.SendMessage(adminCtx(), id, contracts.SendMessage{Text: "oi"}); err != nil {
+		t.Errorf("text must still work on a non-whatsapp channel: %v", err)
+	}
+}

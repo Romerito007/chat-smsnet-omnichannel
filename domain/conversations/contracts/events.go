@@ -71,6 +71,9 @@ type ConversationPayload struct {
 	UnreadCount int                 `json:"unread_count"`
 	LastReadAt  *time.Time          `json:"last_read_at,omitempty"`
 	UpdatedAt   time.Time           `json:"updated_at"`
+	// WhatsAppWindow is the 24h service-window state, present ONLY for WhatsApp
+	// channels (nil/omitted otherwise). Derived server-side at serialization.
+	WhatsAppWindow *entity.WhatsAppWindow `json:"whatsapp_window,omitempty"`
 }
 
 // LastMessagePayload is the realtime shape of the conversation's last-message
@@ -85,23 +88,24 @@ type LastMessagePayload struct {
 // NewConversationPayload builds the payload from a conversation entity.
 func NewConversationPayload(c *entity.Conversation) ConversationPayload {
 	return ConversationPayload{
-		ID:            c.ID,
-		TenantID:      c.TenantID,
-		ContactID:     c.ContactID,
-		Channel:       c.Channel,
-		ChannelID:     c.ChannelID,
-		SectorID:      c.SectorID,
-		QueueID:       c.QueueID,
-		Status:        string(c.Status),
-		AssignedTo:    c.AssignedTo,
-		Priority:      string(c.Priority),
-		Protocol:      c.Protocol,
-		Tags:          c.Tags,
-		LastMessageAt: c.LastMessageAt,
-		LastMessage:   newLastMessagePayload(c.LastMessage),
-		UnreadCount:   c.UnreadCount,
-		LastReadAt:    c.LastReadAt,
-		UpdatedAt:     c.UpdatedAt,
+		ID:             c.ID,
+		TenantID:       c.TenantID,
+		ContactID:      c.ContactID,
+		Channel:        c.Channel,
+		ChannelID:      c.ChannelID,
+		SectorID:       c.SectorID,
+		QueueID:        c.QueueID,
+		Status:         string(c.Status),
+		AssignedTo:     c.AssignedTo,
+		Priority:       string(c.Priority),
+		Protocol:       c.Protocol,
+		Tags:           c.Tags,
+		LastMessageAt:  c.LastMessageAt,
+		LastMessage:    newLastMessagePayload(c.LastMessage),
+		UnreadCount:    c.UnreadCount,
+		LastReadAt:     c.LastReadAt,
+		UpdatedAt:      c.UpdatedAt,
+		WhatsAppWindow: c.WhatsAppWindowState(time.Now()),
 	}
 }
 

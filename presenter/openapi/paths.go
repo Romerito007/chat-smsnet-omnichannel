@@ -105,8 +105,9 @@ func registerConversations(p *paths) {
 		params: append([]M{pathParam("id", "conversation id")}, paginationParams()...), responses: M{"200": jsonResp("Message page", pageOf(ref("Message")))}}))
 	p.add("GET", "/v1/conversations/{id}/events", op(opConfig{tag: "conversations", summary: "List the lifecycle/automation timeline (separate from chat messages)",
 		params: append([]M{pathParam("id", "conversation id")}, paginationParams()...), responses: M{"200": jsonResp("Event page", pageOf(ref("ConversationEvent")))}}))
-	p.add("POST", "/v1/conversations/{id}/messages", op(opConfig{tag: "conversations", summary: "Send a message",
-		params: idp, reqBody: body(ref("SendMessageRequest")), responses: M{"201": jsonResp("Sent", ref("Message"))}}))
+	p.add("POST", "/v1/conversations/{id}/messages", op(opConfig{tag: "conversations",
+		summary: "Send a message. message_type=interactive and message_type=template are WhatsApp-only (Meta Cloud API features) → 422 on a non-whatsapp channel. text/image/file/audio/video/contact/location work on any channel.",
+		params:  idp, reqBody: body(ref("SendMessageRequest")), responses: M{"201": jsonResp("Sent", ref("Message"))}}))
 	midp := []M{pathParam("id", "conversation id"), pathParam("mid", "message id")}
 	p.add("PATCH", "/v1/conversations/{id}/messages/{mid}", op(opConfig{tag: "conversations", summary: "Edit a message",
 		params: midp, reqBody: body(ref("EditMessageRequest")), responses: M{"200": jsonResp("Edited", ref("Message"))}}))

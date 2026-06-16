@@ -522,6 +522,9 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 	}
 
 	conv.LastMessageAt = createdAt
+	// Track the last INBOUND (customer) message for the WhatsApp 24h service window.
+	inboundAt := createdAt
+	conv.LastCustomerMessageAt = &inboundAt
 	// Refresh the denormalized last-message snapshot the inbox reads (no aggregation).
 	conv.LastMessage = conventity.NewLastMessageSnapshot(message)
 	conv.UpdatedAt = createdAt

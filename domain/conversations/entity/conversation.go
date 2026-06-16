@@ -84,6 +84,11 @@ type Conversation struct {
 	// no per-page aggregation over the messages collection. Nil when the
 	// conversation has no message yet.
 	LastMessage *LastMessageSnapshot
+	// LastCustomerMessageAt is the time of the most recent INBOUND (customer) message,
+	// denormalized at the inbound chokepoint. It drives the WhatsApp 24h service
+	// window. Nil when the customer has never messaged. (LastMessageAt covers ANY
+	// message, including outbound, so it cannot be used for the window.)
+	LastCustomerMessageAt *time.Time
 	// UnreadCount is the number of inbound (customer) messages since an agent last
 	// read the conversation. Bumped on each inbound message; zeroed by MarkRead
 	// (POST /read).
@@ -93,6 +98,39 @@ type Conversation struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	ClosedAt   *time.Time
+}
+
+// ChannelTypeWhatsApp is the channel TYPE for which WhatsApp-only rules (templates,
+// interactive messages, the 24h service window) apply. Mirrors channels TypeWhatsApp
+// (kept as a literal so the conversations entity need not import the channels domain).
+const ChannelTypeWhatsApp = "whatsapp"
+
+// WhatsAppWindowDuration is the WhatsApp service window: free-form (non-template)
+// messages are only deliverable within 24h of the customer's last inbound message.
+const WhatsAppWindowDuration = 24 * time.Hour
+
+// WhatsAppWindow is the derived 24h-service-window state exposed to the front so it
+// can warn "outside the window, use a template". open = the customer messaged in the
+// last 24h; expires_at = LastCustomerMessageAt + 24h (absent when none).
+type WhatsAppWindow struct {
+	Open      bool       `json:"open"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// WhatsAppWindowState returns the 24h window state for a WhatsApp conversation,
+// computed against `now` (server clock). Returns nil for non-WhatsApp channels —
+// the window does not apply there, so the block is omitted from payloads.
+func (c *Conversation) WhatsAppWindowState(now time.Time) *WhatsAppWindow {
+	if c.Channel != ChannelTypeWhatsApp {
+		return nil
+	}
+	w := &WhatsAppWindow{}
+	if c.LastCustomerMessageAt != nil {
+		exp := c.LastCustomerMessageAt.Add(WhatsAppWindowDuration)
+		w.Open = now.Before(exp)
+		w.ExpiresAt = &exp
+	}
+	return w
 }
 
 // lastMessagePreviewLen bounds the denormalized preview (matches the inbox DTO).

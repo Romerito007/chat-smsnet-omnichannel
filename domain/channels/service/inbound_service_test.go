@@ -631,3 +631,20 @@ func TestInbound_OutOfHours_ReopenDoesNotSend(t *testing.T) {
 		t.Errorf("reopen must NOT send the notice again (fires only on creation), total sends=%d", sender.count())
 	}
 }
+
+// An inbound customer message denormalizes LastCustomerMessageAt (drives the
+// WhatsApp 24h window). LastMessageAt covers any message; this is inbound-only.
+func TestInbound_DenormalizesLastCustomerMessageAt(t *testing.T) {
+	fx := newInboundFixture()
+	res, err := fx.svc.Handle(tenantCtx(), conn(""), inMsg("ext-window"))
+	if err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	c := fx.convs.items[res.ConversationID]
+	if c.LastCustomerMessageAt == nil {
+		t.Fatal("inbound must set LastCustomerMessageAt")
+	}
+	if !c.LastCustomerMessageAt.Equal(c.LastMessageAt) {
+		t.Errorf("on an inbound, last_customer_message_at (%v) should equal last_message_at (%v)", c.LastCustomerMessageAt, c.LastMessageAt)
+	}
+}
