@@ -491,6 +491,14 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		events = append(events, shared.PublishEvent{Topic: topic, Event: convcontracts.RealtimeConversationUpdated, Data: convPayload})
 	}
 	shared.PublishAll(ctx, s.publisher, events...)
+	// Automation: a new INBOUND customer message must trigger message_created rules
+	// (e.g. "message content contains X" → assign team). The payload is the MESSAGE
+	// (carrying its text), not the conversation, so the message_content condition can
+	// match. Customer messages are never automation-authored, so there is no loop to
+	// guard against here.
+	if s.ruleSink != nil {
+		s.ruleSink.EmitRuleEvent(ctx, conv.TenantID, conventity.EventMessageCreated, conv.ID, realtimePayload)
+	}
 	// Inbound customer messages flow to webhooks too (Chatwoot model: entrada and
 	// saída both via message_created), with signed channel-media attachment URLs.
 	s.webhooks.EmitLazy(ctx, conv.TenantID, conventity.EventMessageCreated, conv.SectorID, func() any {

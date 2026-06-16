@@ -281,14 +281,19 @@ func (c *fakeProtocolCounter) NextSequence(context.Context, string, int) (int64,
 
 // fakeRuleSink records emitted automation-rule events.
 type fakeRuleSink struct {
-	mu     sync.Mutex
-	events []string
+	mu       sync.Mutex
+	events   []string
+	payloads map[string]any // last payload per event
 }
 
-func (s *fakeRuleSink) EmitRuleEvent(_ context.Context, _, event, _ string, _ any) {
+func (s *fakeRuleSink) EmitRuleEvent(_ context.Context, _, event, _ string, payload any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.events = append(s.events, event)
+	if s.payloads == nil {
+		s.payloads = map[string]any{}
+	}
+	s.payloads[event] = payload
 }
 func (s *fakeRuleSink) has(event string) bool {
 	s.mu.Lock()
@@ -299,6 +304,11 @@ func (s *fakeRuleSink) has(event string) bool {
 		}
 	}
 	return false
+}
+func (s *fakeRuleSink) payload(event string) any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.payloads[event]
 }
 
 func newInboundFixture() inboundFixture {
@@ -351,6 +361,27 @@ func TestInbound_CreatesAndQueuesWithoutSector(t *testing.T) {
 	}
 	if fx.convs.items[res.ConversationID].UnreadCount != 1 {
 		t.Errorf("inbound message should bump unread_count to 1, got %d", fx.convs.items[res.ConversationID].UnreadCount)
+	}
+}
+
+// TestInbound_EmitsMessageCreatedRuleWithText proves an inbound customer message
+// triggers message_created automation rules and that the payload carries the text
+// (so a "message content contains X" condition can match). This is the gap that
+// kept message-content rules from ever firing on customer messages.
+func TestInbound_EmitsMessageCreatedRuleWithText(t *testing.T) {
+	fx := newInboundFixture()
+	if _, err := fx.svc.Handle(tenantCtx(), conn(""), inMsg("ext-rule")); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if !fx.rules.has(conventity.EventMessageCreated) {
+		t.Fatalf("inbound message must emit a message.created automation event; got %v", fx.rules.events)
+	}
+	p, ok := fx.rules.payload(conventity.EventMessageCreated).(convcontracts.MessagePayload)
+	if !ok {
+		t.Fatalf("message.created payload must be a MessagePayload (carrying text), got %T", fx.rules.payload(conventity.EventMessageCreated))
+	}
+	if p.Text != "hello" {
+		t.Errorf("message.created payload text = %q, want %q (so message_content conditions can match)", p.Text, "hello")
 	}
 }
 
