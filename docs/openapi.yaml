@@ -103,6 +103,7 @@ components:
                 name:
                     type: string
                 status:
+                    description: 'Presence status: online | available | busy | away | paused | lunch | training | offline ("offline" when the agent has no live presence). The list ALWAYS includes offline agents of the sector — they are selectable for manual assign/transfer (the operator sees the status and chooses). Render a presence badge; do NOT hide or disable offline agents.'
                     type: string
             type: object
         Attachment:
@@ -4255,7 +4256,7 @@ paths:
         get:
             operationId: getAgents
             parameters:
-                - description: Only agents assignable to this sector (matches what assign accepts).
+                - description: Only agents assignable to this sector (matches what assign accepts). Returns every ACTIVE member of the sector regardless of presence — offline agents included with status "offline".
                   in: query
                   name: sector_id
                   required: false
@@ -4283,7 +4284,7 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: List assignable agents (id, name, presence) for the assignment selector — conversation.assign
+            summary: List assignable agents (id, name, presence) for the assignment selector — conversation.assign. Includes OFFLINE agents of the sector (all selectable); the selector shows status, never hides/disables offline.
             tags:
                 - presence
     /v1/agents/presence:

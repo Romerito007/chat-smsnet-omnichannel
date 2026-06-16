@@ -62,8 +62,8 @@ func registerOrg(p *paths) {
 	p.add("POST", "/v1/agents/presence/status", op(opConfig{tag: "presence", summary: "Set own (or an agent's) status",
 		reqBody: body(ref("SetStatusRequest")), responses: M{"200": jsonResp("Presence", ref("Presence"))}}))
 	p.add("GET", "/v1/agents", op(opConfig{tag: "presence",
-		summary:   "List assignable agents (id, name, presence) for the assignment selector — conversation.assign",
-		params:    []M{queryParam("sector_id", "Only agents assignable to this sector (matches what assign accepts).")},
+		summary:   "List assignable agents (id, name, presence) for the assignment selector — conversation.assign. Includes OFFLINE agents of the sector (all selectable); the selector shows status, never hides/disables offline.",
+		params:    []M{queryParam("sector_id", "Only agents assignable to this sector (matches what assign accepts). Returns every ACTIVE member of the sector regardless of presence — offline agents included with status \"offline\".")},
 		responses: M{"200": jsonResp("Assignable agents", dataArr(ref("AssignableAgent")))}}))
 
 	p.add("GET", "/v1/channels/{id}/business-status", op(opConfig{tag: "businesshours", summary: "Channel open/closed status",

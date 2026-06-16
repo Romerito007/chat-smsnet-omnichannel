@@ -129,7 +129,8 @@ func schemas() M {
 			"preview": str(), "sender_type": str(), "message_type": str(), "created_at": dateTime(),
 		}),
 		"AssignableAgent": object(M{
-			"id": str(), "name": str(), "status": str(),
+			"id": str(), "name": str(),
+			"status":       describedStr("Presence status: online | available | busy | away | paused | lunch | training | offline (\"offline\" when the agent has no live presence). The list ALWAYS includes offline agents of the sector — they are selectable for manual assign/transfer (the operator sees the status and chooses). Render a presence badge; do NOT hide or disable offline agents."),
 			"current_load": integer(), "max_concurrent_chats": integer(),
 			"avatar_url": describedStr("Read-only, derived: the agent's short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar."),
 		}),
