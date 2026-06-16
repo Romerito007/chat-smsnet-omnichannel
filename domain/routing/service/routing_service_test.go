@@ -324,20 +324,35 @@ func TestEvaluateAgent_Reasons(t *testing.T) {
 	fx := newFixture(shared.NoopLocker{}, users, presence, map[string]int{"full": 1}, map[string]*conventity.Conversation{}, nil, nil)
 	ctx := adminCtx()
 
-	if err := fx.svc.evaluateAgent(ctx, "in", "s1"); err != nil {
+	if err := fx.svc.evaluateAgent(ctx, "in", "s1", false); err != nil {
 		t.Errorf("eligible agent should pass: %v", err)
 	}
-	if c := apperror.From(fx.svc.evaluateAgent(ctx, "out", "s1")).Code; c != apperror.CodeValidation {
+	if c := apperror.From(fx.svc.evaluateAgent(ctx, "out", "s1", false)).Code; c != apperror.CodeValidation {
 		t.Errorf("wrong-sector agent: want validation, got %s", c)
 	}
-	if c := apperror.From(fx.svc.evaluateAgent(ctx, "busy", "s1")).Code; c != apperror.CodeConflict {
+	if c := apperror.From(fx.svc.evaluateAgent(ctx, "busy", "s1", false)).Code; c != apperror.CodeConflict {
 		t.Errorf("busy agent: want conflict, got %s", c)
 	}
-	if c := apperror.From(fx.svc.evaluateAgent(ctx, "full", "s1")).Code; c != apperror.CodeConflict {
+	if c := apperror.From(fx.svc.evaluateAgent(ctx, "full", "s1", false)).Code; c != apperror.CodeConflict {
 		t.Errorf("at-capacity agent: want conflict, got %s", c)
 	}
-	if c := apperror.From(fx.svc.evaluateAgent(ctx, "absent", "s1")).Code; c != apperror.CodeConflict {
+	if c := apperror.From(fx.svc.evaluateAgent(ctx, "absent", "s1", false)).Code; c != apperror.CodeConflict {
 		t.Errorf("offline agent: want conflict, got %s", c)
+	}
+
+	// allowOffline=true (MANUAL): availability is relaxed, but sector membership and
+	// capacity still apply.
+	if err := fx.svc.evaluateAgent(ctx, "absent", "s1", true); err != nil {
+		t.Errorf("manual assign to an offline (no-presence) agent must pass: %v", err)
+	}
+	if err := fx.svc.evaluateAgent(ctx, "busy", "s1", true); err != nil {
+		t.Errorf("manual assign to a non-available agent must pass: %v", err)
+	}
+	if c := apperror.From(fx.svc.evaluateAgent(ctx, "out", "s1", true)).Code; c != apperror.CodeValidation {
+		t.Errorf("manual assign still rejects a wrong-sector agent: want validation, got %s", c)
+	}
+	if c := apperror.From(fx.svc.evaluateAgent(ctx, "full", "s1", true)).Code; c != apperror.CodeConflict {
+		t.Errorf("manual assign still rejects an at-capacity agent: want conflict, got %s", c)
 	}
 }
 
@@ -352,7 +367,7 @@ func TestEvaluateAgent_EmptySectorEntryNeverMatches(t *testing.T) {
 	}}
 	fx := newFixture(shared.NoopLocker{}, users, presence, nil, map[string]*conventity.Conversation{}, nil, nil)
 
-	if c := apperror.From(fx.svc.evaluateAgent(adminCtx(), "dirty", "s1")).Code; c != apperror.CodeValidation {
+	if c := apperror.From(fx.svc.evaluateAgent(adminCtx(), "dirty", "s1", false)).Code; c != apperror.CodeValidation {
 		t.Errorf("agent with sector_ids:[\"\"] must not belong to sector s1: got %s", c)
 	}
 }
@@ -396,6 +411,26 @@ func TestAutoAssign_NoEligibleAgents(t *testing.T) {
 
 	if _, err := fx.svc.AutoAssign(adminCtx(), "conv1"); apperror.From(err).Code != apperror.CodeConflict {
 		t.Errorf("expected conflict (no eligible), got %v", err)
+	}
+}
+
+// Manual Assign to an OFFLINE agent (no presence record) succeeds: distribution
+// in advance / supervisor assignment is legitimate; the agent sees it on return.
+func TestAssign_ManualAllowsOfflineAgent(t *testing.T) {
+	users := &fakeUsers{byID: map[string]*iamentity.User{"a": agent("a", "s1", 2)}}
+	presence := &fakePresence{byUser: map[string]*presenceentity.AgentPresence{}} // "a" has NO presence (offline)
+	convs := map[string]*conventity.Conversation{"conv1": convNew("conv1", "s1")}
+	fx := newFixture(shared.NoopLocker{}, users, presence, nil, convs, nil, nil)
+
+	conv, err := fx.svc.Assign(adminCtx(), "conv1", "a")
+	if err != nil {
+		t.Fatalf("manual assign to an offline agent must succeed, got %v", err)
+	}
+	if conv.AssignedTo != "a" || conv.Status != conventity.StatusAssigned {
+		t.Errorf("assigned_to=%q status=%q, want a/assigned", conv.AssignedTo, conv.Status)
+	}
+	if fx.events.count(conventity.EventConversationAssigned) != 1 {
+		t.Error("expected a conversation.assigned event")
 	}
 }
 

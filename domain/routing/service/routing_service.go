@@ -159,7 +159,9 @@ func (s *Service) Assign(ctx context.Context, conversationID, agentID string) (*
 		if conv.SectorID == "" {
 			return nil, apperror.Validation("conversation has no sector to assign within")
 		}
-		if err := s.evaluateAgent(ctx, agentID, conv.SectorID); err != nil {
+		// Manual assignment allows an offline/unavailable agent (allowOffline=true);
+		// sector membership and capacity still apply.
+		if err := s.evaluateAgent(ctx, agentID, conv.SectorID, true); err != nil {
 			return nil, err
 		}
 		return s.applyAssignment(ctx, conv, agentID)
@@ -216,7 +218,10 @@ func (s *Service) Transfer(ctx context.Context, conversationID string, cmd contr
 			if conv.SectorID == "" {
 				return nil, apperror.Validation("transfer to an agent requires a sector")
 			}
-			if err := s.evaluateAgent(ctx, cmd.AgentID, conv.SectorID); err != nil {
+			// Transfer with a target agent is a manual choice by the operator, so it
+			// follows the manual rule: an offline/unavailable agent is allowed (sector
+			// membership and capacity still enforced).
+			if err := s.evaluateAgent(ctx, cmd.AgentID, conv.SectorID, true); err != nil {
 				return nil, err
 			}
 			conv.AssignedTo = cmd.AgentID
@@ -398,8 +403,14 @@ func sortCandidates(cands []candidate) {
 }
 
 // evaluateAgent validates that a specific agent is eligible for a sector,
-// returning a precise error when not.
-func (s *Service) evaluateAgent(ctx context.Context, agentID, sectorID string) error {
+// returning a precise error when not. allowOffline relaxes ONLY the availability
+// checks (presence missing → "offline"; status != available): it is true for
+// MANUAL routing (Assign/Transfer), where assigning to an offline agent is
+// legitimate (advance distribution, supervisor assignment, agent who forgot to go
+// online — they see the conversation when they return). It is false for automatic
+// routing, which must never park a conversation on someone offline. Membership
+// (sector), active status and capacity are ALWAYS enforced.
+func (s *Service) evaluateAgent(ctx context.Context, agentID, sectorID string, allowOffline bool) error {
 	u, err := s.users.FindByID(ctx, agentID)
 	if err != nil {
 		if apperror.From(err).Code == apperror.CodeNotFound {
@@ -413,12 +424,14 @@ func (s *Service) evaluateAgent(ctx context.Context, agentID, sectorID string) e
 	if !contains(u.SectorIDs, sectorID) {
 		return apperror.Validation("agent does not belong to the sector")
 	}
-	p, err := s.presence.Get(ctx, agentID)
-	if err != nil {
-		return apperror.Conflict("agent is offline")
-	}
-	if p.Status != presenceentity.StatusAvailable {
-		return apperror.Conflict("agent is not available")
+	if !allowOffline {
+		p, err := s.presence.Get(ctx, agentID)
+		if err != nil {
+			return apperror.Conflict("agent is offline")
+		}
+		if p.Status != presenceentity.StatusAvailable {
+			return apperror.Conflict("agent is not available")
+		}
 	}
 	load, err := s.load.CountOpenAssigned(ctx, agentID)
 	if err != nil {
