@@ -58,7 +58,7 @@ func NewQueryService(
 // resolveCall resolves the ISP profile for this call and builds the effective
 // gateway config. Returns an ISPSelectionRequiredError when the profile is
 // ambiguous, or a clear error when no profile / no gateway is configured.
-func (s *QueryService) resolveCall(ctx context.Context, conv *conventity.Conversation, explicitID string) (*phentity.ProviderIntegrationConfig, error) {
+func (s *QueryService) resolveCall(ctx context.Context, conv *conventity.Conversation, explicitID string, action phentity.ISPAction) (*phentity.ProviderIntegrationConfig, error) {
 	if s.envHost == "" {
 		return nil, apperror.Integration("provider integration is not configured")
 	}
@@ -68,6 +68,11 @@ func (s *QueryService) resolveCall(ctx context.Context, conv *conventity.Convers
 	}
 	switch rr.Status {
 	case ResolveOK:
+		// Gate by the profile's enabled actions: an operation the tenant unchecked is
+		// unavailable to the human agent too (same source of truth as the copilot).
+		if !rr.Profile.HasAction(action) {
+			return nil, apperror.Forbidden("a operação \"" + string(action) + "\" não está habilitada neste perfil de ISP")
+		}
 		return buildCallConfig(conv.TenantID, s.envHost, s.envKey, rr.Profile), nil
 	case ResolveAmbiguous:
 		return nil, &ISPSelectionRequiredError{Eligible: rr.Eligible}
@@ -96,7 +101,7 @@ func (s *QueryService) ConsultarCliente(ctx context.Context, conversationID stri
 	}
 	req = s.fillFromContact(ctx, conv, req)
 
-	cfg, err := s.resolveCall(ctx, conv, req.ISPConfigID)
+	cfg, err := s.resolveCall(ctx, conv, req.ISPConfigID, phentity.ActionCliente)
 	if err != nil {
 		return phcontracts.ClienteResult{}, err
 	}
@@ -120,7 +125,7 @@ func (s *QueryService) ListarPlanos(ctx context.Context, conversationID, ispConf
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID, phentity.ActionPlanos)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +141,7 @@ func (s *QueryService) DadosEmpresa(ctx context.Context, conversationID, ispConf
 	if err != nil {
 		return phcontracts.Empresa{}, err
 	}
-	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID, phentity.ActionEmpresa)
 	if err != nil {
 		return phcontracts.Empresa{}, err
 	}
@@ -157,7 +162,7 @@ func (s *QueryService) LiberarAcesso(ctx context.Context, conversationID, ispCon
 	if strings.TrimSpace(idCliente) == "" {
 		return phcontracts.Liberacao{}, apperror.Validation("id_cliente is required")
 	}
-	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID, phentity.ActionLiberacao)
 	if err != nil {
 		return phcontracts.Liberacao{}, err
 	}
@@ -189,7 +194,7 @@ func (s *QueryService) AbrirChamado(ctx context.Context, conversationID, ispConf
 	if strings.TrimSpace(subject) == "" {
 		return phcontracts.Chamado{}, apperror.Validation("subject is required")
 	}
-	cfg, err := s.resolveCall(ctx, conv, ispConfigID)
+	cfg, err := s.resolveCall(ctx, conv, ispConfigID, phentity.ActionChamado)
 	if err != nil {
 		return phcontracts.Chamado{}, err
 	}

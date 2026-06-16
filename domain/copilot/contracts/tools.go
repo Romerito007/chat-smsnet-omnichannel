@@ -18,8 +18,17 @@ type ToolSession interface {
 	Tools() []ToolDefinition
 	// IsWrite reports whether the named tool has side effects.
 	IsWrite(name string) bool
+	// WriteAction returns the ISP action slug a write tool maps to (e.g.
+	// "liberacao"/"chamado"), or "" for a write not in the explicit SMSNET table.
+	// The copilot uses it to resolve the assistant's per-operation mode; an empty
+	// slug always falls back to approval.
+	WriteAction(name string) string
 	// ExecuteRead runs a read tool and returns its result text.
 	ExecuteRead(ctx context.Context, name, argsJSON string) (string, error)
+	// ExecuteWrite runs a write tool directly (no approval) and returns its result.
+	// Used only when the assistant set the operation to "automatico"; it audits the
+	// automatic execution.
+	ExecuteWrite(ctx context.Context, name, argsJSON string) (string, error)
 	// ProposeWrite records a write tool call as a pending approval (never
 	// executing it) and returns the confirmation card.
 	ProposeWrite(ctx context.Context, name, argsJSON string) (ProposedAction, error)

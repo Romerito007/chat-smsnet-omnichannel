@@ -262,15 +262,26 @@ func (s *ToolService) OpenToolSession(ctx context.Context, conversationID string
 			continue
 		}
 		for _, t := range annotate(conn, specs) {
-			// For the ISP source, SMSNET tools are still gated per kind by the
-			// profile: read always; write only when the profile supports a write.
+			action := ""
+			// For the ISP source, SMSNET tools are gated by the profile's enabled
+			// actions. A tool resolved to a known action is gated per-action (so an
+			// operation the tenant unchecked disappears); a SMSNET tool NOT in the
+			// explicit table falls back to the coarse per-kind gate.
 			if isISP && s.ispBridge != nil && entity.IsSMSNETServer(conn.Name) {
-				allowed, aerr := s.ispBridge.AllowServer(ctx, conv.ChannelID, conn.Name, t.Write)
-				if aerr != nil || !allowed {
-					continue
+				if a, known := entity.SMSNETToolAction(t.Name); known {
+					action = a
+					allowed, aerr := s.ispBridge.ActionEnabled(ctx, conv.ChannelID, a)
+					if aerr != nil || !allowed {
+						continue
+					}
+				} else {
+					allowed, aerr := s.ispBridge.AllowServer(ctx, conv.ChannelID, conn.Name, t.Write)
+					if aerr != nil || !allowed {
+						continue
+					}
 				}
 			}
-			byName[t.Name] = toolRef{conn: conn, write: t.Write}
+			byName[t.Name] = toolRef{conn: conn, write: t.Write, action: action}
 			defs = append(defs, copilotcontracts.ToolDefinition{
 				Name: t.Name, Description: t.Description, Schema: t.Schema, ReadOnly: !t.Write,
 			})
@@ -332,8 +343,9 @@ func (s *ToolService) sessionServers(ctx context.Context, conv *convEntityRef) (
 }
 
 type toolRef struct {
-	conn  *entity.ServerConnection
-	write bool
+	conn   *entity.ServerConnection
+	write  bool
+	action string // ISP action slug for a known SMSNET tool ("" otherwise)
 }
 
 // toolSession is one agentic run's tool context.
@@ -351,6 +363,17 @@ func (t *toolSession) IsWrite(name string) bool {
 	return ok && ref.write
 }
 
+// WriteAction returns the ISP action slug a write tool maps to (e.g. "liberacao"),
+// or "" when the tool is unknown to the explicit SMSNET table. The copilot uses it
+// to look up the assistant's per-operation automatic/approval mode; an empty slug
+// (unmapped write) always falls back to approval.
+func (t *toolSession) WriteAction(name string) string {
+	if ref, ok := t.byName[name]; ok {
+		return ref.action
+	}
+	return ""
+}
+
 // ExecuteRead runs a read tool for the AI loop.
 func (t *toolSession) ExecuteRead(ctx context.Context, name, argsJSON string) (string, error) {
 	ref, ok := t.byName[name]
@@ -358,6 +381,26 @@ func (t *toolSession) ExecuteRead(ctx context.Context, name, argsJSON string) (s
 		return "", apperror.Validation("unknown read tool")
 	}
 	return t.svc.invoke(ctx, t.conv, ref.conn, name, parseArgs(argsJSON), "ai", "")
+}
+
+// ExecuteWrite runs a write tool DIRECTLY (no approval) — used only when the
+// assistant set this operation to "automatico". It mints a fresh idempotency key
+// (so an in-loop retry dedups upstream) and audits the automatic execution
+// (proposed_by=ai, mode=automatico, masked args, status), mirroring the audit of
+// an approved write. The caller must have already resolved the automatic mode.
+func (t *toolSession) ExecuteWrite(ctx context.Context, name, argsJSON string) (string, error) {
+	ref, ok := t.byName[name]
+	if !ok || !ref.write {
+		return "", apperror.Validation("unknown write tool")
+	}
+	args := parseArgs(argsJSON)
+	text, err := t.svc.invoke(ctx, t.conv, ref.conn, name, args, "ai", shared.NewID())
+	status := "executed"
+	if err != nil {
+		status = "failed"
+	}
+	t.svc.auditAuto(ctx, ref.conn, name, args, status)
+	return text, err
 }
 
 // ProposeWrite records a write tool the AI requested as a pending approval; it is
@@ -439,6 +482,22 @@ func (s *ToolService) auditExecuted(ctx context.Context, approval *entity.Approv
 			"approval_id": approval.ID,
 			"proposed_by": approval.ProposedBy,
 			"args":        maskArgs(approval.Args),
+			"status":      status,
+		},
+	})
+}
+
+// auditAuto records an automatic (no-approval) write executed by the copilot, so
+// an automatic action is never silent. It mirrors auditExecuted but for the
+// approval-less path: there is no approval id; mode=automatico marks how it ran.
+func (s *ToolService) auditAuto(ctx context.Context, conn *entity.ServerConnection, tool string, args map[string]any, status string) {
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "integration.execute_action", ResourceType: "mcp_tool", ResourceID: tool,
+		Data: map[string]any{
+			"server":      conn.Name,
+			"proposed_by": "ai",
+			"mode":        "automatico",
+			"args":        maskArgs(args),
 			"status":      status,
 		},
 	})

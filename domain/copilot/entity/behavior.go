@@ -11,9 +11,24 @@ package entity
 type Behavior struct {
 	AllowCustomerData     bool
 	HumanApprovalRequired bool
-	Temperature           float64
-	MaxTokens             int
-	SystemInstructions    string
+	// WriteModes carries the assistant's per-write-operation modes (ISP action slug
+	// → automatico|mediante_aprovacao) so the agentic loop can decide, per write,
+	// whether to execute it automatically or propose it for approval.
+	WriteModes         map[string]string
+	Temperature        float64
+	MaxTokens          int
+	SystemInstructions string
+}
+
+// WriteModeFor returns the execution mode for a write operation (by ISP action
+// slug). Anything not explicitly set to "automatico" — including an unknown action
+// or an empty map — resolves to approval, so automatic execution is strictly
+// opt-in per operation.
+func (b Behavior) WriteModeFor(action string) string {
+	if action != "" && b.WriteModes[action] == WriteModeAuto {
+		return WriteModeAuto
+	}
+	return WriteModeApproval
 }
 
 // Default sampling for an assistant / the no-assistant fallback.
@@ -37,6 +52,7 @@ func (a *Assistant) Behavior() Behavior {
 	return Behavior{
 		AllowCustomerData:     a.AllowCustomerData,
 		HumanApprovalRequired: a.HumanApprovalRequired,
+		WriteModes:            a.WriteModes,
 		Temperature:           a.Temperature,
 		MaxTokens:             a.MaxTokens,
 		SystemInstructions:    a.SystemInstructions,

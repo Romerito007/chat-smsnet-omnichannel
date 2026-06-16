@@ -78,6 +78,13 @@ func (s *ProfileService) Create(ctx context.Context, cmd contracts.CreateProfile
 	if err := validateProfile(label, ispType, cmd.Credentials, transports, tok); err != nil {
 		return nil, err
 	}
+	// EnabledActions default = all of the ISP's catalog actions (the common case is
+	// "offers everything"; the tenant unchecks what it doesn't want). A provided set
+	// is validated as a subset of the catalog.
+	enabledActions, err := resolveEnabledActions(ispType, cmd.EnabledActions, cmd.EnabledActions != nil)
+	if err != nil {
+		return nil, err
+	}
 
 	existing, err := s.repo.List(ctx)
 	if err != nil {
@@ -100,13 +107,14 @@ func (s *ProfileService) Create(ctx context.Context, cmd contracts.CreateProfile
 	}
 	now := s.clock.Now()
 	p := &entity.ISPProfile{
-		ID:          shared.NewID(),
-		TenantID:    tenantID,
-		Label:       label,
-		ISPType:     ispType,
-		Credentials: cmd.Credentials,
-		Transports:  transports,
-		IsDefault:   isDefault,
+		ID:             shared.NewID(),
+		TenantID:       tenantID,
+		Label:          label,
+		ISPType:        ispType,
+		Credentials:    cmd.Credentials,
+		Transports:     transports,
+		EnabledActions: enabledActions,
+		IsDefault:      isDefault,
 		Options: entity.Options{
 			UsaPegarFaturaAtrasada:      cmd.UsaPegarFaturaAtrasada,
 			UsaExtrairLinhaDigitavelPDF: cmd.UsaExtrairLinhaDigitavelPDF,
@@ -150,6 +158,20 @@ func (s *ProfileService) Update(ctx context.Context, id string, cmd contracts.Up
 		return nil, err
 	}
 	p.Transports = transports
+	// EnabledActions: an explicit set replaces (validated as a subset of the ISP's
+	// catalog); otherwise, when the isp_type changed, re-filter the existing set to
+	// the new catalog so it never references actions the new ISP doesn't offer.
+	switch {
+	case cmd.EnabledActions != nil:
+		actions, aerr := resolveEnabledActions(p.ISPType, *cmd.EnabledActions, true)
+		if aerr != nil {
+			return nil, aerr
+		}
+		p.EnabledActions = actions
+	case cmd.ISPType != nil:
+		actions, _ := entity.NormalizeActions(p.EnabledActions, entity.ActionsFor(p.ISPType))
+		p.EnabledActions = actions
+	}
 	if cmd.UsaPegarFaturaAtrasada != nil {
 		p.Options.UsaPegarFaturaAtrasada = *cmd.UsaPegarFaturaAtrasada
 	}
@@ -309,6 +331,24 @@ func validateProfile(label, ispType string, creds map[string]string, transports 
 		return apperror.Validation("invalid ISP profile").WithDetails(v)
 	}
 	return nil
+}
+
+// resolveEnabledActions returns the actions a profile offers. When the client did
+// not provide a set (provided=false), it defaults to ALL of the ISP's catalog
+// actions. When provided, it validates the set as a subset of the catalog (unknown
+// action → 422). The ISP type is assumed already validated by validateProfile.
+func resolveEnabledActions(ispType string, in []string, provided bool) ([]string, error) {
+	allowed := entity.ActionsFor(ispType)
+	if !provided {
+		return entity.ActionSlugs(allowed), nil // default = everything the ISP offers
+	}
+	out, ok := entity.NormalizeActions(in, allowed)
+	if !ok {
+		return nil, apperror.Validation("invalid enabled_actions").WithDetails(map[string]any{
+			"enabled_actions": "must be a subset of " + strings.Join(entity.ActionSlugs(allowed), ", "),
+		})
+	}
+	return out, nil
 }
 
 // credentialKeyMismatch returns "" when the provided credential keys match the

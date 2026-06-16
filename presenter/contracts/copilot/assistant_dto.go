@@ -9,21 +9,22 @@ import (
 
 // AssistantResponse is the public representation of a copilot assistant.
 type AssistantResponse struct {
-	ID                    string    `json:"id"`
-	TenantID              string    `json:"tenant_id"`
-	Name                  string    `json:"name"`
-	ChannelIDs            []string  `json:"channel_ids"`
-	ISPProfileID          string    `json:"isp_profile_id,omitempty"`
-	MCPServerID           string    `json:"mcp_server_id,omitempty"`
-	Transport             string    `json:"transport,omitempty"`
-	AllowCustomerData     bool      `json:"allow_customer_data"`
-	HumanApprovalRequired bool      `json:"human_approval_required"`
-	Temperature           float64   `json:"temperature"`
-	MaxTokens             int       `json:"max_tokens"`
-	SystemInstructions    string    `json:"system_instructions,omitempty"`
-	Enabled               bool      `json:"enabled"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID                    string            `json:"id"`
+	TenantID              string            `json:"tenant_id"`
+	Name                  string            `json:"name"`
+	ChannelIDs            []string          `json:"channel_ids"`
+	ISPProfileID          string            `json:"isp_profile_id,omitempty"`
+	MCPServerID           string            `json:"mcp_server_id,omitempty"`
+	Transport             string            `json:"transport,omitempty"`
+	AllowCustomerData     bool              `json:"allow_customer_data"`
+	HumanApprovalRequired bool              `json:"human_approval_required"`
+	WriteModes            map[string]string `json:"write_modes,omitempty"`
+	Temperature           float64           `json:"temperature"`
+	MaxTokens             int               `json:"max_tokens"`
+	SystemInstructions    string            `json:"system_instructions,omitempty"`
+	Enabled               bool              `json:"enabled"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
 }
 
 // NewAssistantResponse maps an assistant entity to the DTO.
@@ -42,6 +43,7 @@ func NewAssistantResponse(a *centity.Assistant) AssistantResponse {
 		Transport:             a.Transport,
 		AllowCustomerData:     a.AllowCustomerData,
 		HumanApprovalRequired: a.HumanApprovalRequired,
+		WriteModes:            a.WriteModes,
 		Temperature:           a.Temperature,
 		MaxTokens:             a.MaxTokens,
 		SystemInstructions:    a.SystemInstructions,
@@ -62,17 +64,18 @@ func NewAssistantListResponse(as []*centity.Assistant) map[string]any {
 
 // CreateAssistantRequest is the body of POST /v1/copilot/assistants.
 type CreateAssistantRequest struct {
-	Name                  string   `json:"name"`
-	ChannelIDs            []string `json:"channel_ids"`
-	ISPProfileID          string   `json:"isp_profile_id"`
-	MCPServerID           string   `json:"mcp_server_id"`
-	Transport             string   `json:"transport"`
-	AllowCustomerData     *bool    `json:"allow_customer_data"`
-	HumanApprovalRequired *bool    `json:"human_approval_required"`
-	Temperature           *float64 `json:"temperature"`
-	MaxTokens             *int     `json:"max_tokens"`
-	SystemInstructions    *string  `json:"system_instructions"`
-	Enabled               *bool    `json:"enabled"`
+	Name                  string            `json:"name"`
+	ChannelIDs            []string          `json:"channel_ids"`
+	ISPProfileID          string            `json:"isp_profile_id"`
+	MCPServerID           string            `json:"mcp_server_id"`
+	Transport             string            `json:"transport"`
+	AllowCustomerData     *bool             `json:"allow_customer_data"`
+	HumanApprovalRequired *bool             `json:"human_approval_required"`
+	WriteModes            map[string]string `json:"write_modes"`
+	Temperature           *float64          `json:"temperature"`
+	MaxTokens             *int              `json:"max_tokens"`
+	SystemInstructions    *string           `json:"system_instructions"`
+	Enabled               *bool             `json:"enabled"`
 }
 
 // ToCommand maps to the service command.
@@ -85,6 +88,7 @@ func (r CreateAssistantRequest) ToCommand() cservice.CreateAssistant {
 		Transport:             r.Transport,
 		AllowCustomerData:     r.AllowCustomerData,
 		HumanApprovalRequired: r.HumanApprovalRequired,
+		WriteModes:            r.WriteModes,
 		Temperature:           r.Temperature,
 		MaxTokens:             r.MaxTokens,
 		SystemInstructions:    r.SystemInstructions,
@@ -94,17 +98,18 @@ func (r CreateAssistantRequest) ToCommand() cservice.CreateAssistant {
 
 // UpdateAssistantRequest is the body of PATCH /v1/copilot/assistants/{id}.
 type UpdateAssistantRequest struct {
-	Name                  *string   `json:"name"`
-	ChannelIDs            *[]string `json:"channel_ids"`
-	ISPProfileID          *string   `json:"isp_profile_id"`
-	MCPServerID           *string   `json:"mcp_server_id"`
-	Transport             *string   `json:"transport"`
-	AllowCustomerData     *bool     `json:"allow_customer_data"`
-	HumanApprovalRequired *bool     `json:"human_approval_required"`
-	Temperature           *float64  `json:"temperature"`
-	MaxTokens             *int      `json:"max_tokens"`
-	SystemInstructions    *string   `json:"system_instructions"`
-	Enabled               *bool     `json:"enabled"`
+	Name                  *string            `json:"name"`
+	ChannelIDs            *[]string          `json:"channel_ids"`
+	ISPProfileID          *string            `json:"isp_profile_id"`
+	MCPServerID           *string            `json:"mcp_server_id"`
+	Transport             *string            `json:"transport"`
+	AllowCustomerData     *bool              `json:"allow_customer_data"`
+	HumanApprovalRequired *bool              `json:"human_approval_required"`
+	WriteModes            *map[string]string `json:"write_modes"`
+	Temperature           *float64           `json:"temperature"`
+	MaxTokens             *int               `json:"max_tokens"`
+	SystemInstructions    *string            `json:"system_instructions"`
+	Enabled               *bool              `json:"enabled"`
 }
 
 // ToCommand maps to the service command.
@@ -117,6 +122,7 @@ func (r UpdateAssistantRequest) ToCommand() cservice.UpdateAssistant {
 		Transport:             r.Transport,
 		AllowCustomerData:     r.AllowCustomerData,
 		HumanApprovalRequired: r.HumanApprovalRequired,
+		WriteModes:            r.WriteModes,
 		Temperature:           r.Temperature,
 		MaxTokens:             r.MaxTokens,
 		SystemInstructions:    r.SystemInstructions,

@@ -40,6 +40,27 @@ func IsSMSNETServer(name string) bool {
 	return name == SMSNETConsultasName || name == SMSNETOperacoesName
 }
 
+// smsnetToolActions is the EXPLICIT, authoritative mapping from a SMSNET MCP tool
+// name to its ISP action slug. The naming convention is "smsnet_" + action, but
+// the table — not the prefix — is the source of truth: a tool absent here is
+// unknown, and callers must treat an unknown WRITE conservatively (never run it
+// automatically). The slugs mirror providerhub's ISPAction values (kept as plain
+// strings so the mcp domain need not import providerhub).
+var smsnetToolActions = map[string]string{
+	"smsnet_cliente":   "cliente",   // read
+	"smsnet_planos":    "planos",    // read
+	"smsnet_empresa":   "empresa",   // read
+	"smsnet_liberacao": "liberacao", // write
+	"smsnet_chamado":   "chamado",   // write
+}
+
+// SMSNETToolAction returns the ISP action slug for a SMSNET MCP tool name. ok is
+// false for a name not in the explicit table (an unknown tool).
+func SMSNETToolAction(toolName string) (action string, ok bool) {
+	a, ok := smsnetToolActions[toolName]
+	return a, ok
+}
+
 // ServerConnection is a per-tenant MCP server registration. AuthToken is held in
 // plaintext in memory but stored encrypted at rest and never returned to clients.
 type ServerConnection struct {

@@ -12,6 +12,7 @@ type ISPProfile struct {
 	ISPType              string            `bson:"isp_type"`
 	EncryptedCredentials string            `bson:"encrypted_credentials,omitempty"` // encrypted JSON of the credentials map
 	Transports           []string          `bson:"transports"`                      // enabled SMSNET surfaces (http/mcp)
+	EnabledActions       []string          `bson:"enabled_actions,omitempty"`       // operations this profile offers (subset of the ISP catalog)
 	IsDefault            bool              `bson:"is_default"`
 	Options              ISPProfileOptions `bson:"options"`
 	TimeoutMs            int               `bson:"timeout_ms"`

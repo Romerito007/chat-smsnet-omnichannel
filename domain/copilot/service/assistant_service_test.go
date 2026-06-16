@@ -9,6 +9,7 @@ import (
 	centity "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
 	mcpentity "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/entity"
 	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/repository"
+	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
@@ -91,5 +92,67 @@ func TestAssistant_IsMCPServerInUse(t *testing.T) {
 	}
 	if free, _, _ := svc.IsMCPServerInUse(aCtx(), "other"); free {
 		t.Error("an unreferenced server must not be reported in use")
+	}
+}
+
+// newAssistantSvcWithProfile builds the service with one pinned ISP profile so the
+// per-write-operation mode validation (keys ⊆ enabled write actions) can be tested.
+func newAssistantSvcWithProfile(profile *phentity.ISPProfile) (*AssistantService, *fakeAssistantRepo) {
+	arepo := &fakeAssistantRepo{byID: map[string]*centity.Assistant{}}
+	prepo := &fakeProfileRepo{byID: map[string]*phentity.ISPProfile{}}
+	if profile != nil {
+		prepo.byID[profile.ID] = profile
+	}
+	svc := NewAssistantService(arepo, prepo, fakeChannelsRepo{}, fakeMCPServers{known: map[string]bool{}}, nil)
+	return svc, arepo
+}
+
+func TestAssistantWriteModes_AutomaticOnEnabledWriteAction(t *testing.T) {
+	// ixcsoft offers liberacao + chamado; enable both.
+	profile := &phentity.ISPProfile{ID: "isp1", TenantID: "t1", ISPType: phentity.ISPIXCSoft, Enabled: true,
+		Transports: []string{phentity.TransportMCP}, EnabledActions: []string{"cliente", "planos", "empresa", "liberacao", "chamado"}}
+	svc, _ := newAssistantSvcWithProfile(profile)
+
+	a, err := svc.Create(aCtx(), CreateAssistant{Name: "A", ISPProfileID: "isp1", Transport: "mcp",
+		WriteModes: map[string]string{"liberacao": centity.WriteModeAuto}})
+	if err != nil {
+		t.Fatalf("automatic mode on an enabled write action must be accepted: %v", err)
+	}
+	if a.WriteModes["liberacao"] != centity.WriteModeAuto {
+		t.Errorf("write mode not stored: %+v", a.WriteModes)
+	}
+}
+
+func TestAssistantWriteModes_RejectsActionNotOffered(t *testing.T) {
+	// Profile offers only liberacao among writes (chamado unchecked).
+	profile := &phentity.ISPProfile{ID: "isp1", TenantID: "t1", ISPType: phentity.ISPIXCSoft, Enabled: true,
+		Transports: []string{phentity.TransportMCP}, EnabledActions: []string{"cliente", "liberacao"}}
+	svc, _ := newAssistantSvcWithProfile(profile)
+
+	_, err := svc.Create(aCtx(), CreateAssistant{Name: "A", ISPProfileID: "isp1", Transport: "mcp",
+		WriteModes: map[string]string{"chamado": centity.WriteModeAuto}})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("a mode for a non-offered action must be a validation error, got %v", err)
+	}
+}
+
+func TestAssistantWriteModes_RejectsUnknownMode(t *testing.T) {
+	profile := &phentity.ISPProfile{ID: "isp1", TenantID: "t1", ISPType: phentity.ISPIXCSoft, Enabled: true,
+		Transports: []string{phentity.TransportMCP}, EnabledActions: []string{"liberacao"}}
+	svc, _ := newAssistantSvcWithProfile(profile)
+
+	_, err := svc.Create(aCtx(), CreateAssistant{Name: "A", ISPProfileID: "isp1", Transport: "mcp",
+		WriteModes: map[string]string{"liberacao": "talvez"}})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("an unknown mode value must be a validation error, got %v", err)
+	}
+}
+
+func TestAssistantWriteModes_RequireISPProfile(t *testing.T) {
+	svc, _ := newAssistantSvcWithProfile(nil)
+	_, err := svc.Create(aCtx(), CreateAssistant{Name: "A",
+		WriteModes: map[string]string{"liberacao": centity.WriteModeAuto}})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("write_modes without an ISP profile must be a validation error, got %v", err)
 	}
 }

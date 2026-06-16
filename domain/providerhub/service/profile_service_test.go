@@ -342,3 +342,38 @@ func TestProfile_RequireTenant(t *testing.T) {
 		t.Errorf("expected forbidden without tenant, got %v", err)
 	}
 }
+
+func TestProfileEnabledActions_DefaultsToAll(t *testing.T) {
+	svc := newProfileSvc(newFakeProfileRepo())
+	// ixcsoft = cliente, planos, empresa, liberacao, chamado.
+	p, err := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(), Transports: bothTransports()})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(p.EnabledActions) != 5 || !p.HasAction(phentity.ActionLiberacao) || !p.HasAction(phentity.ActionChamado) {
+		t.Errorf("omitted enabled_actions must default to all catalog actions, got %v", p.EnabledActions)
+	}
+}
+
+func TestProfileEnabledActions_SubsetAndValidation(t *testing.T) {
+	svc := newProfileSvc(newFakeProfileRepo())
+	// A valid subset is stored as-is (catalog order).
+	p, err := svc.Create(profileCtx(), contracts.CreateProfile{Label: "A", ISPType: "ixcsoft", Credentials: validCreds(),
+		Transports: bothTransports(), EnabledActions: []string{"liberacao", "cliente"}})
+	if err != nil {
+		t.Fatalf("create with subset: %v", err)
+	}
+	if p.HasAction(phentity.ActionChamado) {
+		t.Errorf("chamado was not enabled but HasAction returned true: %v", p.EnabledActions)
+	}
+	if !p.HasAction(phentity.ActionLiberacao) || !p.HasAction(phentity.ActionCliente) {
+		t.Errorf("enabled actions missing: %v", p.EnabledActions)
+	}
+	// An action outside the ISP catalog is rejected. whmcs has no liberacao.
+	_, err = svc.Create(profileCtx(), contracts.CreateProfile{Label: "B", ISPType: "whmcs",
+		Credentials: map[string]string{"whmcs_host": "h", "whmcs_identifier": "i", "whmcs_secret": "s"},
+		Transports:  bothTransports(), EnabledActions: []string{"liberacao"}})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("an action not in the ISP catalog must be a validation error, got %v", err)
+	}
+}

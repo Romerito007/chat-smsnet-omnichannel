@@ -185,7 +185,7 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 	var resp contracts.Response
 	var proposed []contracts.ProposedAction
 	if action == entity.ActionSuggestReply && s.tools != nil {
-		resp, proposed, err = s.agenticLoop(ctx, conv.ID, provider, base)
+		resp, proposed, err = s.agenticLoop(ctx, conv.ID, provider, base, behavior)
 	} else {
 		resp, err = provider.Infer(ctx, base)
 	}
@@ -231,9 +231,12 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 }
 
 // agenticLoop runs the read-tool loop: the model calls read tools (executed via
-// the broker) until it produces a final answer; write tool calls are proposed as
-// approval cards and never executed. Token counts are accumulated across turns.
-func (s *Service) agenticLoop(ctx context.Context, conversationID string, provider contracts.AIProvider, base contracts.Request) (contracts.Response, []contracts.ProposedAction, error) {
+// the broker) until it produces a final answer. Write tool calls are normally
+// proposed as approval cards and never executed — UNLESS the assistant set that
+// operation's mode to "automatico" (per behavior.WriteModes), in which case the
+// write executes inline (audited) and the loop continues. Tokens accumulate across
+// turns.
+func (s *Service) agenticLoop(ctx context.Context, conversationID string, provider contracts.AIProvider, base contracts.Request, behavior entity.Behavior) (contracts.Response, []contracts.ProposedAction, error) {
 	session, err := s.tools.OpenToolSession(ctx, conversationID)
 	if err != nil || len(session.Tools()) == 0 {
 		resp, ierr := provider.Infer(ctx, base) // no tools → plain completion
@@ -266,6 +269,18 @@ func (s *Service) agenticLoop(ctx context.Context, conversationID string, provid
 		sawWrite := false
 		for _, call := range resp.ToolCalls {
 			if session.IsWrite(call.Name) {
+				// Per-operation mode: an assistant may set a specific ISP write op to
+				// "automatico", in which case it runs inline (audited) and the loop
+				// continues; otherwise (the default, or an unmapped write) it is proposed
+				// for human approval. This affects ONLY the copilot.
+				if behavior.WriteModeFor(session.WriteAction(call.Name)) == entity.WriteModeAuto {
+					out, werr := session.ExecuteWrite(ctx, call.Name, call.Arguments)
+					if werr != nil {
+						out = "tool error: " + werr.Error()
+					}
+					results = append(results, contracts.ToolResult{ID: call.ID, Name: call.Name, Content: out})
+					continue
+				}
 				if pa, perr := session.ProposeWrite(ctx, call.Name, call.Arguments); perr == nil {
 					proposed = append(proposed, pa)
 				}

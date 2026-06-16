@@ -16,6 +16,11 @@ linters:
   enable:
     - misspell
     - unconvert
+  settings:
+    misspell:
+      # Portuguese domain slugs (ISP write-operation modes/actions) — not typos.
+      ignore-rules:
+        - automatico
   exclusions:
     generated: lax
     rules:

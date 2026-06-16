@@ -24,6 +24,7 @@ type CreateAssistant struct {
 	Transport             string // http|mcp; only with an ISP profile (validated against its transports)
 	AllowCustomerData     *bool
 	HumanApprovalRequired *bool
+	WriteModes            map[string]string // ISP write action → automatico|mediante_aprovacao
 	Temperature           *float64
 	MaxTokens             *int
 	SystemInstructions    *string
@@ -39,6 +40,7 @@ type UpdateAssistant struct {
 	Transport             *string
 	AllowCustomerData     *bool
 	HumanApprovalRequired *bool
+	WriteModes            *map[string]string // when set, replaces the per-write-operation modes
 	Temperature           *float64
 	MaxTokens             *int
 	SystemInstructions    *string
@@ -101,6 +103,10 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 	if err := s.validateChannels(ctx, cmd.ChannelIDs); err != nil {
 		return nil, err
 	}
+	writeModes, err := s.validateWriteModes(ctx, ispProfileID, cmd.WriteModes)
+	if err != nil {
+		return nil, err
+	}
 	enabled := true
 	if cmd.Enabled != nil {
 		enabled = *cmd.Enabled
@@ -116,6 +122,7 @@ func (s *AssistantService) Create(ctx context.Context, cmd CreateAssistant) (*en
 		Transport:             transport,
 		AllowCustomerData:     boolOr(cmd.AllowCustomerData, false),
 		HumanApprovalRequired: boolOr(cmd.HumanApprovalRequired, false),
+		WriteModes:            writeModes,
 		Temperature:           floatOr(cmd.Temperature, entity.DefaultTemperature),
 		MaxTokens:             intOr(cmd.MaxTokens, entity.DefaultMaxTokens),
 		SystemInstructions:    strings.TrimSpace(strOr(cmd.SystemInstructions, "")),
@@ -173,6 +180,23 @@ func (s *AssistantService) Update(ctx context.Context, id string, cmd UpdateAssi
 			return nil, err
 		}
 		a.Transport = transport
+	}
+	// WriteModes are validated against the RESULTING pinned profile. An explicit map
+	// replaces; otherwise, when the ISP profile changed, re-validate the existing
+	// modes against the new profile (dropping any now-invalid operation).
+	switch {
+	case cmd.WriteModes != nil:
+		modes, werr := s.validateWriteModes(ctx, a.ISPProfileID, *cmd.WriteModes)
+		if werr != nil {
+			return nil, werr
+		}
+		a.WriteModes = modes
+	case cmd.ISPProfileID != nil:
+		allowed, werr := s.enabledWriteActions(ctx, a.ISPProfileID)
+		if werr != nil {
+			return nil, werr
+		}
+		a.WriteModes = filterWriteModes(a.WriteModes, allowed) // drop modes the new profile no longer offers
 	}
 	if cmd.AllowCustomerData != nil {
 		a.AllowCustomerData = *cmd.AllowCustomerData
@@ -343,6 +367,79 @@ func (s *AssistantService) resolveProfileTransport(ctx context.Context, ispProfi
 			WithDetails(map[string]any{"transport": "the profile enables " + strings.Join(profile.Transports, ", ")})
 	}
 	return transport, nil
+}
+
+// enabledWriteActions returns the set of WRITE action slugs (liberacao/chamado)
+// the pinned ISP profile actually offers (its EnabledActions ∩ write actions).
+// Empty when no profile is pinned. Used to constrain an assistant's write modes.
+func (s *AssistantService) enabledWriteActions(ctx context.Context, ispProfileID string) (map[string]struct{}, error) {
+	out := map[string]struct{}{}
+	if ispProfileID == "" {
+		return out, nil
+	}
+	profile, err := s.profiles.FindByID(ctx, ispProfileID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return out, nil
+		}
+		return nil, err
+	}
+	for _, a := range profile.Actions() {
+		if phentity.IsWriteAction(a) && profile.HasAction(a) {
+			out[string(a)] = struct{}{}
+		}
+	}
+	return out, nil
+}
+
+// validateWriteModes validates an explicit per-write-operation mode map: every key
+// must be a write action ENABLED on the pinned profile, every value a known mode
+// (automatico|mediante_aprovacao). Modes require an ISP profile. It returns a
+// normalized copy (nil when empty). The default for an unset operation is approval,
+// so callers need not store "mediante_aprovacao" entries — but they are accepted.
+func (s *AssistantService) validateWriteModes(ctx context.Context, ispProfileID string, modes map[string]string) (map[string]string, error) {
+	if len(modes) == 0 {
+		return nil, nil
+	}
+	if ispProfileID == "" {
+		return nil, apperror.Validation("write_modes require an ISP profile").
+			WithDetails(map[string]any{"write_modes": "only valid with an isp_profile_id"})
+	}
+	allowed, err := s.enabledWriteActions(ctx, ispProfileID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(modes))
+	for action, mode := range modes {
+		if !entity.IsWriteMode(mode) {
+			return nil, apperror.Validation("invalid write mode").
+				WithDetails(map[string]any{"write_modes." + action: "must be automatico or mediante_aprovacao"})
+		}
+		if _, ok := allowed[action]; !ok {
+			return nil, apperror.Validation("write_modes references an operation the ISP profile does not offer").
+				WithDetails(map[string]any{"write_modes." + action: "not an enabled write action of the pinned profile"})
+		}
+		out[action] = mode
+	}
+	return out, nil
+}
+
+// filterWriteModes keeps only the modes whose action is in allowed and whose value
+// is a known mode. Used to silently drop modes that a profile change invalidated.
+func filterWriteModes(modes map[string]string, allowed map[string]struct{}) map[string]string {
+	if len(modes) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(modes))
+	for action, mode := range modes {
+		if _, ok := allowed[action]; ok && entity.IsWriteMode(mode) {
+			out[action] = mode
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // validateMCPServer ensures the referenced MCP server exists for the tenant (empty

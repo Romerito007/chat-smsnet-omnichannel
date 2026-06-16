@@ -112,6 +112,7 @@ type CreateProfile struct {
 	ISPType                     string
 	Credentials                 map[string]string
 	Transports                  []string // REQUIRED: subset of {http, mcp}, at least one
+	EnabledActions              []string // nil → all catalog actions; else subset of them
 	IsDefault                   bool
 	UsaPegarFaturaAtrasada      bool
 	UsaExtrairLinhaDigitavelPDF bool
@@ -126,6 +127,7 @@ type UpdateProfile struct {
 	ISPType                     *string
 	Credentials                 *map[string]string
 	Transports                  *[]string // when set, replaces the transports (still validated non-empty)
+	EnabledActions              *[]string // when set, replaces the enabled actions (subset of the ISP catalog)
 	UsaPegarFaturaAtrasada      *bool
 	UsaExtrairLinhaDigitavelPDF *bool
 	TimeoutMs                   *int

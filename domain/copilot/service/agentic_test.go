@@ -29,17 +29,24 @@ func (p *scriptedProvider) Infer(_ context.Context, _ contracts.Request) (contra
 
 // fakeSession is a copilot ToolSession with scripted read/write tools.
 type fakeSession struct {
-	tools    []contracts.ToolDefinition
-	writes   map[string]bool
-	executed []string
-	proposed []string
+	tools        []contracts.ToolDefinition
+	writes       map[string]bool
+	actions      map[string]string // tool name → ISP action slug (for write-mode resolution)
+	executed     []string
+	autoExecuted []string
+	proposed     []string
 }
 
 func (s *fakeSession) Tools() []contracts.ToolDefinition { return s.tools }
 func (s *fakeSession) IsWrite(name string) bool          { return s.writes[name] }
+func (s *fakeSession) WriteAction(name string) string    { return s.actions[name] }
 func (s *fakeSession) ExecuteRead(_ context.Context, name, _ string) (string, error) {
 	s.executed = append(s.executed, name)
 	return "RESULT for " + name, nil
+}
+func (s *fakeSession) ExecuteWrite(_ context.Context, name, _ string) (string, error) {
+	s.autoExecuted = append(s.autoExecuted, name)
+	return "AUTO RESULT for " + name, nil
 }
 func (s *fakeSession) ProposeWrite(_ context.Context, name, _ string) (contracts.ProposedAction, error) {
 	s.proposed = append(s.proposed, name)
@@ -89,6 +96,67 @@ func TestAgentic_ReadToolLoop(t *testing.T) {
 	}
 	if prov.calls != 2 {
 		t.Errorf("expected 2 model turns (call + final), got %d", prov.calls)
+	}
+}
+
+// When the assistant set the operation to "automatico", the write executes inline
+// (no proposal, no approval) and the loop continues to a final answer.
+func TestAgentic_WriteAutomaticExecutesInline(t *testing.T) {
+	prov := &scriptedProvider{responses: []contracts.Response{
+		{ToolCalls: []contracts.ToolCall{{ID: "c1", Name: "smsnet_liberacao", Arguments: `{"id_cliente":"c1"}`}}},
+		{Text: "Acesso liberado."},
+	}}
+	session := &fakeSession{
+		tools:   []contracts.ToolDefinition{{Name: "smsnet_liberacao", ReadOnly: false}},
+		writes:  map[string]bool{"smsnet_liberacao": true},
+		actions: map[string]string{"smsnet_liberacao": "liberacao"},
+	}
+	svc, _ := agenticService(prov, session)
+	behavior := entity.Behavior{WriteModes: map[string]string{"liberacao": entity.WriteModeAuto}}
+
+	resp, proposed, err := svc.agenticLoop(allCtx(), "conv1", prov, contracts.Request{}, behavior)
+	if err != nil {
+		t.Fatalf("loop: %v", err)
+	}
+	if resp.Text != "Acesso liberado." {
+		t.Errorf("expected final answer after auto write, got %q", resp.Text)
+	}
+	if len(session.autoExecuted) != 1 || session.autoExecuted[0] != "smsnet_liberacao" {
+		t.Errorf("automatic write should execute inline: %v", session.autoExecuted)
+	}
+	if len(session.proposed) != 0 {
+		t.Errorf("automatic write must NOT be proposed: %v", session.proposed)
+	}
+	if len(proposed) != 0 {
+		t.Errorf("no proposal expected for an automatic write: %+v", proposed)
+	}
+}
+
+// A write op left at the default mode (no WriteModes entry) is still proposed even
+// when other ops are automatic — the safe default holds per operation.
+func TestAgentic_WriteDefaultsToApproval(t *testing.T) {
+	prov := &scriptedProvider{responses: []contracts.Response{
+		{ToolCalls: []contracts.ToolCall{{ID: "c1", Name: "smsnet_chamado", Arguments: `{}`}}},
+		{Text: "unused"},
+	}}
+	session := &fakeSession{
+		tools:   []contracts.ToolDefinition{{Name: "smsnet_chamado", ReadOnly: false}},
+		writes:  map[string]bool{"smsnet_chamado": true},
+		actions: map[string]string{"smsnet_chamado": "chamado"},
+	}
+	svc, _ := agenticService(prov, session)
+	// liberacao is automatic, but chamado has no mode → must default to approval.
+	behavior := entity.Behavior{WriteModes: map[string]string{"liberacao": entity.WriteModeAuto}}
+
+	_, proposed, err := svc.agenticLoop(allCtx(), "conv1", prov, contracts.Request{}, behavior)
+	if err != nil {
+		t.Fatalf("loop: %v", err)
+	}
+	if len(session.autoExecuted) != 0 {
+		t.Errorf("chamado must not auto-execute: %v", session.autoExecuted)
+	}
+	if len(proposed) != 1 || proposed[0].Tool != "smsnet_chamado" {
+		t.Fatalf("chamado must be proposed for approval: %+v", proposed)
 	}
 }
 

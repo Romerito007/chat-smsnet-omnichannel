@@ -978,6 +978,11 @@ components:
                 updated_at:
                     format: date-time
                     type: string
+                write_modes:
+                    additionalProperties:
+                        type: string
+                    description: 'Per-write-operation copilot mode, keyed by ISP write action (liberacao/chamado). Value: "automatico" (run without approval) or "mediante_aprovacao" (propose; default for any unset op). Affects ONLY the copilot — the human agent''s actions always require approval.'
+                    type: object
             type: object
         CopilotConfig:
             properties:
@@ -1218,6 +1223,11 @@ components:
                 transport:
                     description: http|mcp; only with an isp_profile_id. Must be a transport the profile enables (else 422). Optional when the profile enables exactly one (that one is used); required when it enables both.
                     type: string
+                write_modes:
+                    additionalProperties:
+                        type: string
+                    description: 'Per-write-operation mode (keyed by ISP write action: liberacao/chamado): "automatico" or "mediante_aprovacao". Keys must be write actions ENABLED on the pinned ISP profile. Unset ops default to approval. Requires an isp_profile_id.'
+                    type: object
             required:
                 - name
             type: object
@@ -1284,6 +1294,17 @@ components:
                 enabled:
                     description: Defaults to true when omitted.
                     type: boolean
+                enabled_actions:
+                    description: Operations this profile offers (subset of the ISP catalog). Omit → all catalog actions enabled; the tenant unchecks what it doesn't want.
+                    items:
+                        enum:
+                            - cliente
+                            - planos
+                            - empresa
+                            - liberacao
+                            - chamado
+                        type: string
+                    type: array
                 is_default:
                     description: Make this the default profile. The first profile of a tenant is always the default.
                     type: boolean
@@ -1754,7 +1775,7 @@ components:
         ISPProfile:
             properties:
                 actions:
-                    description: Actions this profile's ISP supports, from the catalog — gate per-ISP actions with this.
+                    description: The ISP catalog universe — every action this profile's ISP could perform.
                     items:
                         enum:
                             - cliente
@@ -1774,6 +1795,17 @@ components:
                     type: array
                 enabled:
                     type: boolean
+                enabled_actions:
+                    description: The subset of actions this profile actually OFFERS — gates both the copilot tools and the manual /external/* path. Defaults to all on create; the tenant unchecks what it doesn't want.
+                    items:
+                        enum:
+                            - cliente
+                            - planos
+                            - empresa
+                            - liberacao
+                            - chamado
+                        type: string
+                    type: array
                 id:
                     type: string
                 is_default:
@@ -3416,6 +3448,11 @@ components:
                 transport:
                     description: http|mcp; validated against the pinned profile's enabled transports.
                     type: string
+                write_modes:
+                    additionalProperties:
+                        type: string
+                    description: When set, replaces the per-write-operation modes (keys = ISP write actions enabled on the pinned profile; values = automatico|mediante_aprovacao).
+                    type: object
             type: object
         UpdateCustomAttributeRequest:
             properties:
@@ -3453,6 +3490,17 @@ components:
                     type: object
                 enabled:
                     type: boolean
+                enabled_actions:
+                    description: When set, replaces the offered actions (subset of the ISP catalog).
+                    items:
+                        enum:
+                            - cliente
+                            - planos
+                            - empresa
+                            - liberacao
+                            - chamado
+                        type: string
+                    type: array
                 isp_type:
                     description: ISP slug (config.type). One of the 19 catalog slugs from GET /v1/providerhub/catalog (legacy voalle/sgp also accepted).
                     enum:

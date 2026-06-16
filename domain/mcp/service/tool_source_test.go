@@ -27,6 +27,12 @@ func (b fakeBridge) AllowServer(_ context.Context, _, _ string, write bool) (boo
 	}
 	return true, nil
 }
+func (b fakeBridge) ActionEnabled(_ context.Context, _, action string) (bool, error) {
+	if action == "liberacao" || action == "chamado" {
+		return b.allowWrite, nil
+	}
+	return true, nil
+}
 func (b fakeBridge) Decorate(_ context.Context, in contracts.DecorateInput) (map[string]any, error) {
 	return in.Args, nil
 }

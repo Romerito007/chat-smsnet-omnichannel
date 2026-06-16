@@ -56,6 +56,7 @@ func (r *ProfileRepository) Update(ctx context.Context, p *entity.ISPProfile) er
 			"isp_type":              m.ISPType,
 			"encrypted_credentials": m.EncryptedCredentials,
 			"transports":            m.Transports,
+			"enabled_actions":       m.EnabledActions,
 			"is_default":            m.IsDefault,
 			"options":               m.Options,
 			"timeout_ms":            m.TimeoutMs,
@@ -166,6 +167,7 @@ func (r *ProfileRepository) toModel(p *entity.ISPProfile) (models.ISPProfile, er
 		ISPType:              p.ISPType,
 		EncryptedCredentials: encCreds,
 		Transports:           p.Transports,
+		EnabledActions:       p.EnabledActions,
 		IsDefault:            p.IsDefault,
 		Options: models.ISPProfileOptions{
 			UsaPegarFaturaAtrasada:      p.Options.UsaPegarFaturaAtrasada,
@@ -193,13 +195,14 @@ func (r *ProfileRepository) toEntity(m *models.ISPProfile) (*entity.ISPProfile, 
 		}
 	}
 	return &entity.ISPProfile{
-		ID:          m.ID,
-		TenantID:    m.TenantID,
-		Label:       m.Label,
-		ISPType:     m.ISPType,
-		Credentials: creds,
-		Transports:  m.Transports,
-		IsDefault:   m.IsDefault,
+		ID:             m.ID,
+		TenantID:       m.TenantID,
+		Label:          m.Label,
+		ISPType:        m.ISPType,
+		Credentials:    creds,
+		Transports:     m.Transports,
+		EnabledActions: m.EnabledActions,
+		IsDefault:      m.IsDefault,
 		Options: entity.Options{
 			UsaPegarFaturaAtrasada:      m.Options.UsaPegarFaturaAtrasada,
 			UsaExtrairLinhaDigitavelPDF: m.Options.UsaExtrairLinhaDigitavelPDF,

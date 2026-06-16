@@ -33,6 +33,46 @@ const (
 	ActionChamado   ISPAction = "chamado"
 )
 
+// IsWriteAction reports whether a is a side-effect (write) action — the only
+// actions an assistant may set to run automatically. cliente/planos/empresa are
+// reads.
+func IsWriteAction(a ISPAction) bool { return a == ActionLiberacao || a == ActionChamado }
+
+// NormalizeActions filters in against the allowed catalog actions, de-duplicating
+// and ordering by the catalog (allowed) order. ok is false when any input value is
+// not in allowed (unknown for this ISP). An empty input yields an empty slice — the
+// "default = all" decision is the caller's (the profile service applies it on
+// create).
+func NormalizeActions(in []string, allowed []ISPAction) (out []string, ok bool) {
+	allow := make(map[ISPAction]struct{}, len(allowed))
+	for _, a := range allowed {
+		allow[a] = struct{}{}
+	}
+	seen := make(map[ISPAction]struct{}, len(in))
+	for _, raw := range in {
+		a := ISPAction(raw)
+		if _, k := allow[a]; !k {
+			return nil, false // unknown action for this ISP
+		}
+		seen[a] = struct{}{}
+	}
+	for _, a := range allowed { // preserve catalog order
+		if _, k := seen[a]; k {
+			out = append(out, string(a))
+		}
+	}
+	return out, true
+}
+
+// ActionSlugs maps a catalog action list to plain slugs (catalog order).
+func ActionSlugs(actions []ISPAction) []string {
+	out := make([]string, len(actions))
+	for i, a := range actions {
+		out[i] = string(a)
+	}
+	return out
+}
+
 // ISPCredentialField describes one credential input the UI must render for an
 // ISP. Key is the exact config.<key> the SMSNET API expects; Secret marks a
 // value that must be a masked input and is never echoed back.

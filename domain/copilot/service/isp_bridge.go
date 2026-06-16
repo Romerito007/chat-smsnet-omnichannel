@@ -66,6 +66,18 @@ func (b *ISPToolBridge) AllowServer(ctx context.Context, channelID, _ string, wr
 	return profileHasWriteAction(profile), nil
 }
 
+// ActionEnabled reports whether the conversation's pinned ISP profile offers the
+// given action (its EnabledActions). It is the per-tool gate the host applies to
+// SMSNET tools resolved to a known action, so an operation the tenant unchecked
+// disappears from the AI's toolset.
+func (b *ISPToolBridge) ActionEnabled(ctx context.Context, channelID, action string) (bool, error) {
+	profile, ok, err := b.resolveProfile(ctx, channelID)
+	if err != nil || !ok {
+		return false, err
+	}
+	return profile.HasAction(phentity.ISPAction(action)), nil
+}
+
 // Decorate injects the ISP config (and, for writes, an idempotency key) into a
 // SMSNET tool call. The client-supplied "config" is always overwritten.
 func (b *ISPToolBridge) Decorate(ctx context.Context, in mcpcontracts.DecorateInput) (map[string]any, error) {

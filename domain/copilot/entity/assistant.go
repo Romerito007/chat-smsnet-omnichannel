@@ -29,13 +29,29 @@ type Assistant struct {
 	// data are consulted on demand via ISP tools, not gated/pre-injected here.
 	AllowCustomerData     bool
 	HumanApprovalRequired bool
-	Temperature           float64
-	MaxTokens             int
-	SystemInstructions    string
-	Enabled               bool
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	// WriteModes is the per-WRITE-operation execution mode for the ISP tools this
+	// assistant exposes (keyed by ISP action slug: "liberacao"/"chamado"). The value
+	// is WriteModeAuto ("automatico") or WriteModeApproval ("mediante_aprovacao").
+	// An operation absent from the map defaults to approval (the safe default). Only
+	// write operations have a mode; reads are always free. This governs ONLY the
+	// copilot — the human agent's actions always require approval regardless.
+	WriteModes         map[string]string
+	Temperature        float64
+	MaxTokens          int
+	SystemInstructions string
+	Enabled            bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
+
+// Copilot write-operation execution modes.
+const (
+	WriteModeAuto     = "automatico"         // run the write directly, no human approval
+	WriteModeApproval = "mediante_aprovacao" // propose the write; a human approves before it runs (default)
+)
+
+// IsWriteMode reports whether m is a known mode slug.
+func IsWriteMode(m string) bool { return m == WriteModeAuto || m == WriteModeApproval }
 
 // ServesChannelID reports whether the assistant serves the given channel
 // connection id.

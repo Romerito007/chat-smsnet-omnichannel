@@ -40,7 +40,8 @@ type CreateProfileRequest struct {
 	Label                       string            `json:"label"`
 	ISPType                     string            `json:"isp_type"`
 	Credentials                 map[string]string `json:"credentials"`
-	Transports                  []string          `json:"transports"` // required: ["http"], ["mcp"] or both
+	Transports                  []string          `json:"transports"`      // required: ["http"], ["mcp"] or both
+	EnabledActions              []string          `json:"enabled_actions"` // omit → all catalog actions; else subset
 	IsDefault                   bool              `json:"is_default"`
 	UsaPegarFaturaAtrasada      bool              `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF bool              `json:"usa_extrair_linha_digitavel_pdf"`
@@ -55,6 +56,7 @@ func (r CreateProfileRequest) ToCommand() phcontracts.CreateProfile {
 		ISPType:                     r.ISPType,
 		Credentials:                 r.Credentials,
 		Transports:                  r.Transports,
+		EnabledActions:              r.EnabledActions,
 		IsDefault:                   r.IsDefault,
 		UsaPegarFaturaAtrasada:      r.UsaPegarFaturaAtrasada,
 		UsaExtrairLinhaDigitavelPDF: r.UsaExtrairLinhaDigitavelPDF,
@@ -70,6 +72,7 @@ type UpdateProfileRequest struct {
 	ISPType                     *string            `json:"isp_type"`
 	Credentials                 *map[string]string `json:"credentials"`
 	Transports                  *[]string          `json:"transports"`
+	EnabledActions              *[]string          `json:"enabled_actions"`
 	UsaPegarFaturaAtrasada      *bool              `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF *bool              `json:"usa_extrair_linha_digitavel_pdf"`
 	TimeoutMs                   *int               `json:"timeout_ms"`
@@ -83,6 +86,7 @@ func (r UpdateProfileRequest) ToCommand() phcontracts.UpdateProfile {
 		ISPType:                     r.ISPType,
 		Credentials:                 r.Credentials,
 		Transports:                  r.Transports,
+		EnabledActions:              r.EnabledActions,
 		UsaPegarFaturaAtrasada:      r.UsaPegarFaturaAtrasada,
 		UsaExtrairLinhaDigitavelPDF: r.UsaExtrairLinhaDigitavelPDF,
 		TimeoutMs:                   r.TimeoutMs,
@@ -101,7 +105,8 @@ type ProfileResponse struct {
 	CredentialKeys              []string  `json:"credential_keys"`
 	Transports                  []string  `json:"transports"`
 	IsDefault                   bool      `json:"is_default"`
-	Actions                     []string  `json:"actions"`
+	Actions                     []string  `json:"actions"`         // the ISP catalog universe (what the ISP could do)
+	EnabledActions              []string  `json:"enabled_actions"` // the subset this profile actually offers
 	UsaPegarFaturaAtrasada      bool      `json:"usa_pegar_fatura_atrasada"`
 	UsaExtrairLinhaDigitavelPDF bool      `json:"usa_extrair_linha_digitavel_pdf"`
 	TimeoutMs                   int       `json:"timeout_ms"`
@@ -122,6 +127,11 @@ func NewProfileResponse(p *phentity.ISPProfile) ProfileResponse {
 	for _, a := range p.Actions() {
 		actions = append(actions, string(a))
 	}
+	// EnabledActions defaults to the full catalog when unset (mirrors HasAction).
+	enabled := append([]string(nil), p.EnabledActions...)
+	if len(enabled) == 0 {
+		enabled = append([]string(nil), actions...)
+	}
 	return ProfileResponse{
 		ID:                          p.ID,
 		TenantID:                    p.TenantID,
@@ -131,6 +141,7 @@ func NewProfileResponse(p *phentity.ISPProfile) ProfileResponse {
 		Transports:                  append([]string(nil), p.Transports...),
 		IsDefault:                   p.IsDefault,
 		Actions:                     actions,
+		EnabledActions:              enabled,
 		UsaPegarFaturaAtrasada:      p.Options.UsaPegarFaturaAtrasada,
 		UsaExtrairLinhaDigitavelPDF: p.Options.UsaExtrairLinhaDigitavelPDF,
 		TimeoutMs:                   p.TimeoutMs,

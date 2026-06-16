@@ -16,7 +16,14 @@ type ISPToolBridge interface {
 	// conversation's channel (by connection id), based on the assistant's pinned
 	// ISP profile: no assistant/profile → false (no SMSNET tools); read server →
 	// true; write server → only when the profile supports liberacao or chamado.
+	// Used as the fallback gate for SMSNET tools NOT in the explicit action table.
 	AllowServer(ctx context.Context, channelID, serverName string, write bool) (bool, error)
+	// ActionEnabled reports whether the conversation's pinned ISP profile has the
+	// given action (cliente/planos/empresa/liberacao/chamado) enabled. It is the
+	// per-tool gate for SMSNET tools resolved to a known action: a tool whose action
+	// the tenant unchecked is not exposed to the AI. False (no error) when no
+	// assistant/profile resolves.
+	ActionEnabled(ctx context.Context, channelID, action string) (bool, error)
 	// Decorate injects the ISP config (and, for writes, an idempotency key) into a
 	// SMSNET tool call's arguments, returning the args to send. It OVERWRITES any
 	// client-supplied "config" so the model can never inject its own credentials.

@@ -62,12 +62,35 @@ type ISPProfile struct {
 	// env. The manual search (/external/*) needs "http"; an assistant pinning this
 	// profile may only select a transport listed here.
 	Transports []string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// EnabledActions are the operations this profile actually OFFERS — a subset of
+	// the ISP's catalog actions (Actions()). It gates both the copilot tools and
+	// the manual /external/* path: an action not listed here is unavailable to AI
+	// AND to the human agent. New profiles default to all catalog actions; the
+	// tenant unchecks what it does not want. An empty/absent list is treated
+	// defensively as "all" (see HasAction).
+	EnabledActions []string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // Actions returns the actions this profile's ISP supports, per the catalog.
 func (p *ISPProfile) Actions() []ISPAction { return ActionsFor(p.ISPType) }
+
+// HasAction reports whether the action is enabled (offered) by this profile. An
+// empty EnabledActions is treated as "all the ISP's actions" — a degenerate
+// all-disabled profile is not representable (use Enabled=false to turn a profile
+// off), so an empty set never silently hides everything.
+func (p *ISPProfile) HasAction(a ISPAction) bool {
+	if len(p.EnabledActions) == 0 {
+		return true
+	}
+	for _, x := range p.EnabledActions {
+		if x == string(a) {
+			return true
+		}
+	}
+	return false
+}
 
 // SupportsTransport reports whether the profile enables the given transport.
 func (p *ISPProfile) SupportsTransport(t string) bool {
