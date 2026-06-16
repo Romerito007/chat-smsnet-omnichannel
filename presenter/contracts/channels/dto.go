@@ -119,7 +119,7 @@ type ConnectionResponse struct {
 	HasSecret         bool                  `json:"has_secret"`
 	HasInboundToken   bool                  `json:"has_inbound_token"`
 	BusinessHours     map[string]any        `json:"business_hours,omitempty"`
-	OutOfHoursMessage string                `json:"out_of_hours_message,omitempty"`
+	OutOfHoursMessage string                `json:"out_of_hours_message"`
 	Enabled           bool                  `json:"enabled"`
 	UsesProtocol      bool                  `json:"uses_protocol"`
 	WhatsAppTemplates []WhatsAppTemplateDTO `json:"whatsapp_templates,omitempty"`
