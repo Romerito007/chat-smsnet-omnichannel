@@ -68,6 +68,59 @@ func token(t *testing.T, tenant string, perms ...authz.Permission) string {
 	return httpharness.Token(t, tm, tenant, "u1", perms...)
 }
 
+// seededUpdRepo holds ONE connection so a PATCH round-trip (FindByID → Update) can
+// be exercised end-to-end.
+type seededUpdRepo struct{ conn *entity.ChannelConnection }
+
+func (r *seededUpdRepo) Create(context.Context, *entity.ChannelConnection) error { return nil }
+func (r *seededUpdRepo) Update(_ context.Context, c *entity.ChannelConnection) error {
+	r.conn = c
+	return nil
+}
+func (r *seededUpdRepo) Delete(context.Context, string) error { return nil }
+func (r *seededUpdRepo) FindByID(context.Context, string) (*entity.ChannelConnection, error) {
+	cp := *r.conn
+	return &cp, nil
+}
+func (r *seededUpdRepo) List(context.Context, shared.PageRequest) ([]*entity.ChannelConnection, error) {
+	return nil, nil
+}
+func (r *seededUpdRepo) FindByInboundTokenHash(context.Context, string) (*entity.ChannelConnection, error) {
+	return nil, apperror.NotFound("none")
+}
+
+// TestChannels_Update_PersistsAndEchoesOutOfHoursMessage proves the backend accepts
+// out_of_hours_message on PATCH /v1/channels/{id}, persists it, and returns it. (A
+// PATCH that OMITS the key leaves it unchanged — the field is a pointer.)
+func TestChannels_Update_PersistsAndEchoesOutOfHoursMessage(t *testing.T) {
+	repo := &seededUpdRepo{conn: &entity.ChannelConnection{ID: "c1", TenantID: "t1", Type: entity.TypeAPI, Enabled: true}}
+	svc := chservice.NewConnectionService(repo, nil, shared.SystemClock{})
+	ctl := channels.NewConnectionController(svc)
+	r := chi.NewRouter()
+	r.Group(func(p chi.Router) {
+		p.Use(middleware.AuthContext(tm))
+		p.Use(middleware.RequirePermission(authz.ChannelManage))
+		p.Patch("/channels/{id}", ctl.Update)
+	})
+
+	tok := token(t, "t1", authz.ChannelManage)
+	rec := httpharness.Do(t, r, http.MethodPatch, "/channels/c1", tok,
+		map[string]any{"out_of_hours_message": "Estamos fora do Horário."})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		OutOfHoursMessage string `json:"out_of_hours_message"`
+	}
+	httpharness.DecodeJSON(t, rec, &resp)
+	if resp.OutOfHoursMessage != "Estamos fora do Horário." {
+		t.Errorf("response out_of_hours_message = %q, want the saved text", resp.OutOfHoursMessage)
+	}
+	if repo.conn.OutOfHoursMessage != "Estamos fora do Horário." {
+		t.Errorf("persisted out_of_hours_message = %q, want the saved text", repo.conn.OutOfHoursMessage)
+	}
+}
+
 func TestChannels_List_HappyTenantFilteredCursorShape(t *testing.T) {
 	repo := &fakeConnRepo{items: []*entity.ChannelConnection{
 		{ID: "k1", TenantID: "t1", CreatedAt: time.Now()},
