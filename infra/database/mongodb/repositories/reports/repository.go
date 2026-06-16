@@ -205,16 +205,57 @@ func (r *Repository) messageChannelPipeline(tenant string, f contracts.Filter, c
 	return pipe
 }
 
+// FirstResponseAvgSeconds is the average time to the FIRST agent reply, derived
+// from conversation_events (the first message.created authored by an agent), per
+// conversation created in the period — minus the conversation's created_at. It does
+// NOT depend on SLA tracking, so the metric appears even with no SLA policy
+// configured (SLA policies still drive the SLA alerts/targets report). Conversations
+// with no agent reply yet are excluded from the average.
 func (r *Repository) FirstResponseAvgSeconds(ctx context.Context, f contracts.Filter) (float64, error) {
 	tenant, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return 0, err
 	}
-	m := bson.M{"tenant_id": tenant, "created_at": period(f), "first_response_at": bson.M{"$ne": nil}}
-	if f.SectorID != "" {
-		m["sector_id"] = f.SectorID
+	pipe := mongo.Pipeline{
+		{{Key: "$match", Value: convMatch(tenant, f, true)}},
+		{{Key: "$lookup", Value: bson.M{
+			"from": "conversation_events",
+			"let":  bson.M{"cid": "$_id"},
+			"pipeline": mongo.Pipeline{
+				{{Key: "$match", Value: bson.M{"$expr": bson.M{"$and": bson.A{
+					bson.M{"$eq": bson.A{"$conversation_id", "$$cid"}},
+					bson.M{"$eq": bson.A{"$type", "message.created"}},
+					bson.M{"$eq": bson.A{"$actor_type", "agent"}},
+				}}}}},
+				{{Key: "$sort", Value: bson.M{"created_at": 1}}},
+				{{Key: "$limit", Value: 1}},
+				{{Key: "$project", Value: bson.M{"created_at": 1}}},
+			},
+			"as": "fr",
+		}}},
+		{{Key: "$unwind", Value: "$fr"}}, // drop conversations with no agent reply
+		{{Key: "$group", Value: bson.M{
+			"_id": nil,
+			"avg": bson.M{"$avg": bson.M{"$divide": bson.A{
+				bson.M{"$subtract": bson.A{"$fr.created_at", "$created_at"}}, 1000,
+			}}},
+		}}},
 	}
-	return r.avgSecondsBetween(ctx, r.slaTrackings, m, "$first_response_at", "$created_at")
+	cur, err := r.conversations.Aggregate(ctx, pipe)
+	if err != nil {
+		return 0, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	if cur.Next(ctx) {
+		var row struct {
+			Avg float64 `bson:"avg"`
+		}
+		if err := cur.Decode(&row); err != nil {
+			return 0, mongodb.MapError(err)
+		}
+		return round2(row.Avg), nil
+	}
+	return 0, mongodb.MapError(cur.Err())
 }
 
 func (r *Repository) ResolutionAvgSeconds(ctx context.Context, f contracts.Filter) (float64, error) {
