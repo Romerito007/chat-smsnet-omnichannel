@@ -46,11 +46,29 @@ caso comum em Redis **gerenciado**, que bloqueia `CONFIG SET`). Mesmo assim,
 
 **Runtime (sem reiniciar o Redis) — vale até o próximo restart do Redis:**
 
+_Redis no host, sem senha:_
+
 ```bash
 redis-cli CONFIG SET notify-keyspace-events Ex
 ```
 
-**Persistente (sobrevive a restart) — no `redis.conf`:**
+_Redis com senha (`REDIS_PASSWORD`):_ adicione `-a <REDIS_PASSWORD>` (sem o `-a`
+o Redis responde `NOAUTH Authentication required`).
+
+```bash
+redis-cli -a <REDIS_PASSWORD> CONFIG SET notify-keyspace-events Ex
+```
+
+_Redis em container Docker (com senha) — execute dentro do container:_
+
+```bash
+docker exec -it <container> redis-cli -a <REDIS_PASSWORD> CONFIG GET notify-keyspace-events
+docker exec -it <container> redis-cli -a <REDIS_PASSWORD> CONFIG SET notify-keyspace-events Ex
+```
+
+**Persistente (sobrevive a restart):**
+
+_Redis no host — no `redis.conf`:_
 
 ```conf
 notify-keyspace-events Ex
@@ -58,9 +76,22 @@ notify-keyspace-events Ex
 
 …e reinicie o serviço (`systemctl restart redis` ou equivalente).
 
+_Docker Compose (com senha) — no `command` do serviço Redis:_
+
+```yaml
+services:
+  redis:
+    image: redis:7
+    command: redis-server --requirepass <REDIS_PASSWORD> --notify-keyspace-events Ex
+```
+
 > Significado dos flags: **`E`** = *keyevent* notifications (canal
 > `__keyevent@<db>__:<evento>`), **`x`** = eventos de **expiração**. O backend
 > precisa exatamente de `E` + `x`.
+>
+> Em todos os exemplos abaixo, se o seu Redis tem senha, acrescente
+> `-a <REDIS_PASSWORD>` ao `redis-cli`; se roda em container, prefixe com
+> `docker exec -it <container>`.
 
 ### ⚠️ Cuidado: não sobrescreva uma config existente
 
@@ -110,6 +141,9 @@ os databases.
 
 ### Como verificar que funcionou
 
+> Os comandos abaixo são na variante host-sem-senha. Com senha, acrescente
+> `-a <REDIS_PASSWORD>`; em Docker, prefixe com `docker exec -it <container>`.
+
 1. **Confirme a config** ativa no Redis:
 
    ```bash
@@ -131,6 +165,16 @@ os databases.
    ```
 
    Se **nada** aparece, os expired events não estão ativos (revise os flags / DB).
+
+   _Mesma verificação no seu ambiente (Docker + senha, DB 4):_
+
+   ```bash
+   # terminal 1 — escuta o canal de expiração do DB 4
+   docker exec -it <container> redis-cli -a <REDIS_PASSWORD> --csv PSUBSCRIBE '__keyevent@4__:expired'
+
+   # terminal 2 — força uma chave a expirar em 1s no DB 4
+   docker exec -it <container> redis-cli -a <REDIS_PASSWORD> -n 4 SET presence:teste:teste x EX 1
+   ```
 
 3. **No log do backend** (papel `ws` ou `all`): no start sai
    `presence expiry watcher started channel=__keyevent@4__:expired`. Ao derrubar
