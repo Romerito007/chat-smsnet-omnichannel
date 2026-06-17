@@ -146,10 +146,22 @@ func parseMultipartInbound(r *http.Request) (dto.InboundRequest, []chcontracts.R
 		ContactName:       get("contact_name"),
 		ContactPhone:      get("contact_phone"),
 		ContactDocument:   get("contact_document"),
+		GroupJID:          get("group_jid"),
+		SenderJID:         get("sender_jid"),
+		SenderName:        get("sender_name"),
+		SenderPhone:       get("sender_phone"),
 		Text:              get("content", "text"),
 	}
 	if ts := get("timestamp"); ts != "" {
 		req.Timestamp, _ = strconv.ParseInt(ts, 10, 64)
+	}
+	// Rich structured payloads may ride a multipart body as JSON-encoded fields, so a
+	// shared contact/location is materialized even without a file attachment.
+	if v := get("contacts"); v != "" {
+		_ = json.Unmarshal([]byte(v), &req.Contacts)
+	}
+	if v := get("location"); v != "" {
+		_ = json.Unmarshal([]byte(v), &req.Location)
 	}
 
 	var raw []chcontracts.RawFile

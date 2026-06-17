@@ -219,6 +219,35 @@ novos, todos flat e opcionais**. **O sinal de reconhecimento é a presença de
   **nunca** por `if channel == whatsapp`.
 - `text`, `attachments`, mídia, `timestamp`, `external_message_id` — iguais ao 1:1.
 
+**Tipos ricos em grupo (contact e location) — nativos:** o chat tem
+`message_type=contact` e `message_type=location` de primeira classe (não é texto
+fingido). Para materializarem **na conversa do grupo**, mande-os **com `group_jid`**,
+exatamente na mesma shape do 1:1:
+
+```jsonc
+// contato compartilhado no grupo (JSON)
+{ "external_message_id":"...", "group_jid":"...@g.us",
+  "sender_jid":"...@s.whatsapp.net", "sender_name":"João",
+  "text":"compartilhou um contato",
+  "contacts":[ { "name":{"formatted":"Maria"}, "phones":[{"phone":"5544111"}] } ] }
+
+// localização compartilhada no grupo (JSON)
+{ "external_message_id":"...", "group_jid":"...@g.us",
+  "sender_jid":"...@s.whatsapp.net", "sender_name":"João", "text":"estou aqui",
+  "location":{ "latitude":-23.55, "longitude":-46.63, "name":"SP", "address":"Centro" } }
+```
+- A shape de `contacts[]`/`location` é a **mesma do 1:1** — respeite os nomes
+  (`name.formatted`, `phones[].phone`; `latitude`/`longitude`/`name`/`address`). Uma
+  shape diferente faz o campo chegar **vazio** e o chat cai em `400` (sem nome no
+  contato) ou cria só o texto.
+- **NÃO esqueça o `group_jid`** nesses dois tipos. Sem ele, o chat trata como **1:1**
+  e a mensagem **não** aparece na conversa do grupo. (Foi a causa do bug em que
+  contact/location "sumiam": iam sem `group_jid` ou via multipart que descartava os
+  campos.)
+- Se mandar por **multipart** (em vez de JSON), os mesmos campos valem como campos de
+  formulário: `group_jid`, `sender_jid`, `sender_name`, `sender_phone`, e
+  `contacts`/`location` como **strings JSON**.
+
 **Gate de atendimento (o chat decide, o gateway não precisa saber):**
 - Se o grupo **não foi sincronizado** (não está no registry do Domínio 1) **ou**
   está marcado como **não atender** (`attend=false`) → o chat **descarta** a mensagem

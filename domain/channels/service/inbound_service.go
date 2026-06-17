@@ -249,6 +249,13 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 	}
 	if discarded {
 		// Intentionally dropped (group not attended / not synced): 200, nothing stored.
+		// Log loudly with the payload shape so a swallowed body is never invisible.
+		shared.LoggerFrom(ctx, s.logger).Info("INBOUND_NO_MESSAGE_CREATED",
+			"reason", "group_discarded", "channel", channel, "group_jid", groupJID,
+			"external_message_id", externalMsgID,
+			"has_text", strings.TrimSpace(msg.Text) != "",
+			"has_contacts", len(msg.Contacts) > 0, "has_location", msg.Location != nil,
+			"has_attachments", len(msg.Attachments) > 0 || len(msg.RawAttachments) > 0)
 		return chcontracts.InboundResult{Discarded: true, Status: "discarded"}, nil
 	}
 

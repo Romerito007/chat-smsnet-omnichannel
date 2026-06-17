@@ -161,6 +161,55 @@ func TestInbound_OneToOne_Unchanged_NoGroupSender(t *testing.T) {
 	}
 }
 
+// A shared CONTACT in an attended group materializes a message (message_type=contact)
+// in the group conversation — not silently dropped just because there is no file.
+func TestInbound_Group_Contact_CreatesMessage(t *testing.T) {
+	const jid = "120363000000000010@g.us"
+	fx, _ := newGroupFixture(attendedGate(jid, "Grupo"))
+	msg := groupMsg("g-contact", jid, "5544@s.whatsapp.net", "João")
+	msg.Text = "compartilhou um contato"
+	msg.Contacts = []conventity.ContactCard{{
+		Name:   conventity.ContactName{Formatted: "Maria"},
+		Phones: []conventity.ContactPhone{{Phone: "5544111222"}},
+	}}
+
+	res, err := fx.svc.Handle(tenantCtx(), conn(""), msg)
+	if err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if res.Discarded || fx.msgs.count() != 1 {
+		t.Fatalf("a group contact must create one message, got discarded=%v count=%d", res.Discarded, fx.msgs.count())
+	}
+	m := fx.msgs.items[res.MessageID]
+	if m.MessageType != conventity.MessageContact {
+		t.Errorf("message_type = %q, want contact", m.MessageType)
+	}
+	if len(m.Contacts) != 1 || m.GroupSender == nil {
+		t.Errorf("contact + group_sender must be persisted: contacts=%d group_sender=%v", len(m.Contacts), m.GroupSender)
+	}
+}
+
+// A shared LOCATION in an attended group materializes a message (message_type=location).
+func TestInbound_Group_Location_CreatesMessage(t *testing.T) {
+	const jid = "120363000000000011@g.us"
+	fx, _ := newGroupFixture(attendedGate(jid, "Grupo"))
+	msg := groupMsg("g-loc", jid, "5544@s.whatsapp.net", "João")
+	msg.Text = "estou aqui"
+	msg.Location = &conventity.Location{Latitude: -23.55, Longitude: -46.63, Name: "SP"}
+
+	res, err := fx.svc.Handle(tenantCtx(), conn(""), msg)
+	if err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if res.Discarded || fx.msgs.count() != 1 {
+		t.Fatalf("a group location must create one message, got discarded=%v count=%d", res.Discarded, fx.msgs.count())
+	}
+	m := fx.msgs.items[res.MessageID]
+	if m.MessageType != conventity.MessageLocation || m.Location == nil {
+		t.Errorf("message_type/location mismatch: type=%q location=%v", m.MessageType, m.Location)
+	}
+}
+
 // A group that is NOT attended (attend=false) is discarded: 200 + nothing persisted,
 // so the gateway does not retry and no junk contact/conversation is created.
 func TestInbound_Group_NotAttended_Discarded(t *testing.T) {

@@ -2058,6 +2058,9 @@ components:
                     type: string
                 contact_phone:
                     type: string
+                contacts:
+                    description: 'Optional: a JSON-encoded array of shared contacts (same shape as the JSON body''s contacts[]), so a contact rides a multipart body without a file.'
+                    type: string
                 content:
                     type: string
                 external_contact_id:
@@ -2071,12 +2074,27 @@ components:
                         - video
                         - document
                     type: string
+                group_jid:
+                    description: 'Group message (multipart): the group JID "...@g.us" (same meaning as in the JSON body).'
+                    type: string
                 inbound_token:
+                    type: string
+                location:
+                    description: 'Optional: a JSON-encoded location object (same shape as the JSON body''s location).'
                     type: string
                 message_type:
                     type: string
                 private:
                     type: boolean
+                sender_jid:
+                    description: 'Group message (multipart): the member''s JID.'
+                    type: string
+                sender_name:
+                    description: 'Group message (multipart): the member''s display name.'
+                    type: string
+                sender_phone:
+                    description: 'Group message (multipart): the member''s phone (digits).'
+                    type: string
                 timestamp:
                     type: integer
             type: object
