@@ -85,7 +85,12 @@ Notação: 🔑 = índice; ⭐ = único.
 > **UM** contato `kind=group` (deduplicado pela JID `@g.us` em `identities`, **não**
 > por telefone) e **UMA** conversa — nunca um contato por remetente. O membro que
 > mandou a mensagem **não** vira contato; fica só como metadado da mensagem
-> (`messages.group_sender`).
+> (`messages.group_sender`). A **JID do grupo é a `identity`** do contato — é a chave
+> de roteamento que o webhook outbound carrega (`contact.identities[].external_id`),
+> então responder no grupo já funciona. A **descrição do grupo** (do registry
+> `whatsapp_groups`) é **semeada em `notes`** quando a nota está vazia, dando ao agente
+> a identificação do cliente/empresa; um re-sync **nunca sobrescreve** uma nota que o
+> agente editou.
 
 Índices: 🔑`(tenant_id, identities.channel, identities.value)` (lookup inbound),
 text `(name)`, 🔑 keyset.

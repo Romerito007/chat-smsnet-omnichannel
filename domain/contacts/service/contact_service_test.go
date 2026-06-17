@@ -380,3 +380,65 @@ func TestUpsertGroupContact_DedupByJIDNoPhone(t *testing.T) {
 		t.Errorf("name should refresh from the registry, got %q", g2.Name)
 	}
 }
+
+// The registry description seeds Notes only when empty: an agent's edited note is
+// never clobbered by a re-sync, but an empty note gets the description back.
+func TestUpsertGroupContact_DescriptionSeedsNotesWithoutClobber(t *testing.T) {
+	svc := newSvc()
+	ctx := tenantCtx()
+	const jid = "120363000000000099@g.us"
+
+	// Created with no registry description → Notes empty.
+	g1, err := svc.UpsertGroupContact(ctx, "whatsapp", jid, "Grupo", "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if g1.Notes != "" {
+		t.Errorf("no description → notes should be empty, got %q", g1.Notes)
+	}
+
+	// A later sync that now has a description seeds the empty Notes.
+	g2, err := svc.UpsertGroupContact(ctx, "whatsapp", jid, "Grupo", "Cliente Acme — financeiro")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if g2.Notes != "Cliente Acme — financeiro" {
+		t.Errorf("empty notes must be seeded from the registry description, got %q", g2.Notes)
+	}
+
+	// Agent edits the note; a subsequent sync must NOT overwrite it.
+	edited := "Falar só com o Sr. João"
+	if _, err := svc.Update(ctx, g2.ID, contracts.UpdateContact{Notes: &edited}); err != nil {
+		t.Fatalf("agent edit: %v", err)
+	}
+	g3, err := svc.UpsertGroupContact(ctx, "whatsapp", jid, "Grupo", "Cliente Acme — financeiro")
+	if err != nil {
+		t.Fatalf("resync: %v", err)
+	}
+	if g3.Notes != "Falar só com o Sr. João" {
+		t.Errorf("a re-sync must not clobber the agent's note, got %q", g3.Notes)
+	}
+}
+
+// Self-heal: a group contact that somehow lacks its JID identity gets it back on the
+// next sync — so the outbound webhook can always route to the group.
+func TestUpsertGroupContact_HealsMissingIdentity(t *testing.T) {
+	repo := newFakeRepo()
+	svc := New(repo, fixedClock{t: time.Unix(1700000000, 0).UTC()})
+	ctx := tenantCtx()
+	const jid = "120363000000000077@g.us"
+
+	// Seed a broken group contact: right kind, but NO identity (pre-fix shape).
+	broken := &entity.Contact{ID: "broken1", TenantID: "t1", Kind: entity.KindGroup, Name: "Grupo"}
+	_ = repo.Create(ctx, broken)
+	// Make it findable by JID anyway (simulating a record located by another means).
+	repo.byIdentity[key("whatsapp", jid)] = broken
+
+	healed, err := svc.UpsertGroupContact(ctx, "whatsapp", jid, "Grupo", "")
+	if err != nil {
+		t.Fatalf("heal: %v", err)
+	}
+	if !healed.HasIdentity("whatsapp", jid) {
+		t.Errorf("the JID identity must be healed onto the group contact, got %+v", healed.Identities)
+	}
+}

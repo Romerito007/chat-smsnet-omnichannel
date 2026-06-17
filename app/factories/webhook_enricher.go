@@ -27,6 +27,14 @@ func (e webhookEnricher) WebhookContact(ctx context.Context, contactID string) *
 	if err != nil || c == nil {
 		return nil
 	}
+	return newWebhookContact(c)
+}
+
+// newWebhookContact maps a contact entity to the outbound-webhook recipient block:
+// id/name/phone, the channel identities (the routing keys the gateway dials — for a
+// group, the JID @g.us) and is_group so a group is routable without parsing the JID
+// suffix. Pure (no I/O) so the mapping is unit-tested directly.
+func newWebhookContact(c *contactentity.Contact) *convcontracts.WebhookContact {
 	return &convcontracts.WebhookContact{
 		ID:               c.ID,
 		Name:             c.Name,

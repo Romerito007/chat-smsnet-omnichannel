@@ -501,8 +501,13 @@ func (s *Service) UpsertFromInbound(ctx context.Context, cmd contracts.UpsertFro
 // WhatsApp GROUP, keyed by the group JID — NOT by a phone (a group has none). It is
 // the Domain-2 counterpart of UpsertFromInbound: an inbound group message maps to ONE
 // group contact (Kind=group), never to one contact per member. name/description come
-// from the synced registry (whatsapp_groups). Idempotent and additive: an existing
-// group contact only has its name refreshed when the registry name changed.
+// from the synced registry (whatsapp_groups).
+//
+// The group JID is stored as the contact's channel IDENTITY ({channel, group_jid}):
+// that is exactly the routing key the outbound webhook carries (contact.identities),
+// so a reply to a group dials the group. Idempotent and self-healing: an existing
+// group contact gets its kind, identity and name reconciled, and the registry
+// description seeds Notes only when the agent hasn't written one (edits are kept).
 func (s *Service) UpsertGroupContact(ctx context.Context, channel, groupJID, name, description string) (*entity.Contact, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
@@ -514,6 +519,7 @@ func (s *Service) UpsertGroupContact(ctx context.Context, channel, groupJID, nam
 		return nil, apperror.Validation("channel and group_jid are required to identify a group contact")
 	}
 	name = strings.TrimSpace(name)
+	description = strings.TrimSpace(description)
 	now := s.clock.Now()
 
 	existing, err := s.repo.FindByChannelIdentity(ctx, channel, groupJID)
@@ -527,8 +533,20 @@ func (s *Service) UpsertGroupContact(ctx context.Context, channel, groupJID, nam
 			existing.Kind = entity.KindGroup
 			changed = true
 		}
+		// Ensure the JID identity exists — it is the outbound routing key. Defensive:
+		// a group contact must always carry it, so a reply can reach the group.
+		if !existing.HasIdentity(channel, groupJID) {
+			existing.Identities = append(existing.Identities, entity.ChannelIdentity{Channel: channel, ExternalID: groupJID})
+			changed = true
+		}
 		if name != "" && name != existing.Name {
 			existing.Name = name
+			changed = true
+		}
+		// Seed the group description into Notes only when empty — never clobber a note
+		// the agent has written.
+		if description != "" && strings.TrimSpace(existing.Notes) == "" {
+			existing.Notes = description
 			changed = true
 		}
 		if changed {
@@ -546,7 +564,7 @@ func (s *Service) UpsertGroupContact(ctx context.Context, channel, groupJID, nam
 		TenantID:   tenantID,
 		Kind:       entity.KindGroup,
 		Name:       name,
-		Notes:      strings.TrimSpace(description), // seeded once from the registry
+		Notes:      description, // seeded from the registry; the agent may edit it later
 		Identities: []entity.ChannelIdentity{{Channel: channel, ExternalID: groupJID}},
 		CreatedAt:  now,
 		UpdatedAt:  now,

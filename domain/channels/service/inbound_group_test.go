@@ -105,6 +105,10 @@ func TestInbound_Group_Attended_OneContactOneConversation(t *testing.T) {
 	if c.Phone != "" || len(c.Phones) != 0 {
 		t.Errorf("a group contact must have no phone, got phone=%q phones=%v", c.Phone, c.Phones)
 	}
+	// The registry description is seeded into the contact's Notes for the agent.
+	if c.Notes != "desc" {
+		t.Errorf("group description should seed the contact's notes, got %q", c.Notes)
+	}
 }
 
 // A group message records WHICH member sent it as display metadata only — the member
