@@ -78,6 +78,9 @@ func InboundService(c *container.Container) *channelservice.InboundService {
 	// auto-send the channel's configured message via the normal outbound pipeline.
 	svc.SetBusinessHours(BusinessHoursService(c))
 	svc.SetOutOfHoursSender(ConversationService(c))
+	// Group attendance gate: an inbound group message is attended only when its group
+	// was synced (Domain 1) and its attend flag is on; otherwise it is discarded.
+	svc.SetGroupGate(GroupService(c))
 	// Record an inbound attachment storage failure with its routing context.
 	svc.SetLogger(c.Logger)
 	return svc

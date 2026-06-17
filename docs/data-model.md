@@ -74,11 +74,18 @@ Notação: 🔑 = índice; ⭐ = único.
 | Campo | Tipo | Notas |
 |---|---|---|
 | `tenant_id` | string | 🔑 |
+| `kind` | string | `group` para um contato-tipo-grupo de WhatsApp (Domínio 2); vazio/ausente = `person` (retrocompatível) |
 | `name` | string | text index |
-| `identities` | [] | `{ channel, value }` (telefone, @user, e-mail) |
+| `identities` | [] | `{ channel, value }` (telefone, @user, e-mail; para grupo = a JID `@g.us`) |
 | `custom_fields` | object | |
 | `tags` | []string | |
 | `anonymized_at` | date | privacy |
+
+> **Contato-tipo-grupo (Domínio 2):** uma mensagem de grupo de WhatsApp resolve para
+> **UM** contato `kind=group` (deduplicado pela JID `@g.us` em `identities`, **não**
+> por telefone) e **UMA** conversa — nunca um contato por remetente. O membro que
+> mandou a mensagem **não** vira contato; fica só como metadado da mensagem
+> (`messages.group_sender`).
 
 Índices: 🔑`(tenant_id, identities.channel, identities.value)` (lookup inbound),
 text `(name)`, 🔑 keyset.
@@ -126,6 +133,7 @@ text `(name)`, 🔑 keyset.
 | `channel_message_id` | string | id externo p/ dedupe/status |
 | `status` | string | sent/delivered/read/failed |
 | `internal` | bool | nota interna (não vai ao contato) |
+| `group_sender` | object | `{ jid, name, phone }` — só em mensagem de grupo (Domínio 2): qual MEMBRO mandou. Metadado de exibição (front mostra "Nome:"); o membro **não** é contato. `author` segue `customer`/contato-grupo |
 
 Índices: 🔑`(tenant_id,conversation_id,created_at desc,_id desc)` (timeline),
 🔑`(tenant_id,channel_message_id)` (dedupe/status), text `(body)`.

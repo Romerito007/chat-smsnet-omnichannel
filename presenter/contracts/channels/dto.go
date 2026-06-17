@@ -215,23 +215,29 @@ type AttachmentItem struct {
 // or the inbound_token body field; integration_key/webhook_verify_token are
 // accepted as legacy aliases.
 type InboundRequest struct {
-	TenantKey          string                   `json:"tenant_key"`
-	InboundToken       string                   `json:"inbound_token"`
-	IntegrationKey     string                   `json:"integration_key"`
-	WebhookVerifyToken string                   `json:"webhook_verify_token"`
-	ExternalMessageID  string                   `json:"external_message_id"`
-	ExternalContactID  string                   `json:"external_contact_id"`
-	ContactName        string                   `json:"contact_name"`
-	ContactPhone       string                   `json:"contact_phone"`
-	ContactDocument    string                   `json:"contact_document"`
-	Channel            string                   `json:"channel"`
-	Text               string                   `json:"text"`
-	Attachments        []AttachmentItem         `json:"attachments"`
-	Contacts           []conventity.ContactCard `json:"contacts"`
-	Location           *conventity.Location     `json:"location"`
-	InteractiveReply   *InteractiveReplyItem    `json:"interactive_reply"`
-	Metadata           map[string]any           `json:"metadata"`
-	Timestamp          int64                    `json:"timestamp"`
+	TenantKey          string `json:"tenant_key"`
+	InboundToken       string `json:"inbound_token"`
+	IntegrationKey     string `json:"integration_key"`
+	WebhookVerifyToken string `json:"webhook_verify_token"`
+	ExternalMessageID  string `json:"external_message_id"`
+	ExternalContactID  string `json:"external_contact_id"`
+	ContactName        string `json:"contact_name"`
+	ContactPhone       string `json:"contact_phone"`
+	ContactDocument    string `json:"contact_document"`
+	Channel            string `json:"channel"`
+	// Group fields (all optional): GroupJID present ("...@g.us") marks a GROUP
+	// message; Sender* identify the member who sent it. Absent = 1:1 (unchanged).
+	GroupJID         string                   `json:"group_jid"`
+	SenderJID        string                   `json:"sender_jid"`
+	SenderName       string                   `json:"sender_name"`
+	SenderPhone      string                   `json:"sender_phone"`
+	Text             string                   `json:"text"`
+	Attachments      []AttachmentItem         `json:"attachments"`
+	Contacts         []conventity.ContactCard `json:"contacts"`
+	Location         *conventity.Location     `json:"location"`
+	InteractiveReply *InteractiveReplyItem    `json:"interactive_reply"`
+	Metadata         map[string]any           `json:"metadata"`
+	Timestamp        int64                    `json:"timestamp"`
 }
 
 // InteractiveReplyItem is the inbound interactive reply on the wire: the chosen
@@ -273,6 +279,10 @@ func (r InboundRequest) ToMessage(channel string) chcontracts.InboundMessage {
 		ContactPhone:      r.ContactPhone,
 		ContactDocument:   r.ContactDocument,
 		Channel:           channel,
+		GroupJID:          r.GroupJID,
+		SenderJID:         r.SenderJID,
+		SenderName:        r.SenderName,
+		SenderPhone:       r.SenderPhone,
 		Text:              r.Text,
 		Attachments:       atts,
 		Contacts:          r.Contacts,

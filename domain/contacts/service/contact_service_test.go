@@ -342,3 +342,41 @@ func TestAddChannelIdentity(t *testing.T) {
 		t.Errorf("unknown contact must be not_found, got %v", err)
 	}
 }
+
+// UpsertGroupContact creates ONE group contact keyed by the JID (no phone), seeds
+// name/notes from the registry, and is idempotent: a second call dedups by identity
+// and only refreshes the name when it changed — never creating a second contact.
+func TestUpsertGroupContact_DedupByJIDNoPhone(t *testing.T) {
+	svc := newSvc()
+	ctx := tenantCtx()
+	const jid = "120363000000000000@g.us"
+
+	g1, err := svc.UpsertGroupContact(ctx, "whatsapp", jid, "Cliente A", "Suporte")
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if !g1.IsGroup() {
+		t.Errorf("kind must be group, got %q", g1.Kind)
+	}
+	if g1.Phone != "" || len(g1.Phones) != 0 {
+		t.Errorf("a group contact must have no phone, got %q / %v", g1.Phone, g1.Phones)
+	}
+	if !g1.HasIdentity("whatsapp", jid) {
+		t.Errorf("identity must be {whatsapp, %s}, got %+v", jid, g1.Identities)
+	}
+	if g1.Notes != "Suporte" {
+		t.Errorf("description should seed notes, got %q", g1.Notes)
+	}
+
+	// Re-sync with a renamed group → same contact id, refreshed name.
+	g2, err := svc.UpsertGroupContact(ctx, "whatsapp", jid, "Cliente A Renomeado", "ignored on update")
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if g2.ID != g1.ID {
+		t.Errorf("re-upsert must dedup by JID (same id), got %s vs %s", g2.ID, g1.ID)
+	}
+	if g2.Name != "Cliente A Renomeado" {
+		t.Errorf("name should refresh from the registry, got %q", g2.Name)
+	}
+}

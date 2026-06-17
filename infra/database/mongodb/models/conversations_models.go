@@ -60,6 +60,7 @@ type Message struct {
 	Location          *MessageLocation         `bson:"location,omitempty"`
 	Interactive       *MessageInteractive      `bson:"interactive,omitempty"`
 	InteractiveReply  *MessageInteractiveReply `bson:"interactive_reply,omitempty"`
+	GroupSender       *MessageGroupSender      `bson:"group_sender,omitempty"`
 	Metadata          map[string]any           `bson:"metadata,omitempty"`
 	CreatedAt         time.Time                `bson:"created_at"`
 	DeliveryStatus    string                   `bson:"delivery_status,omitempty"`
@@ -157,4 +158,12 @@ type MessageInteractiveReply struct {
 	Title            string `bson:"title"`
 	Description      string `bson:"description,omitempty"`
 	ContextMessageID string `bson:"context_message_id,omitempty"`
+}
+
+// MessageGroupSender is the BSON sub-document for the member who authored an inbound
+// group message (display metadata only; never a contact).
+type MessageGroupSender struct {
+	JID   string `bson:"jid,omitempty"`
+	Name  string `bson:"name,omitempty"`
+	Phone string `bson:"phone,omitempty"`
 }

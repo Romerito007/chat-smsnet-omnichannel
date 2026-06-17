@@ -385,6 +385,17 @@ func DeliveryAdvances(from, to DeliveryStatus) bool {
 	return to.deliveryRank() > from.deliveryRank()
 }
 
+// GroupSender identifies WHICH group member authored an inbound group message. It
+// is pure display metadata, set ONLY on group messages: the message's SenderType
+// stays "customer" and SenderID stays the group contact's id, so timeline, realtime,
+// automation and webhooks treat it like any customer message. The member is NEVER
+// turned into a contact — this is the only place their JID/name is recorded.
+type GroupSender struct {
+	JID   string `json:"jid,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Phone string `json:"phone,omitempty"`
+}
+
 // Attachment is a media reference carried by a message.
 type Attachment struct {
 	ID          string `json:"id,omitempty"`
@@ -416,8 +427,11 @@ type Message struct {
 	Location *Location
 	// Interactive is the OUTBOUND menu (message_type=interactive); InteractiveReply
 	// is the INBOUND customer choice (message_type=interactive_reply).
-	Interactive       *Interactive
-	InteractiveReply  *InteractiveReply
+	Interactive      *Interactive
+	InteractiveReply *InteractiveReply
+	// GroupSender is set only on inbound group messages: who (which member) sent it.
+	// Display metadata only — never a contact. Nil on 1:1 and outbound messages.
+	GroupSender       *GroupSender
 	Metadata          map[string]any
 	CreatedAt         time.Time
 	DeliveryStatus    DeliveryStatus

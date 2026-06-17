@@ -17,9 +17,16 @@ type InboundMessage struct {
 	ContactPhone      string
 	ContactDocument   string
 	Channel           string
-	Text              string
-	Attachments       []entity.Attachment // already-hosted media (URL mode)
-	RawAttachments    []RawFile           // raw bytes (multipart mode), persisted on Handle
+	// GroupJID, when set (a WhatsApp group JID, "...@g.us"), marks this as a GROUP
+	// message: the conversation is keyed by the group (not the sender), and Sender*
+	// below records which member authored it. Empty = a normal 1:1 message.
+	GroupJID       string
+	SenderJID      string
+	SenderName     string
+	SenderPhone    string
+	Text           string
+	Attachments    []entity.Attachment // already-hosted media (URL mode)
+	RawAttachments []RawFile           // raw bytes (multipart mode), persisted on Handle
 	// Contacts (customer shared vCard[s]) and Location (customer shared a location)
 	// are the typed structured inbound payloads, when the gateway forwards them.
 	Contacts []entity.ContactCard
@@ -75,4 +82,8 @@ type InboundResult struct {
 	ContactID      string `json:"contact_id"`
 	Status         string `json:"status"`
 	Idempotent     bool   `json:"idempotent"`
+	// Discarded is true when the message was intentionally dropped (e.g. a group that
+	// is not attended or not synced): the endpoint still returns 200 so the gateway
+	// does not retry, but nothing was persisted.
+	Discarded bool `json:"discarded,omitempty"`
 }

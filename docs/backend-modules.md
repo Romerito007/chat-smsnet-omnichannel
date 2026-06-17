@@ -154,8 +154,13 @@ expõe (REST / WS / jobs).
   `audit`.
 - **Expõe:** REST `GET /v1/groups?q=` (busca nome+descrição, keyset; `group.view`),
   `PATCH /v1/groups/{id} {attend}` (`group.manage`), `POST /v1/groups/sync`
-  (`group.manage`); `FindByJID(tenant, group_jid)` para o Domínio 2 (gate de
-  atendimento, ainda não implementado).
+  (`group.manage`); `FindByJID(tenant, group_jid)` consumido pelo `channels` (inbound)
+  como **gate de atendimento** do Domínio 2.
+- **Domínio 2 (atendimento, no `channels`):** uma mensagem inbound com `group_jid`
+  resolve UM contato `kind=group` (dedup pela JID) + UMA conversa; se o grupo não foi
+  sincronizado ou está com `attend=false`, é **descartada** (200, nada persistido). O
+  membro remetente vira só metadado (`messages.group_sender`), nunca contato. Outbound
+  e atribuição (`assigned_to`) sem mudança — a identity do contato-grupo é a JID `@g.us`.
 
 ### `automationrules`
 - **Responsabilidade:** motor de **regras de automação** in-app (estilo

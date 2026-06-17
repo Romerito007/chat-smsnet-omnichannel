@@ -497,6 +497,67 @@ func (s *Service) UpsertFromInbound(ctx context.Context, cmd contracts.UpsertFro
 	return contact, nil
 }
 
+// UpsertGroupContact resolves (or creates) the single contact that represents a
+// WhatsApp GROUP, keyed by the group JID — NOT by a phone (a group has none). It is
+// the Domain-2 counterpart of UpsertFromInbound: an inbound group message maps to ONE
+// group contact (Kind=group), never to one contact per member. name/description come
+// from the synced registry (whatsapp_groups). Idempotent and additive: an existing
+// group contact only has its name refreshed when the registry name changed.
+func (s *Service) UpsertGroupContact(ctx context.Context, channel, groupJID, name, description string) (*entity.Contact, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	channel = strings.TrimSpace(channel)
+	groupJID = strings.TrimSpace(groupJID)
+	if channel == "" || groupJID == "" {
+		return nil, apperror.Validation("channel and group_jid are required to identify a group contact")
+	}
+	name = strings.TrimSpace(name)
+	now := s.clock.Now()
+
+	existing, err := s.repo.FindByChannelIdentity(ctx, channel, groupJID)
+	if err != nil && apperror.From(err).Code != apperror.CodeNotFound {
+		return nil, err
+	}
+	if existing != nil {
+		changed := false
+		// Heal a record created before the group kind existed (or via another path).
+		if existing.Kind != entity.KindGroup {
+			existing.Kind = entity.KindGroup
+			changed = true
+		}
+		if name != "" && name != existing.Name {
+			existing.Name = name
+			changed = true
+		}
+		if changed {
+			existing.UpdatedAt = now
+			if err := s.repo.Update(ctx, existing); err != nil {
+				return nil, err
+			}
+			s.webhooks.Emit(ctx, existing.TenantID, contracts.EventContactUpdated, "", contracts.NewContactPayload(existing))
+		}
+		return existing, nil
+	}
+
+	contact := &entity.Contact{
+		ID:         shared.NewID(),
+		TenantID:   tenantID,
+		Kind:       entity.KindGroup,
+		Name:       name,
+		Notes:      strings.TrimSpace(description), // seeded once from the registry
+		Identities: []entity.ChannelIdentity{{Channel: channel, ExternalID: groupJID}},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := s.repo.Create(ctx, contact); err != nil {
+		return nil, err
+	}
+	s.webhooks.Emit(ctx, contact.TenantID, contracts.EventContactCreated, "", contracts.NewContactPayload(contact))
+	return contact, nil
+}
+
 // normalizePhone keeps digits and a leading '+'.
 func normalizePhone(phone string) string {
 	phone = strings.TrimSpace(phone)

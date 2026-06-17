@@ -167,10 +167,16 @@ func schemas() M {
 			"attachments": arr(ref("Attachment")), "template": ref("MessageTemplate"),
 			"contacts": arr(ref("MessageContact")), "location": ref("MessageLocation"),
 			"interactive": ref("MessageInteractive"), "interactive_reply": ref("MessageInteractiveReply"),
+			"group_sender":    ref("MessageGroupSender"),
 			"metadata":        freeObject(),
 			"delivery_status": str(), "external_message_id": str(),
 			"created_at": dateTime(), "edited_at": dateTime(),
 		}),
+		"MessageGroupSender": withDesc(object(M{
+			"jid":   describedStr("The group member's JID who authored the message."),
+			"name":  describedStr("The member's display name/pushname (front renders \"Name:\")."),
+			"phone": describedStr("The member's phone (digits), when known."),
+		}), "Present only on inbound GROUP messages: which member sent it. Display metadata only — the member is never a contact."),
 		"MessageTemplate": object(M{
 			"template_id": describedStr("Opaque integrator template id (the chat does not interpret it)."),
 			"params":      withDesc(M{"type": "object", "additionalProperties": M{"type": "string"}}, "Filled named variables (key→value). On a template send the chat validates that every declared variable is present and no extras; the resolved display text is server-side only and never sent to the integrator."),
@@ -307,9 +313,13 @@ func schemas() M {
 			"inbound_token": str(), "tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
 			"external_message_id": str(), "external_contact_id": str(), "contact_name": str(),
 			"contact_phone": str(), "contact_document": str(), "channel": str(), "text": str(),
-			"attachments": arr(ref("Attachment")),
-			"contacts":    describedArr(ref("MessageContact"), "Set when the customer shares contact(s) (message_type=contact)."),
-			"location":    withDesc(ref("MessageLocation"), "Set when the customer shares a location (message_type=location)."),
+			"group_jid":    describedStr("WhatsApp group JID (\"...@g.us\"). PRESENCE marks this as a GROUP message: the conversation is keyed by the group, not the sender. Absent = a normal 1:1 message (unchanged). A group is only attended when it was synced (Domain 1) and its attend flag is on; otherwise the message is silently discarded (200, nothing stored)."),
+			"sender_jid":   describedStr("Group message only: JID of the member who authored it. Recorded as message metadata (group_sender), never as a contact."),
+			"sender_name":  describedStr("Group message only: the member's display name/pushname."),
+			"sender_phone": describedStr("Group message only: the member's phone (digits), when known."),
+			"attachments":  arr(ref("Attachment")),
+			"contacts":     describedArr(ref("MessageContact"), "Set when the customer shares contact(s) (message_type=contact)."),
+			"location":     withDesc(ref("MessageLocation"), "Set when the customer shares a location (message_type=location)."),
 			"interactive_reply": withDesc(object(M{
 				"kind": describedStr("'button' or 'list'."), "id": str(), "title": str(), "description": str(),
 				"context_external_id": describedStr("Meta context.id — the external id of the menu message the chat sent; resolved to the internal menu id."),
@@ -666,6 +676,7 @@ func schemas() M {
 		// name/phone.
 		"WebhookContact": object(M{
 			"id": str(), "name": str(), "phone": str(),
+			"is_group":          withDesc(boolean(), "True when the recipient is a WhatsApp group (its identity is the group JID @g.us). Lets the gateway send to the group without parsing the JID suffix. Omitted for normal person contacts."),
 			"identities":        arr(ref("WebhookIdentity")),
 			"custom_attributes": freeObject(),
 		}),

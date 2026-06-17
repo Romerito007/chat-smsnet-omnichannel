@@ -172,8 +172,84 @@ Só para contexto — **não** é responsabilidade do gateway:
 - `PATCH /v1/groups/{id} {attend}` — marca/desmarca atender (perm `group.manage`).
 - `POST /v1/groups/sync {channel_id}` — dispara o fluxo acima (perm `group.manage`).
 
-O **atendimento** de mensagens de grupo (o *gate* do `attend`) é o **Domínio 2**,
-ainda não implementado.
+---
+
+# Mensagens de grupo (Domínio 2) — a "língua oficial"
+
+Esta é a parte que **os dois gateways (oficial e não-oficial) falam IGUAL**: o chat
+**dita o contrato**, o gateway se adapta. Vale tanto pra canal `api` (WhatsApp não
+oficial) quanto `whatsapp` (oficial) — **o reconhecimento é pela JID do grupo
+(`@g.us`), nunca por tipo de canal**.
+
+## Receber mensagem de grupo (gateway → chat)
+
+**Mesmo endpoint de sempre:** `POST /v1/inbound/channel/{channel}/messages` (auth
+`X-Inbound-Token`, sem JWT). Uma mensagem de grupo é uma mensagem normal **+ campos
+novos, todos flat e opcionais**. **O sinal de reconhecimento é a presença de
+`group_jid`.**
+
+```json
+{
+  "external_message_id": "wamid.XYZ",
+  "text": "alguém viu o boleto?",
+
+  "group_jid":    "120363025246125486@g.us",
+  "sender_jid":   "5544999990000@s.whatsapp.net",
+  "sender_name":  "João",
+  "sender_phone": "5544999990000",
+
+  "attachments": [], "timestamp": 1718600000000
+}
+```
+
+| Campo | Obrigatório? | Papel |
+|---|---|---|
+| `group_jid` | **sim, quando é grupo** (`@g.us`) | identidade da **conversa de grupo** (a chave). Presença = "é grupo" |
+| `sender_jid` | recomendado | **quem** (membro) mandou — vira metadado da mensagem (`group_sender`) |
+| `sender_name` | recomendado | pushname/exibição → o chat mostra "João:" |
+| `sender_phone` | opcional | dígitos do membro, se tiver |
+
+**Regras (idênticas pros dois gateways):**
+- **Sem `group_jid`** → mensagem 1-para-1, comportamento atual **intacto**. Aí `sender_*`
+  não se aplicam e `external_contact_id`/`contact_phone` continuam obrigatórios.
+- **Com `group_jid`** → mensagem de grupo. A conversa é **uma só por grupo**;
+  `external_contact_id`/`contact_phone` **não** são a chave (a chave é o `group_jid`).
+  A autoria do membro vai em `sender_*` — o membro **nunca** vira contato.
+- Sempre mande a **JID completa** do grupo (`...@g.us`). Reconhecimento é por ela,
+  **nunca** por `if channel == whatsapp`.
+- `text`, `attachments`, mídia, `timestamp`, `external_message_id` — iguais ao 1:1.
+
+**Gate de atendimento (o chat decide, o gateway não precisa saber):**
+- Se o grupo **não foi sincronizado** (não está no registry do Domínio 1) **ou**
+  está marcado como **não atender** (`attend=false`) → o chat **descarta** a mensagem
+  e responde **`200 OK`** assim mesmo (nada é persistido). O `200` evita o gateway
+  re-tentar em loop; a próxima mensagem é reavaliada (se o operador ligar o atendimento
+  depois, ela entra). **O gateway não muda nada** — só manda; o filtro é do chat.
+- Se o grupo é atendido → o chat cria **UM** contato-tipo-grupo (identidade = a JID
+  `@g.us`) e **UMA** conversa, e registra o `sender_*` como metadado da mensagem.
+
+## Responder no grupo (chat → gateway)
+
+Sem novidade de transporte: a resposta do atendente sai no **mesmo webhook
+`message_created`** que o gateway já recebe. O destinatário vem no bloco `contact`:
+
+```json
+{
+  "event": "message_created",
+  "data": {
+    "id": "msg_...", "direction": "outbound", "text": "claro, segue o boleto",
+    "contact": {
+      "id": "ct_...",
+      "is_group": true,
+      "identities": [{ "channel": "whatsapp", "external_id": "120363025246125486@g.us" }]
+    }
+  }
+}
+```
+- **`contact.identities[].external_id` é a JID do GRUPO** (`@g.us`) — o gateway disca
+  pra essa JID exatamente como discaria pra uma pessoa. **Nada muda no roteamento.**
+- **`contact.is_group: true`** vem junto, pra o gateway saber que é grupo **sem
+  precisar parsear o sufixo `@g.us`**.
 
 ---
 
@@ -205,6 +281,21 @@ ainda não implementado.
 > em `400`, logue o lote ofensor. O upsert do chat é idempotente por
 > `(tenant, group_jid)` e preserva o `attend`, então **re-sincronizar é seguro** —
 > rode periodicamente e/ou sob demanda.
+>
+> **3) Entregar mensagens DE grupo (Domínio 2).** Quando chegar uma mensagem num
+> grupo de WhatsApp, faça o **mesmo** `POST {BASE_URL_CHAT}/v1/inbound/channel/whatsapp/messages`
+> que você já faz pra 1:1, **adicionando 4 campos flat**: `group_jid` (a JID do grupo,
+> `"...@g.us"` — OBRIGATÓRIO, é o que sinaliza "é grupo"), `sender_jid` (a JID do
+> membro que mandou), `sender_name` (pushname dele) e, se tiver, `sender_phone`.
+> Mantenha `text`/`attachments`/`timestamp`/`external_message_id` iguais ao 1:1. NÃO
+> mande `external_contact_id`/`contact_phone` como chave num grupo (a chave é o
+> `group_jid`). O chat pode responder `200` e **descartar** silenciosamente (grupo não
+> sincronizado ou marcado pra não atender) — isso é esperado, **não** re-tente.
+>
+> **4) Responder no grupo.** Nada novo: a resposta sai no webhook `message_created`
+> que você já consome. O destinatário é `data.contact.identities[].external_id`, que
+> numa conversa de grupo é a **JID do grupo** (`@g.us`); o bloco traz também
+> `contact.is_group: true`. Disque pra essa JID como discaria pra uma pessoa.
 >
 > Configuração necessária (por canal): `BASE_URL_CHAT`, `inbound_token`,
 > `outbound_secret`. Não invente headers de tenant: tenant e canal saem do

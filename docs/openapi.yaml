@@ -2103,6 +2103,9 @@ components:
                     type: string
                 external_message_id:
                     type: string
+                group_jid:
+                    description: 'WhatsApp group JID ("...@g.us"). PRESENCE marks this as a GROUP message: the conversation is keyed by the group, not the sender. Absent = a normal 1:1 message (unchanged). A group is only attended when it was synced (Domain 1) and its attend flag is on; otherwise the message is silently discarded (200, nothing stored).'
+                    type: string
                 inbound_token:
                     type: string
                 integration_key:
@@ -2131,6 +2134,15 @@ components:
                 metadata:
                     additionalProperties: true
                     type: object
+                sender_jid:
+                    description: 'Group message only: JID of the member who authored it. Recorded as message metadata (group_sender), never as a contact.'
+                    type: string
+                sender_name:
+                    description: 'Group message only: the member''s display name/pushname.'
+                    type: string
+                sender_phone:
+                    description: 'Group message only: the member''s phone (digits), when known.'
+                    type: string
                 tenant_key:
                     type: string
                 text:
@@ -2401,6 +2413,8 @@ components:
                     type: string
                 external_message_id:
                     type: string
+                group_sender:
+                    $ref: '#/components/schemas/MessageGroupSender'
                 id:
                     type: string
                 interactive:
@@ -2478,6 +2492,19 @@ components:
             required:
                 - name
                 - phones
+            type: object
+        MessageGroupSender:
+            description: 'Present only on inbound GROUP messages: which member sent it. Display metadata only — the member is never a contact.'
+            properties:
+                jid:
+                    description: The group member's JID who authored the message.
+                    type: string
+                name:
+                    description: The member's display name/pushname (front renders "Name:").
+                    type: string
+                phone:
+                    description: The member's phone (digits), when known.
+                    type: string
             type: object
         MessageHit:
             properties:
@@ -4143,6 +4170,9 @@ components:
                     items:
                         $ref: '#/components/schemas/WebhookIdentity'
                     type: array
+                is_group:
+                    description: True when the recipient is a WhatsApp group (its identity is the group JID @g.us). Lets the gateway send to the group without parsing the JID suffix. Omitted for normal person contacts.
+                    type: boolean
                 name:
                     type: string
                 phone:

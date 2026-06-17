@@ -142,6 +142,10 @@ type MessagePayload struct {
 	// is the inbound customer choice (message_type=interactive_reply).
 	Interactive      *entity.Interactive      `json:"interactive,omitempty"`
 	InteractiveReply *entity.InteractiveReply `json:"interactive_reply,omitempty"`
+	// GroupSender is who (which member) authored an inbound group message — display
+	// metadata, present only on group messages (front renders "Name:"). Carried on
+	// both the realtime and outbound-webhook payloads.
+	GroupSender *entity.GroupSender `json:"group_sender,omitempty"`
 	// Template carries the integrator template id + filled params for a template
 	// message, so an outbound-webhook receiver can render/send it. Nil otherwise.
 	Template       *MessageTemplatePayload `json:"template,omitempty"`
@@ -180,6 +184,7 @@ func NewMessagePayload(m *entity.Message) MessagePayload {
 		Location:         m.Location,
 		Interactive:      m.Interactive,
 		InteractiveReply: m.InteractiveReply,
+		GroupSender:      m.GroupSender,
 		Internal:         m.Direction == entity.DirectionInternal,
 		DeliveryStatus:   string(m.DeliveryStatus),
 		CreatedAt:        m.CreatedAt,
@@ -238,9 +243,13 @@ type WebhookIdentity struct {
 // phone, channel identities (the routing keys) and tenant custom_attributes. PII
 // beyond name/phone is intentionally excluded.
 type WebhookContact struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name,omitempty"`
-	Phone            string            `json:"phone,omitempty"`
+	ID    string `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Phone string `json:"phone,omitempty"`
+	// IsGroup is true when this recipient is a WhatsApp group (its identity is the
+	// group JID @g.us). The gateway uses it to send to the group without parsing the
+	// JID suffix. Omitted (false) for normal person contacts.
+	IsGroup          bool              `json:"is_group,omitempty"`
 	Identities       []WebhookIdentity `json:"identities,omitempty"`
 	CustomAttributes map[string]any    `json:"custom_attributes,omitempty"`
 }

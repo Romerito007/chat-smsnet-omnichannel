@@ -12,10 +12,12 @@ import (
 	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	chrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/repository"
 	contactcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/contracts"
+	contactentity "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/entity"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
 	convcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/contracts"
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/repository"
+	groupentity "github.com/romerito007/chat-smsnet-omnichannel/domain/groups/entity"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
@@ -43,7 +45,23 @@ type InboundService struct {
 	media         shared.IntegrationMediaResolver
 	businessHours BusinessHoursChecker
 	outOfHours    OutOfHoursSender
+	groupGate     GroupGate
 	logger        shared.Logger
+}
+
+// GroupGate resolves a synced WhatsApp group from the registry by its JID, so the
+// inbound flow can decide whether to attend a group message. Implemented by the
+// groups service (FindByJID). A not-found result means the group was never synced.
+type GroupGate interface {
+	FindByJID(ctx context.Context, groupJID string) (*groupentity.Group, error)
+}
+
+// SetGroupGate wires the group registry used to gate inbound group messages.
+// Optional: without it, group messages (those carrying a group_jid) are discarded.
+func (s *InboundService) SetGroupGate(g GroupGate) {
+	if g != nil {
+		s.groupGate = g
+	}
 }
 
 // BusinessHoursChecker reports whether a channel is open at an instant (timezone +
@@ -188,11 +206,15 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 	if externalMsgID == "" {
 		return chcontracts.InboundResult{}, apperror.Validation("external_message_id is required")
 	}
+	groupJID := strings.TrimSpace(msg.GroupJID)
+	isGroup := groupJID != ""
 	externalContact := strings.TrimSpace(msg.ExternalContactID)
 	if externalContact == "" {
 		externalContact = strings.TrimSpace(msg.ContactPhone)
 	}
-	if externalContact == "" {
+	// A 1:1 message must identify its sender; a group message is keyed by the group
+	// JID instead (the sender is recorded as message metadata, not as the key).
+	if !isGroup && externalContact == "" {
 		return chcontracts.InboundResult{}, apperror.Validation("external_contact_id or contact_phone is required")
 	}
 	if strings.TrimSpace(msg.Text) == "" && len(msg.Attachments) == 0 && len(msg.RawAttachments) == 0 &&
@@ -221,15 +243,13 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		return chcontracts.InboundResult{}, err
 	}
 
-	contact, err := s.contacts.UpsertFromInbound(ctx, contactcontracts.UpsertFromInbound{
-		Channel:    channel,
-		ExternalID: externalContact,
-		Name:       msg.ContactName,
-		Phone:      msg.ContactPhone,
-		Document:   msg.ContactDocument,
-	})
+	contact, discarded, err := s.resolveInboundContact(ctx, channel, groupJID, externalContact, msg)
 	if err != nil {
 		return chcontracts.InboundResult{}, err
+	}
+	if discarded {
+		// Intentionally dropped (group not attended / not synced): 200, nothing stored.
+		return chcontracts.InboundResult{Discarded: true, Status: "discarded"}, nil
 	}
 
 	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel, conn.ID, conn.UsesProtocol)
@@ -278,6 +298,44 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		Status:         string(conv.Status),
 		Idempotent:     false,
 	}, nil
+}
+
+// resolveInboundContact maps an inbound message to the contact whose conversation it
+// belongs to. For a 1:1 message that is the SENDER (created per person, as before).
+// For a GROUP message (groupJID set) it is the single GROUP contact — gated by the
+// registry: a group that was never synced, or whose attend flag is off, is DISCARDED
+// (returns discarded=true; nothing is created). The group member is never a contact.
+func (s *InboundService) resolveInboundContact(ctx context.Context, channel, groupJID, externalContact string, msg chcontracts.InboundMessage) (*contactentity.Contact, bool, error) {
+	if groupJID == "" {
+		contact, err := s.contacts.UpsertFromInbound(ctx, contactcontracts.UpsertFromInbound{
+			Channel:    channel,
+			ExternalID: externalContact,
+			Name:       msg.ContactName,
+			Phone:      msg.ContactPhone,
+			Document:   msg.ContactDocument,
+		})
+		return contact, false, err
+	}
+
+	// Group message: it is only attended when the group was synced AND attend=true.
+	if s.groupGate == nil {
+		shared.LoggerFrom(ctx, s.logger).Warn("GROUP_GATE_NOT_CONFIGURED", "group_jid", groupJID)
+		return nil, true, nil
+	}
+	grp, err := s.groupGate.FindByJID(ctx, groupJID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			shared.LoggerFrom(ctx, s.logger).Info("GROUP_NOT_SYNCED_DISCARDED", "group_jid", groupJID)
+			return nil, true, nil // never synced → not attended
+		}
+		return nil, false, err
+	}
+	if !grp.Attend {
+		shared.LoggerFrom(ctx, s.logger).Info("GROUP_NOT_ATTENDED_DISCARDED", "group_jid", groupJID, "group_id", grp.ID)
+		return nil, true, nil
+	}
+	contact, err := s.contacts.UpsertGroupContact(ctx, channel, groupJID, grp.Name, grp.Description)
+	return contact, false, err
 }
 
 func (s *InboundService) idempotentResult(ctx context.Context, rec *chentity.InboundRecord) chcontracts.InboundResult {
@@ -507,6 +565,7 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		Contacts:          in.Contacts,
 		Location:          in.Location,
 		InteractiveReply:  reply,
+		GroupSender:       groupSenderFrom(in),
 		Metadata:          in.Metadata,
 		CreatedAt:         createdAt,
 		DeliveryStatus:    conventity.DeliveryNone,
@@ -573,6 +632,22 @@ func (s *InboundService) appendInboundMessage(ctx context.Context, conv *convent
 		return p
 	})
 	return message, nil
+}
+
+// groupSenderFrom builds the group-sender metadata for an inbound message — only on
+// a group message (group_jid set) that carries at least one sender field. The member
+// is recorded for display, never as a contact. Nil on 1:1 messages.
+func groupSenderFrom(in chcontracts.InboundMessage) *conventity.GroupSender {
+	if strings.TrimSpace(in.GroupJID) == "" {
+		return nil
+	}
+	jid := strings.TrimSpace(in.SenderJID)
+	name := strings.TrimSpace(in.SenderName)
+	phone := strings.TrimSpace(in.SenderPhone)
+	if jid == "" && name == "" && phone == "" {
+		return nil
+	}
+	return &conventity.GroupSender{JID: jid, Name: name, Phone: phone}
 }
 
 // integrationMedia best-effort resolves a message's attachment ids to signed,

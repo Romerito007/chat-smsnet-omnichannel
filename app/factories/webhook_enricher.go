@@ -31,6 +31,7 @@ func (e webhookEnricher) WebhookContact(ctx context.Context, contactID string) *
 		ID:               c.ID,
 		Name:             c.Name,
 		Phone:            c.Phone,
+		IsGroup:          c.IsGroup(),
 		Identities:       webhookIdentities(c.Identities),
 		CustomAttributes: c.CustomAttributes,
 	}

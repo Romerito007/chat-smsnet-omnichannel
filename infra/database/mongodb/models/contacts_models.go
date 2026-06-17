@@ -9,7 +9,10 @@ type ChannelIdentity struct {
 // Contact is the BSON document for a contact. Only basic, locally-provided
 // fields are stored.
 type Contact struct {
-	Base               `bson:",inline"`
+	Base `bson:",inline"`
+	// Kind is "group" for a WhatsApp group contact; empty (omitted) means a normal
+	// person, so pre-existing records decode as person without a migration.
+	Kind               string            `bson:"kind,omitempty"`
 	Name               string            `bson:"name,omitempty"`
 	Phone              string            `bson:"phone,omitempty"`
 	Phones             []string          `bson:"phones,omitempty"`

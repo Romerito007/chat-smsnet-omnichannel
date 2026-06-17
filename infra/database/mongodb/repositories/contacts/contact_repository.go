@@ -204,6 +204,7 @@ func (r *Repository) List(ctx context.Context, f contracts.ListFilter, page shar
 
 func toModel(c *entity.Contact) models.Contact {
 	m := models.Contact{
+		Kind:               c.Kind,
 		Name:               c.Name,
 		Phone:              c.Phone,
 		Phones:             c.Phones,
@@ -230,6 +231,7 @@ func toEntity(m *models.Contact) *entity.Contact {
 	return &entity.Contact{
 		ID:                 m.ID,
 		TenantID:           m.TenantID,
+		Kind:               m.Kind,
 		Name:               m.Name,
 		Phone:              m.Phone,
 		Phones:             m.Phones,

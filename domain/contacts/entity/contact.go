@@ -33,12 +33,24 @@ func IsSupportedIdentityChannel(ch string) bool {
 	return ok
 }
 
+// Kind distinguishes a normal person contact from a WhatsApp group contact. A group
+// contact is born on demand from an inbound group message (Domain 2): it represents
+// the GROUP (its identity is the group JID @g.us), not any single member. Empty is
+// treated as KindPerson for back-compat with records created before groups existed.
+const (
+	KindPerson = "person"
+	KindGroup  = "group"
+)
+
 // Contact is a person who talks to the operation. Only basic, locally-provided
 // fields are stored — never data fetched/enriched from a provider.
 type Contact struct {
 	ID       string
 	TenantID string
-	Name     string
+	// Kind is "person" (default; empty == person) or "group" (a WhatsApp group
+	// contact, keyed by the group JID, never by a phone). See the Kind constants.
+	Kind string
+	Name string
 	// Phone is the primary phone (== Phones[0]), kept denormalized for the inbound
 	// upsert, search and dedup paths.
 	Phone string
@@ -87,6 +99,9 @@ func (c *Contact) AddPhone(phone string) {
 	}
 	c.SetPhones(append(c.Phones, phone))
 }
+
+// IsGroup reports whether the contact represents a WhatsApp group (Kind=group).
+func (c *Contact) IsGroup() bool { return c.Kind == KindGroup }
 
 // HasIdentity reports whether the contact already carries the given channel
 // identity.

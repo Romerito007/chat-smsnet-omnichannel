@@ -161,6 +161,7 @@ func msgToModel(m *entity.Message) models.Message {
 		Location:          msgLocationToModel(m.Location),
 		Interactive:       msgInteractiveToModel(m.Interactive),
 		InteractiveReply:  msgInteractiveReplyToModel(m.InteractiveReply),
+		GroupSender:       msgGroupSenderToModel(m.GroupSender),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    string(m.DeliveryStatus),
@@ -193,6 +194,7 @@ func msgToEntity(m *models.Message) *entity.Message {
 		Location:          msgLocationToEntity(m.Location),
 		Interactive:       msgInteractiveToEntity(m.Interactive),
 		InteractiveReply:  msgInteractiveReplyToEntity(m.InteractiveReply),
+		GroupSender:       msgGroupSenderToEntity(m.GroupSender),
 		Metadata:          m.Metadata,
 		CreatedAt:         m.CreatedAt,
 		DeliveryStatus:    entity.DeliveryStatus(m.DeliveryStatus),
@@ -317,6 +319,20 @@ func msgInteractiveReplyToModel(r *entity.InteractiveReply) *models.MessageInter
 		return nil
 	}
 	return &models.MessageInteractiveReply{Kind: r.Kind, ID: r.ID, Title: r.Title, Description: r.Description, ContextMessageID: r.ContextMessageID}
+}
+
+func msgGroupSenderToModel(g *entity.GroupSender) *models.MessageGroupSender {
+	if g == nil {
+		return nil
+	}
+	return &models.MessageGroupSender{JID: g.JID, Name: g.Name, Phone: g.Phone}
+}
+
+func msgGroupSenderToEntity(g *models.MessageGroupSender) *entity.GroupSender {
+	if g == nil {
+		return nil
+	}
+	return &entity.GroupSender{JID: g.JID, Name: g.Name, Phone: g.Phone}
 }
 
 func msgInteractiveReplyToEntity(r *models.MessageInteractiveReply) *entity.InteractiveReply {
