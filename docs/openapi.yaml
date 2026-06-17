@@ -1767,6 +1767,113 @@ components:
             required:
                 - valor
             type: object
+        Group:
+            properties:
+                activated:
+                    type: boolean
+                attend:
+                    description: Whether the chat attends this group. Defaults to true on first sync; a re-sync never resets the operator's choice.
+                    type: string
+                channel_id:
+                    type: string
+                company_id:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                description:
+                    type: string
+                group_admins:
+                    description: Raw admin identifiers (metadata, NOT contacts).
+                    items:
+                        type: string
+                    type: array
+                group_jid:
+                    description: The group's WhatsApp JID (e.g. "1203...@g.us"). Unique per tenant; the idempotency key for the sync.
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                owner_jid:
+                    type: string
+                owner_name:
+                    type: string
+                participants:
+                    description: Raw participant identifiers (metadata, NOT contacts).
+                    items:
+                        type: string
+                    type: array
+                synced_at:
+                    format: date-time
+                    type: string
+                tenant_id:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+                whatsapp_wid:
+                    type: string
+            type: object
+        GroupBatchItem:
+            properties:
+                activated:
+                    type: boolean
+                admins:
+                    description: Alias of group_admins.
+                    items:
+                        type: string
+                    type: array
+                company_id:
+                    type: string
+                description:
+                    type: string
+                group_admins:
+                    items:
+                        type: string
+                    type: array
+                group_jid:
+                    type: string
+                groupId:
+                    description: The group's WhatsApp JID in the gateway's shape (mapped to group_jid). group_jid is also accepted.
+                    type: string
+                name:
+                    type: string
+                owner_jid:
+                    type: string
+                owner_name:
+                    type: string
+                participants:
+                    items:
+                        type: string
+                    type: array
+                subject:
+                    description: The group's name in the gateway's shape (mapped to name). name is also accepted.
+                    type: string
+                whatsapp_wid:
+                    type: string
+            type: object
+        GroupBatchRequest:
+            properties:
+                groups:
+                    description: The group-sync batch (≤2000 groups).
+                    items:
+                        $ref: '#/components/schemas/GroupBatchItem'
+                    type: array
+                inbound_token:
+                    description: Channel integration token (alternative to the X-Inbound-Token header).
+                    type: string
+            required:
+                - groups
+            type: object
+        GroupSyncRequest:
+            properties:
+                channel_id:
+                    description: The channel whose gateway should push its group list.
+                    type: string
+            required:
+                - channel_id
+            type: object
         Holiday:
             properties:
                 channel_ids:
@@ -3533,6 +3640,14 @@ components:
                     type: array
                 regex:
                     type: string
+            type: object
+        UpdateGroupAttendRequest:
+            properties:
+                attend:
+                    description: Mark the group to attend (true) or not (false). Required.
+                    type: boolean
+            required:
+                - attend
             type: object
         UpdateHolidayRequest:
             properties:
@@ -7848,6 +7963,139 @@ paths:
             summary: Update a custom attribute definition (key/type/applies_to immutable)
             tags:
                 - customattributes
+    /v1/groups:
+        get:
+            operationId: getGroups
+            parameters:
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+                - description: Free-text search over name + description (text index)
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by channel id
+                  in: query
+                  name: channel_id
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by attend flag (true|false)
+                  in: query
+                  name: attend
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/Group'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Group page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List/search known WhatsApp groups (group.view)
+            tags:
+                - groups
+    /v1/groups/{id}:
+        patch:
+            operationId: patchGroupsById
+            parameters:
+                - description: group id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateGroupAttendRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Group'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Mark a group to attend or not (group.manage)
+            tags:
+                - groups
+    /v1/groups/sync:
+        post:
+            operationId: postGroupsSync
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GroupSyncRequest'
+                required: true
+            responses:
+                "202":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: true
+                                type: object
+                    description: Accepted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Request a group sync from the channel''s gateway (group.manage). Asynchronous: emits group_sync_requested to the channel''s managed webhook; the gateway pushes the groups to the inbound groups endpoint. Returns 409 when the channel has no managed webhook.'
+            tags:
+                - groups
     /v1/holidays:
         get:
             operationId: getHolidays
@@ -8109,6 +8357,46 @@ paths:
                     $ref: '#/components/responses/Error500'
             security: []
             summary: Report a message delivery status (channel-authenticated; OPTIONAL)
+            tags:
+                - channels
+    /v1/inbound/channel/{channel}/groups:
+        post:
+            operationId: postInboundChannelByChannelGroups
+            parameters:
+                - description: channel type
+                  in: path
+                  name: channel
+                  required: true
+                  schema:
+                    type: string
+                - description: Channel integration token (preferred over the inbound_token body field).
+                  in: header
+                  name: X-Inbound-Token
+                  required: false
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GroupBatchRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: true
+                                type: object
+                    description: Result {ok, upserted}
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            security: []
+            summary: Receive a WhatsApp group-sync batch (channel-authenticated). The gateway pushes the channel's group list in batches (≤2000) in response to a group_sync_requested event. Upsert is idempotent by (tenant, group_jid) and never resets the operator's attend choice.
             tags:
                 - channels
     /v1/inbound/channel/{channel}/messages:
@@ -11094,6 +11382,8 @@ tags:
       name: routing
     - description: Channel connections and inbound ingestion.
       name: channels
+    - description: 'WhatsApp groups registry: gateway sync and the attend filter.'
+      name: groups
     - description: Trigger/condition/action rules (Chatwoot-style).
       name: automationrules
     - description: smsnet-integrations config and on-demand external queries.

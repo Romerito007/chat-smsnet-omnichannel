@@ -37,6 +37,11 @@ const (
 	ChannelManage Permission = "channel.manage"
 	WebhookManage Permission = "webhook.manage"
 
+	// GroupView lets an agent list/search the known WhatsApp groups; GroupManage
+	// lets a supervisor/admin toggle the attend filter and trigger a group sync.
+	GroupView   Permission = "group.view"
+	GroupManage Permission = "group.manage"
+
 	ReportView   Permission = "report.view"
 	ReportExport Permission = "report.export"
 
@@ -58,6 +63,7 @@ func AllPermissions() []Permission {
 		CopilotUse, CopilotConfigure,
 		IntegrationRead, IntegrationConfigure, IntegrationExecuteAction,
 		ChannelManage, WebhookManage,
+		GroupView, GroupManage,
 		ReportView, ReportExport,
 		AuditView, PrivacyManage,
 		CustomAttributeManage,

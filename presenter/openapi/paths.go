@@ -207,6 +207,28 @@ func registerChannels(p *paths) {
 		summary: "Persist a verified channel identity onto a contact (channel-authenticated). Idempotent; never steals an identity owned by another contact. Used by the WhatsApp gateway to store a resolved JID so later webhooks carry source=identity.",
 		public:  true, params: inboundParams, reqBody: body(ref("ContactIdentityRequest")),
 		responses: M{"200": jsonResp("Result {ok, applied}", freeObject())}}))
+	p.add("POST", "/v1/inbound/channel/{channel}/groups", op(opConfig{tag: "channels",
+		summary: "Receive a WhatsApp group-sync batch (channel-authenticated). The gateway pushes the channel's group list in batches (≤2000) in response to a group_sync_requested event. Upsert is idempotent by (tenant, group_jid) and never resets the operator's attend choice.",
+		public:  true, params: inboundParams, reqBody: body(ref("GroupBatchRequest")),
+		responses: M{"200": jsonResp("Result {ok, upserted}", freeObject())}}))
+}
+
+// registerGroups mounts the WhatsApp groups management endpoints (Domain 1: list,
+// search, attend filter, gateway sync request).
+func registerGroups(p *paths) {
+	p.add("GET", "/v1/groups", op(opConfig{tag: "groups", summary: "List/search known WhatsApp groups (group.view)",
+		params: append(paginationParams(),
+			queryParam("q", "Free-text search over name + description (text index)"),
+			queryParam("channel_id", "Filter by channel id"),
+			queryParam("attend", "Filter by attend flag (true|false)")),
+		responses: M{"200": jsonResp("Group page", pageOf(ref("Group")))}}))
+	p.add("PATCH", "/v1/groups/{id}", op(opConfig{tag: "groups", summary: "Mark a group to attend or not (group.manage)",
+		params: []M{pathParam("id", "group id")}, reqBody: body(ref("UpdateGroupAttendRequest")),
+		responses: M{"200": jsonResp("Updated", ref("Group")), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/groups/sync", op(opConfig{tag: "groups",
+		summary:   "Request a group sync from the channel's gateway (group.manage). Asynchronous: emits group_sync_requested to the channel's managed webhook; the gateway pushes the groups to the inbound groups endpoint. Returns 409 when the channel has no managed webhook.",
+		reqBody:   body(ref("GroupSyncRequest")),
+		responses: M{"202": jsonResp("Accepted", freeObject()), "409": respRef("Error409")}}))
 }
 
 func registerIntegrations(p *paths) {

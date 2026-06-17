@@ -134,10 +134,28 @@ expõe (REST / WS / jobs).
 - **Depende de:** `conversations`, `contacts`, `secrets`, `attachments`,
   `providerhub`.
 - **Expõe:** REST (`/channels` CRUD + `/channels/{id}/test`); webhooks de inbound
-  (`/inbound/channel/{channel}/messages` e `/delivery-receipts`); jobs
-  (`channel.deliver`, `channel.retry`, `channels.health_check`).
+  (`/inbound/channel/{channel}/messages`, `/delivery-receipts`, `/contact-identity`
+  e `/groups`); jobs (`channel.deliver`, `channel.retry`, `channels.health_check`).
 - **Adapters:** `infra/channels/{api,whatsapp,webchat}` (HMAC compartilhado em
   `infra/channels/sign`). Sem adapter mock em produção.
+
+### `groups`
+- **Responsabilidade:** registro dos **grupos de WhatsApp** de um canal (Domínio 1:
+  Configuração). Sincroniza a lista do gateway (~5k, 1 por cliente) só para **marcar
+  quais NÃO atender** (filtro `attend`; default = atende). **Não** muta o WhatsApp
+  (sem add/remover participante, sem editar grupo) — o chat é **agnóstico ao gateway**.
+- **Sync:** `POST /v1/groups/sync` emite `group_sync_requested` **só** ao webhook
+  **gerenciado** do canal (via `Dispatcher.EmitToChannel`, **fora** do catálogo
+  público `SupportedEvents`); o gateway empurra a lista em lotes (≤2000) para
+  `POST /v1/inbound/channel/{channel}/groups` (borda por `inbound_token`, sem JWT).
+  Upsert idempotente por `(tenant_id, group_jid)` que **preserva** o `attend`.
+- **Entidades:** `Group` (coleção `whatsapp_groups`).
+- **Depende de:** `webhooks` (emissão ao canal), `channels` (resolução inbound),
+  `audit`.
+- **Expõe:** REST `GET /v1/groups?q=` (busca nome+descrição, keyset; `group.view`),
+  `PATCH /v1/groups/{id} {attend}` (`group.manage`), `POST /v1/groups/sync`
+  (`group.manage`); `FindByJID(tenant, group_jid)` para o Domínio 2 (gate de
+  atendimento, ainda não implementado).
 
 ### `automationrules`
 - **Responsabilidade:** motor de **regras de automação** in-app (estilo

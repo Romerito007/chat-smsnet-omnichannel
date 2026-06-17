@@ -582,6 +582,43 @@ func schemas() M {
 			"custom_attributes":    customAttributesObject(),
 		}),
 
+		// ── WhatsApp groups (Domain 1: configuration) ───────────────────────────
+		"Group": object(M{
+			"id": str(), "tenant_id": str(), "channel_id": str(),
+			"group_jid":    describedStr("The group's WhatsApp JID (e.g. \"1203...@g.us\"). Unique per tenant; the idempotency key for the sync."),
+			"name":         str(),
+			"description":  str(),
+			"participants": describedArr(str(), "Raw participant identifiers (metadata, NOT contacts)."),
+			"group_admins": describedArr(str(), "Raw admin identifiers (metadata, NOT contacts)."),
+			"company_id":   str(), "whatsapp_wid": str(), "owner_name": str(), "owner_jid": str(),
+			"activated":  boolean(),
+			"attend":     describedStr("Whether the chat attends this group. Defaults to true on first sync; a re-sync never resets the operator's choice."),
+			"synced_at":  dateTime(),
+			"created_at": dateTime(), "updated_at": dateTime(),
+		}),
+		"UpdateGroupAttendRequest": object(M{
+			"attend": withDesc(boolean(), "Mark the group to attend (true) or not (false). Required."),
+		}, "attend"),
+		"GroupSyncRequest": object(M{
+			"channel_id": describedStr("The channel whose gateway should push its group list."),
+		}, "channel_id"),
+		"GroupBatchRequest": object(M{
+			"inbound_token": describedStr("Channel integration token (alternative to the X-Inbound-Token header)."),
+			"groups":        describedArr(ref("GroupBatchItem"), "The group-sync batch (≤2000 groups)."),
+		}, "groups"),
+		"GroupBatchItem": object(M{
+			"groupId":      describedStr("The group's WhatsApp JID in the gateway's shape (mapped to group_jid). group_jid is also accepted."),
+			"group_jid":    str(),
+			"subject":      describedStr("The group's name in the gateway's shape (mapped to name). name is also accepted."),
+			"name":         str(),
+			"description":  str(),
+			"participants": arr(str()),
+			"group_admins": arr(str()),
+			"admins":       describedArr(str(), "Alias of group_admins."),
+			"company_id":   str(), "whatsapp_wid": str(), "owner_name": str(), "owner_jid": str(),
+			"activated": boolean(),
+		}),
+
 		// ── webhooks ───────────────────────────────────────────────────────────
 		"Webhook": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),

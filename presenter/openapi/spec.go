@@ -362,6 +362,7 @@ func Build() M {
 	registerOrg(p)
 	registerConversations(p)
 	registerChannels(p)
+	registerGroups(p)
 	registerIntegrations(p)
 	registerCopilotMCP(p)
 	registerProductivity(p)
@@ -403,6 +404,7 @@ func tags() []any {
 		{"contacts", "Read contacts (CRM-style profile)."},
 		{"routing", "Assignment, transfer and queue distribution."},
 		{"channels", "Channel connections and inbound ingestion."},
+		{"groups", "WhatsApp groups registry: gateway sync and the attend filter."},
 		{"automationrules", "Trigger/condition/action rules (Chatwoot-style)."},
 		{"providerhub", "smsnet-integrations config and on-demand external queries."},
 		{"webhooks", "Outbound webhook subscriptions and deliveries."},

@@ -139,6 +139,21 @@ func (d *Dispatcher) EmitTo(ctx context.Context, tenantID, webhookID, event stri
 	return nil
 }
 
+// EmitToChannel delivers an event to a channel's MANAGED webhook (the gateway),
+// resolving it by channel id. It reuses EmitTo (HMAC signing, retry/backoff,
+// dead-letter). Returns a clear error when the channel has no managed webhook (no
+// outbound_url configured) — the sync request has nowhere to go.
+func (d *Dispatcher) EmitToChannel(ctx context.Context, tenantID, channelID, event string, payload any) error {
+	sub, err := d.subs.FindByChannelID(ctx, channelID)
+	if err != nil {
+		if apperror.From(err).Code == apperror.CodeNotFound {
+			return apperror.Conflict("o canal não tem webhook gerenciado (configure o outbound_url)")
+		}
+		return err
+	}
+	return d.EmitTo(ctx, tenantID, sub.ID, event, payload)
+}
+
 // scopeAllows applies a subscription's sector scopes: empty scopes = every sector;
 // otherwise the event's sector must be listed. Events with no sector (e.g.
 // automation) are delivered only to unscoped subscriptions.

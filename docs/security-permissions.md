@@ -52,7 +52,7 @@ Definidos em `domain/authz/authz.go` (`DefaultRoles()`). São **três** — não
 > Papéis são **customizáveis** por tenant; o seed é apenas o ponto de partida
 > idempotente.
 
-### Catálogo de permissões (as 26 reais)
+### Catálogo de permissões (as 28 reais)
 ```
 conversation.read   conversation.assign   conversation.transfer   conversation.close
 message.send        message.internal_note message.delete
@@ -62,6 +62,7 @@ automation.manage
 copilot.use         copilot.configure
 integration.read    integration.configure integration.execute_action
 channel.manage      webhook.manage
+group.view          group.manage
 report.view         report.export
 audit.view          privacy.manage
 ```
@@ -86,6 +87,7 @@ audit.view          privacy.manage
 | Contatos (`/contacts`) | ler=`contact.read`, escrever=`contact.write` |
 | Faturas no Customer-360 | `contact.view_financial` |
 | Canais (`/channels`) | `channel.manage` |
+| **Grupos de WhatsApp** (`/groups`) | ler/buscar=`group.view`, marcar atendimento + sync=`group.manage` |
 | Webhooks (`/webhooks`) | `webhook.manage` |
 | Regras de automação (`/automation-rules/*`) | `automation.manage` |
 | Copilot usar / configurar (`/copilot/*`) | `copilot.use` / `copilot.configure` |
@@ -130,7 +132,7 @@ Além da permissão, há **escopo de dados** (`SectorScope` no papel):
 
 | Endpoint | Verificação |
 |---|---|
-| Inbound de canal (`/inbound/channel/{channel}/messages`, `.../delivery-receipts`) | **inbound_token do canal** (`X-Inbound-Token`/corpo, hash em tempo constante) + HMAC do corpo opcional |
+| Inbound de canal (`/inbound/channel/{channel}/messages`, `.../delivery-receipts`, `.../contact-identity`, `.../groups`) | **inbound_token do canal** (`X-Inbound-Token`/corpo, hash em tempo constante) + HMAC do corpo opcional |
 | Coleta de CSAT (link público) | token assinado de vida curta |
 | Webhook **outbound** (nosso) | assinamos com HMAC; subscriber valida |
 | **Provisionamento de tenant** (`POST /platform/tenants`) | **`X-Platform-Key: key_id.secret`** (plano de plataforma, ACIMA do tenant), `PlatformAuth` separado do `AuthContext`; chaves em `PLATFORM_API_KEYS` (hash em repouso, compare em tempo constante). NÃO carrega contexto de tenant; só cria tenant+owner. Auditado como `platform.tenant_provisioned` (ActorType `platform`, ActorID = key_id). |

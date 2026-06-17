@@ -126,3 +126,47 @@ Comportamento:
 
 Modelado no OpenAPI como `ContactIdentityRequest` + a rota pública
 `/v1/inbound/channel/{channel}/contact-identity`.
+
+### 4. Sincronizar grupos de WhatsApp — `POST /v1/inbound/channel/{channel}/groups`
+Auth: `X-Inbound-Token: <token>` (ou campo `inbound_token`), **sem JWT** — mesma
+borda do inbound. É o **Domínio 1 (Configuração)** de grupos: o chat conhece a
+lista de grupos do canal (~5k, 1 por cliente) só para **marcar quais NÃO atender**
+(filtro; default = atende). Não há mutação real no WhatsApp (sem add/remover
+participante, sem editar grupo) — o chat é **agnóstico ao gateway**.
+
+Fluxo:
+1. Um supervisor chama `POST /v1/groups/sync {channel_id}` (perm `group.manage`).
+   Isso emite o evento `group_sync_requested` **só** ao webhook **gerenciado** do
+   canal (via `Dispatcher.EmitToChannel`) — **fora** do catálogo público
+   `SupportedEvents`. Se o canal não tem webhook gerenciado (sem `outbound_url`) →
+   `409`. Resposta: `202` (assíncrono).
+2. O gateway responde empurrando a lista **em lotes** (≤2000) para este endpoint.
+
+```json
+{ "inbound_token":"<T>", "groups":[
+  { "groupId":"1203...@g.us", "subject":"Cliente A",
+    "participants":["55449...@s.whatsapp.net"], "group_admins":["55449...@s.whatsapp.net"] }
+]}
+```
+- Aceita a **shape do gateway**: `groupId`→`group_jid`, `subject`→`name`
+  (`group_jid`/`name` também são aceitos diretamente; `admins` é alias de
+  `group_admins`).
+- `participants`/`group_admins` são guardados como **arrays de string crus** —
+  metadados, **não** contatos (o roteamento é por JID).
+- Resposta: `{ "ok": true, "upserted": <n> }`.
+
+Comportamento:
+- **Idempotente** por `(tenant_id, group_jid)`: re-sincronizar os mesmos 5k em
+  lotes **não duplica** (índice único + upsert `BulkWrite`).
+- **Preserva a escolha do operador:** `attend` nasce `true` só no insert
+  (`$setOnInsert`); um re-sync **nunca** reseta o `attend` marcado.
+- **Tenant** vem só do `inbound_token` (nunca de header).
+
+Gestão (trilho interno, JWT): `GET /v1/groups?q=` busca por nome+descrição (índice
+de texto), keyset-paginada (`group.view`); `PATCH /v1/groups/{id} {attend}` marca/
+desmarca (`group.manage`). Modelado no OpenAPI como `Group`, `GroupBatchRequest`,
+`GroupSyncRequest`, `UpdateGroupAttendRequest` + as rotas acima.
+
+> O atendimento de mensagens de grupo no chat (o *gate* do `attend`) é o **Domínio
+> 2** — não incluído aqui. O repositório já expõe `FindByJID(tenant, group_jid)`
+> para esse gate.

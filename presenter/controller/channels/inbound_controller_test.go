@@ -16,6 +16,7 @@ import (
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	chservice "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/service"
+	groupcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/groups/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/channels"
 )
@@ -60,7 +61,7 @@ func hashToken(tok string) string {
 func inboundRouter(conn *entity.ChannelConnection) http.Handler {
 	connSvc := chservice.NewConnectionService(&seededConnRepo{conn: conn}, oneAdapterRegistry{}, shared.SystemClock{})
 	// inbound/outbound services are unused on the auth-rejection paths exercised here.
-	ctl := channels.NewInboundController(connSvc, nil, nil, nil)
+	ctl := channels.NewInboundController(connSvc, nil, nil, nil, nil)
 	r := chi.NewRouter()
 	r.Post("/inbound/channel/{channel}/messages", ctl.HandleMessage)
 	return r
@@ -80,7 +81,7 @@ func (f *fakeIdentityUpdater) AddChannelIdentity(_ context.Context, contactID, c
 
 func identityRouter(conn *entity.ChannelConnection, up channels.ContactIdentityUpdater) http.Handler {
 	connSvc := chservice.NewConnectionService(&seededConnRepo{conn: conn}, oneAdapterRegistry{}, shared.SystemClock{})
-	ctl := channels.NewInboundController(connSvc, nil, nil, up)
+	ctl := channels.NewInboundController(connSvc, nil, nil, up, nil)
 	r := chi.NewRouter()
 	r.Post("/inbound/channel/{channel}/contact-identity", ctl.HandleContactIdentity)
 	return r
@@ -149,6 +150,80 @@ func TestContactIdentity_RejectsInvalidToken_401(t *testing.T) {
 	}
 	if len(up.calls) != 0 {
 		t.Error("the updater must not be called when the token is invalid")
+	}
+}
+
+// fakeGroupSink records the gateway sync batch the groups edge forwards.
+type fakeGroupSink struct {
+	channelID string
+	batches   [][]groupcontracts.UpsertGroup
+}
+
+func (s *fakeGroupSink) UpsertBatch(_ context.Context, channelID string, groups []groupcontracts.UpsertGroup) (int, error) {
+	s.channelID = channelID
+	s.batches = append(s.batches, groups)
+	return len(groups), nil
+}
+
+func groupsRouter(conn *entity.ChannelConnection, sink channels.GroupSink) http.Handler {
+	connSvc := chservice.NewConnectionService(&seededConnRepo{conn: conn}, oneAdapterRegistry{}, shared.SystemClock{})
+	ctl := channels.NewInboundController(connSvc, nil, nil, nil, sink)
+	r := chi.NewRouter()
+	r.Post("/inbound/channel/{channel}/groups", ctl.HandleGroups)
+	return r
+}
+
+func postGroups(h http.Handler, header string, body map[string]any) *httptest.ResponseRecorder {
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/inbound/channel/whatsapp/groups", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	if header != "" {
+		req.Header.Set("X-Inbound-Token", header)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestGroups_TokenAuth_MapsGatewayShape: the groups edge authenticates by the
+// channel inbound token (no JWT), maps the gateway's groupId/subject names onto our
+// contract, and forwards the batch tagged with the resolved channel id.
+func TestGroups_TokenAuth_MapsGatewayShape(t *testing.T) {
+	sink := &fakeGroupSink{}
+	rec := postGroups(groupsRouter(seededConn(), sink), "the-real-token", map[string]any{
+		"groups": []map[string]any{
+			{"groupId": "120@g.us", "subject": "Cliente A", "participants": []string{"55449@s.whatsapp.net"}},
+			{"group_jid": "121@g.us", "name": "Cliente B", "admins": []string{"55448@s.whatsapp.net"}},
+		},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if len(sink.batches) != 1 || len(sink.batches[0]) != 2 {
+		t.Fatalf("want one batch of 2, got %+v", sink.batches)
+	}
+	if sink.channelID != "c1" {
+		t.Fatalf("want channel c1, got %q", sink.channelID)
+	}
+	b := sink.batches[0]
+	if b[0].GroupJID != "120@g.us" || b[0].Name != "Cliente A" {
+		t.Errorf("groupId/subject not mapped: %+v", b[0])
+	}
+	if b[1].GroupJID != "121@g.us" || b[1].Name != "Cliente B" || len(b[1].GroupAdmins) != 1 {
+		t.Errorf("group_jid/name/admins not mapped: %+v", b[1])
+	}
+}
+
+func TestGroups_RejectsInvalidToken_401(t *testing.T) {
+	sink := &fakeGroupSink{}
+	rec := postGroups(groupsRouter(seededConn(), sink), "wrong-token", map[string]any{
+		"groups": []map[string]any{{"groupId": "120@g.us"}},
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (%s)", rec.Code, rec.Body.String())
+	}
+	if len(sink.batches) != 0 {
+		t.Error("the sink must not be called when the token is invalid")
 	}
 }
 

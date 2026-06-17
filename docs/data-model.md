@@ -167,6 +167,21 @@ channel; default false — ver `conversations.protocol`), `whatsapp_templates`
 `language`, `body{text, variables[{key,label,example}]}`, `header?`, `buttons?`,
 `footer?`; substituído por completo a cada push; o chat NÃO fala com a Meta).
 
+### `whatsapp_groups`
+Registro dos grupos de WhatsApp de um canal (Domínio 1: Configuração), sincronizado
+do gateway só para **marcar quais NÃO atender** (filtro; default = atende). **Não**
+há mutação real no WhatsApp. Campos: `tenant_id`🔑, `group_jid`🔑 (JID do grupo,
+ÚNICO por tenant — `(tenant_id, group_jid)` é a chave idempotente do sync),
+`channel_id`, `name`, `description`, `participants` []string e `group_admins`
+[]string (metadados **crus**, não contatos — o roteamento é por JID), `company_id`,
+`whatsapp_wid`, `owner_name`, `owner_jid`, `activated` bool, `attend` bool
+(nasce `true` só no insert; um re-sync **nunca** reseta a escolha do operador),
+`synced_at`. Índices: único `(tenant_id, group_jid)`, keyset
+`(tenant_id, created_at, _id)` e texto `(name, description)` para a busca. O upsert
+em lote (`BulkWrite`, `$set` metadados + `$setOnInsert` attend/_id/created_at) é
+idempotente — re-sincronizar ~5k em lotes não duplica. `FindByJID(tenant, group_jid)`
+fica exposto para o Domínio 2 (o *gate* de atendimento).
+
 > **Atributos personalizados:** `contacts.custom_attributes` e
 > `conversations.custom_attributes` (mapa key→value, validado contra
 > `custom_attribute_definitions` por `applies_to`). Mensagens de **template**

@@ -42,5 +42,6 @@ func registerChannelRoutes(r chi.Router, c *container.Container) {
 		pub.Post("/inbound/channel/{channel}/messages", inbound.HandleMessage)
 		pub.Post("/inbound/channel/{channel}/delivery-receipts", inbound.HandleDeliveryReceipts)
 		pub.Post("/inbound/channel/{channel}/contact-identity", inbound.HandleContactIdentity)
+		pub.Post("/inbound/channel/{channel}/groups", inbound.HandleGroups)
 	})
 }

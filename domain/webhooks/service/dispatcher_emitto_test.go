@@ -54,6 +54,41 @@ func TestEmitTo_DisabledWebhookErrors(t *testing.T) {
 	}
 }
 
+func TestEmitToChannel_DeliversToManagedWebhook(t *testing.T) {
+	// The channel's managed webhook is found by OwnedByChannelID; the event is
+	// delivered to it (reusing EmitTo's pipeline) regardless of its events[] filter.
+	subs := &fakeSubs{byID: map[string]*entity.WebhookSubscription{
+		"wh1": {ID: "wh1", TenantID: "t1", Enabled: true, OwnedByChannelID: "ch1"},
+	}}
+	del := newFakeDeliveries()
+	enq := &fakeEnqueuer{}
+	d := NewDispatcher(subs, del, enq, emitClock())
+
+	ctx := shared.WithTenant(context.Background(), "t1")
+	if err := d.EmitToChannel(ctx, "t1", "ch1", "group_sync_requested", map[string]any{"channel_id": "ch1"}); err != nil {
+		t.Fatalf("emit to channel: %v", err)
+	}
+	if len(del.created) != 1 {
+		t.Fatalf("expected 1 delivery, got %d", len(del.created))
+	}
+	for _, dv := range del.created {
+		if dv.WebhookID != "wh1" || dv.Event != "group_sync_requested" {
+			t.Errorf("delivery wrong: %+v", dv)
+		}
+	}
+}
+
+func TestEmitToChannel_NoManagedWebhookConflicts(t *testing.T) {
+	// A channel with no managed webhook (no outbound_url) → a clear conflict error,
+	// not a silent no-op: the sync request has nowhere to go.
+	subs := &fakeSubs{byID: map[string]*entity.WebhookSubscription{}}
+	d := NewDispatcher(subs, newFakeDeliveries(), &fakeEnqueuer{}, emitClock())
+	err := d.EmitToChannel(shared.WithTenant(context.Background(), "t1"), "t1", "ch1", "group_sync_requested", nil)
+	if apperror.From(err).Code != apperror.CodeConflict {
+		t.Fatalf("expected conflict for missing managed webhook, got %v", err)
+	}
+}
+
 // fakeUsage is a WebhookUsageChecker stub.
 type fakeUsage struct {
 	inUse  bool

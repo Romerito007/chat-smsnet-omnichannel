@@ -14,6 +14,7 @@ import (
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	channelservice "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/service"
+	groupcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/groups/contracts"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	dto "github.com/romerito007/chat-smsnet-omnichannel/presenter/contracts/channels"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
@@ -37,6 +38,12 @@ type ContactIdentityUpdater interface {
 	AddChannelIdentity(ctx context.Context, contactID, channel, externalID string) (applied bool, err error)
 }
 
+// GroupSink idempotently upserts a gateway group-sync batch. Implemented by the
+// groups service. Optional: a nil sink rejects the groups endpoint.
+type GroupSink interface {
+	UpsertBatch(ctx context.Context, channelID string, groups []groupcontracts.UpsertGroup) (int, error)
+}
+
 // InboundController serves the public, signature-authenticated inbound endpoints
 // (messages and delivery receipts).
 type InboundController struct {
@@ -44,11 +51,12 @@ type InboundController struct {
 	inbound     *channelservice.InboundService
 	receipts    ReceiptApplier
 	identities  ContactIdentityUpdater
+	groups      GroupSink
 }
 
 // NewInboundController builds the controller.
-func NewInboundController(connections *channelservice.ConnectionService, inbound *channelservice.InboundService, receipts ReceiptApplier, identities ContactIdentityUpdater) *InboundController {
-	return &InboundController{connections: connections, inbound: inbound, receipts: receipts, identities: identities}
+func NewInboundController(connections *channelservice.ConnectionService, inbound *channelservice.InboundService, receipts ReceiptApplier, identities ContactIdentityUpdater, groups GroupSink) *InboundController {
+	return &InboundController{connections: connections, inbound: inbound, receipts: receipts, identities: identities, groups: groups}
 }
 
 // verifyHeaders extracts the signature/secret headers an adapter checks.
@@ -255,4 +263,99 @@ func (c *InboundController) HandleDeliveryReceipts(w http.ResponseWriter, r *htt
 		return
 	}
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// groupBatchItem is one group in a gateway sync batch, in the gateway's shape. The
+// gateway's field names (groupId, subject, participants, …) are mapped here onto our
+// contract. Participants/admins are kept as raw strings (metadata, not contacts).
+type groupBatchItem struct {
+	GroupID      string   `json:"groupId"`
+	GroupJID     string   `json:"group_jid"`
+	Subject      string   `json:"subject"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Participants []string `json:"participants"`
+	GroupAdmins  []string `json:"group_admins"`
+	Admins       []string `json:"admins"`
+	CompanyID    string   `json:"company_id"`
+	WhatsAppWID  string   `json:"whatsapp_wid"`
+	OwnerName    string   `json:"owner_name"`
+	OwnerJID     string   `json:"owner_jid"`
+	Activated    bool     `json:"activated"`
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func (it groupBatchItem) toUpsert() groupcontracts.UpsertGroup {
+	admins := it.GroupAdmins
+	if len(admins) == 0 {
+		admins = it.Admins
+	}
+	return groupcontracts.UpsertGroup{
+		GroupJID:     firstNonEmpty(it.GroupJID, it.GroupID),
+		Name:         firstNonEmpty(it.Name, it.Subject),
+		Description:  it.Description,
+		Participants: it.Participants,
+		GroupAdmins:  admins,
+		CompanyID:    it.CompanyID,
+		WhatsAppWID:  it.WhatsAppWID,
+		OwnerName:    it.OwnerName,
+		OwnerJID:     it.OwnerJID,
+		Activated:    it.Activated,
+	}
+}
+
+// HandleGroups processes POST /v1/inbound/channel/{channel}/groups. The WhatsApp
+// gateway calls it (in response to a group_sync_requested) to push the channel's
+// group list, in batches. It is edge-authenticated by the channel inbound token (NOT
+// the front's JWT); the tenant comes only from that token. The upsert is idempotent
+// by (tenant, group_jid) and never resets the operator's attend choice.
+func (c *InboundController) HandleGroups(w http.ResponseWriter, r *http.Request) {
+	channel := chi.URLParam(r, "channel")
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboundBody))
+	if err != nil {
+		middleware.WriteError(w, r, apperror.Validation("unreadable request body"))
+		return
+	}
+	var req struct {
+		InboundToken string           `json:"inbound_token"`
+		Groups       []groupBatchItem `json:"groups"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		middleware.WriteError(w, r, apperror.Validation("invalid JSON body").Wrap(err))
+		return
+	}
+
+	token := r.Header.Get("X-Inbound-Token")
+	if token == "" {
+		token = req.InboundToken
+	}
+	conn, err := c.connections.ResolveInbound(r.Context(), token, chentity.Type(channel), body, verifyHeaders(r))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	if c.groups == nil {
+		middleware.WriteError(w, r, apperror.Integration("groups sync is not configured"))
+		return
+	}
+
+	upserts := make([]groupcontracts.UpsertGroup, 0, len(req.Groups))
+	for _, it := range req.Groups {
+		upserts = append(upserts, it.toUpsert())
+	}
+	ctx := shared.WithTenant(r.Context(), conn.TenantID)
+	n, err := c.groups.UpsertBatch(ctx, conn.ID, upserts)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "upserted": n})
 }
