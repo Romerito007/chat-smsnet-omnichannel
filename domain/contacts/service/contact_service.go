@@ -22,6 +22,7 @@ type Service struct {
 	avatarURLs shared.AvatarURLResolver
 	customAttr shared.CustomAttributeValidator
 	webhooks   shared.WebhookEmitter
+	logger     shared.Logger
 }
 
 // New builds the service.
@@ -29,7 +30,7 @@ func New(repo repository.ContactRepository, clock shared.Clock) *Service {
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}, customAttr: shared.NoopCustomAttributeValidator{}, webhooks: shared.NoopWebhookEmitter{}}
+	return &Service{repo: repo, clock: clock, auditor: shared.NoopAuditor{}, customAttr: shared.NoopCustomAttributeValidator{}, webhooks: shared.NoopWebhookEmitter{}, logger: shared.NewLogger("")}
 }
 
 // SetWebhookEmitter wires the outbound webhook emitter so contact create/update
@@ -369,6 +370,65 @@ func mergeDetails(dst, src map[string]any) {
 }
 
 func isNotFound(err error) bool { return apperror.From(err).Code == apperror.CodeNotFound }
+
+// AddChannelIdentity ensures a contact carries the given (channel, external_id)
+// identity. It is called by a channel INTEGRATION (the WhatsApp gateway) over the
+// inbound-token edge to persist a VERIFIED identifier (e.g. a resolved JID) back
+// onto the contact, so later webhooks carry source=identity and skip re-verifying
+// the phone. The tenant comes from the context (the inbound token), never a header.
+//
+// It is idempotent and additive: it never overwrites other identities, never errors
+// on a repeat, and — to avoid splitting conversation routing — never STEALS an
+// identity already owned by another contact (it logs and leaves it). applied is
+// true only when a NEW identity was actually added.
+func (s *Service) AddChannelIdentity(ctx context.Context, contactID, channel, externalID string) (applied bool, err error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return false, err
+	}
+	ch := strings.ToLower(strings.TrimSpace(channel))
+	ex := strings.TrimSpace(externalID)
+	if strings.TrimSpace(contactID) == "" {
+		return false, apperror.Validation("contact_id is required")
+	}
+	if ex == "" {
+		return false, apperror.Validation("external_id is required")
+	}
+	if ch == "" || !validIdentityChannel(ch) {
+		return false, apperror.Validation("unsupported channel").
+			WithDetails(map[string]any{"channel": "is not a supported channel"})
+	}
+
+	contact, err := s.repo.FindByID(ctx, contactID) // tenant-scoped: cross-tenant → not_found
+	if err != nil {
+		return false, err
+	}
+	if contact.HasIdentity(ch, ex) {
+		return false, nil // already present — idempotent no-op
+	}
+	// Uniqueness: never steal an identity that already belongs to ANOTHER contact —
+	// that would make one (channel, external_id) match two contacts and split routing.
+	if other, ferr := s.repo.FindByChannelIdentity(ctx, ch, ex); ferr == nil {
+		if other.ID != contact.ID {
+			shared.LoggerFrom(ctx, s.logger).Warn("CONTACT_IDENTITY_IN_USE_BY_OTHER",
+				"channel", ch, "contact_id", contact.ID, "owner_contact_id", other.ID)
+			return false, nil // logged; not applied (not an error — the gateway must not fail)
+		}
+	} else if !isNotFound(ferr) {
+		return false, ferr
+	}
+
+	contact.Identities = append(contact.Identities, entity.ChannelIdentity{Channel: ch, ExternalID: ex})
+	contact.UpdatedAt = s.clock.Now()
+	if err := s.repo.Update(ctx, contact); err != nil {
+		return false, err
+	}
+	// Audit without PII: record the channel, not the external id (the JID).
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "contact.identity_updated", ResourceType: "contact", ResourceID: contact.ID,
+		Data: map[string]any{"channel": ch},
+	})
+	return true, nil
+}
 
 // UpsertFromInbound finds the contact by its channel identity (or creates it),
 // updating the basic locally-provided fields. Normalization is minimal: trim

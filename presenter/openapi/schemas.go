@@ -297,6 +297,12 @@ func schemas() M {
 			"message_id":    describedStr("The chat's own message id (as delivered in the message_created webhook). The receipt is correlated by this id."),
 			"status":        enum("delivered", "read", "failed"),
 		}, "message_id", "status"),
+		"ContactIdentityRequest": object(M{
+			"inbound_token": describedStr("Channel integration token (alternative to the X-Inbound-Token header)."),
+			"contact_id":    describedStr("The chat's contact id (as delivered in the message_created webhook contact.id). The identity is added to THIS contact."),
+			"channel":       describedStr("Identity channel slug (e.g. \"whatsapp\"). Optional — defaults to the {channel} path type."),
+			"external_id":   describedStr("The verified external identifier to persist, e.g. a WhatsApp JID \"554499088478@s.whatsapp.net\"."),
+		}, "contact_id", "external_id"),
 		"InboundMessageRequest": object(M{
 			"inbound_token": str(), "tenant_key": str(), "integration_key": str(), "webhook_verify_token": str(),
 			"external_message_id": str(), "external_contact_id": str(), "contact_name": str(),

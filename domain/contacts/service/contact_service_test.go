@@ -287,3 +287,58 @@ func TestUpdate_PartialAndDedupExcludesSelf(t *testing.T) {
 		t.Errorf("update to an existing document must conflict, got %v", err)
 	}
 }
+
+func TestAddChannelIdentity(t *testing.T) {
+	svc := newSvc()
+	ctx := tenantCtx()
+	// Seed a contact with no whatsapp identity.
+	base, err := svc.Create(ctx, contracts.CreateContact{Name: "Pedro", Phones: []string{"+5544999088478"}})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	jid := "554499088478@s.whatsapp.net"
+
+	// 1) New identity → applied=true and stored.
+	applied, err := svc.AddChannelIdentity(ctx, base.ID, "whatsapp", jid)
+	if err != nil || !applied {
+		t.Fatalf("first add: applied=%v err=%v", applied, err)
+	}
+	got, _ := svc.Get(ctx, base.ID)
+	if !got.HasIdentity("whatsapp", jid) {
+		t.Errorf("identity not persisted: %+v", got.Identities)
+	}
+
+	// 2) Idempotent → applied=false, no duplicate.
+	applied, err = svc.AddChannelIdentity(ctx, base.ID, "whatsapp", jid)
+	if err != nil || applied {
+		t.Errorf("repeat must be a no-op: applied=%v err=%v", applied, err)
+	}
+	if got, _ := svc.Get(ctx, base.ID); len(got.Identities) != 1 {
+		t.Errorf("identity must not duplicate, got %d", len(got.Identities))
+	}
+
+	// 3) JID owned by ANOTHER contact → not stolen (applied=false, no error).
+	other, _ := svc.Create(ctx, contracts.CreateContact{Name: "Maria",
+		ExternalIDs: []contracts.ExternalIdentity{{Channel: "whatsapp", ExternalID: "999@s.whatsapp.net"}}})
+	applied, err = svc.AddChannelIdentity(ctx, base.ID, "whatsapp", "999@s.whatsapp.net")
+	if err != nil {
+		t.Fatalf("in-use must not error: %v", err)
+	}
+	if applied {
+		t.Error("must NOT steal an identity owned by another contact")
+	}
+	if got, _ := svc.Get(ctx, base.ID); got.HasIdentity("whatsapp", "999@s.whatsapp.net") {
+		t.Error("the other contact's identity must not be added to this contact")
+	}
+	if om, _ := svc.Get(ctx, other.ID); !om.HasIdentity("whatsapp", "999@s.whatsapp.net") {
+		t.Error("the owner must keep its identity")
+	}
+
+	// 4) Validation: missing external_id / unsupported channel.
+	if _, err := svc.AddChannelIdentity(ctx, base.ID, "whatsapp", "  "); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("empty external_id must be validation, got %v", err)
+	}
+	if _, err := svc.AddChannelIdentity(ctx, "ghost", "whatsapp", jid); apperror.From(err).Code != apperror.CodeNotFound {
+		t.Errorf("unknown contact must be not_found, got %v", err)
+	}
+}

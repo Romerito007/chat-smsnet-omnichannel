@@ -92,5 +92,5 @@ func ConnectionController(c *container.Container) *channelctl.ConnectionControll
 // Delivery receipts (optional, by chat message_id) apply message status through
 // the conversations service.
 func InboundController(c *container.Container) *channelctl.InboundController {
-	return channelctl.NewInboundController(ConnectionService(c), InboundService(c), ConversationService(c))
+	return channelctl.NewInboundController(ConnectionService(c), InboundService(c), ConversationService(c), ContactService(c))
 }

@@ -60,10 +60,96 @@ func hashToken(tok string) string {
 func inboundRouter(conn *entity.ChannelConnection) http.Handler {
 	connSvc := chservice.NewConnectionService(&seededConnRepo{conn: conn}, oneAdapterRegistry{}, shared.SystemClock{})
 	// inbound/outbound services are unused on the auth-rejection paths exercised here.
-	ctl := channels.NewInboundController(connSvc, nil, nil)
+	ctl := channels.NewInboundController(connSvc, nil, nil, nil)
 	r := chi.NewRouter()
 	r.Post("/inbound/channel/{channel}/messages", ctl.HandleMessage)
 	return r
+}
+
+// fakeIdentityUpdater records AddChannelIdentity calls for the contact-identity edge.
+type fakeIdentityUpdater struct {
+	calls   [][3]string // contactID, channel, externalID
+	applied bool
+	err     error
+}
+
+func (f *fakeIdentityUpdater) AddChannelIdentity(_ context.Context, contactID, channel, externalID string) (bool, error) {
+	f.calls = append(f.calls, [3]string{contactID, channel, externalID})
+	return f.applied, f.err
+}
+
+func identityRouter(conn *entity.ChannelConnection, up channels.ContactIdentityUpdater) http.Handler {
+	connSvc := chservice.NewConnectionService(&seededConnRepo{conn: conn}, oneAdapterRegistry{}, shared.SystemClock{})
+	ctl := channels.NewInboundController(connSvc, nil, nil, up)
+	r := chi.NewRouter()
+	r.Post("/inbound/channel/{channel}/contact-identity", ctl.HandleContactIdentity)
+	return r
+}
+
+func postIdentity(h http.Handler, header string, body map[string]any) *httptest.ResponseRecorder {
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/inbound/channel/whatsapp/contact-identity", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	if header != "" {
+		req.Header.Set("X-Inbound-Token", header)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestContactIdentity_TokenAuth_AddsIdentity: the contact-identity edge authenticates
+// by the channel inbound token (no JWT) and forwards the identity to the updater.
+func TestContactIdentity_TokenAuth_AddsIdentity(t *testing.T) {
+	up := &fakeIdentityUpdater{applied: true}
+	rec := postIdentity(identityRouter(seededConn(), up), "the-real-token", map[string]any{
+		"contact_id": "ct1", "channel": "whatsapp", "external_id": "554499088478@s.whatsapp.net",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var resp struct{ OK, Applied bool }
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if !resp.OK || !resp.Applied {
+		t.Errorf("response = %s, want ok+applied", rec.Body.String())
+	}
+	if len(up.calls) != 1 || up.calls[0] != [3]string{"ct1", "whatsapp", "554499088478@s.whatsapp.net"} {
+		t.Errorf("updater not called with the JID: %+v", up.calls)
+	}
+}
+
+// Idempotent: when the identity already exists the updater reports applied=false; the
+// edge still returns 200 (no error), so a repeat call is safe.
+func TestContactIdentity_Idempotent_AppliedFalse(t *testing.T) {
+	up := &fakeIdentityUpdater{applied: false}
+	rec := postIdentity(identityRouter(seededConn(), up), "the-real-token", map[string]any{
+		"contact_id": "ct1", "external_id": "554499088478@s.whatsapp.net", // channel defaults to the path
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var resp struct{ Applied bool }
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Applied {
+		t.Error("expected applied=false for an existing identity")
+	}
+	// channel omitted → defaults to the path channel ("whatsapp").
+	if len(up.calls) != 1 || up.calls[0][1] != "whatsapp" {
+		t.Errorf("channel should default to the path: %+v", up.calls)
+	}
+}
+
+func TestContactIdentity_RejectsInvalidToken_401(t *testing.T) {
+	up := &fakeIdentityUpdater{}
+	rec := postIdentity(identityRouter(seededConn(), up), "wrong-token", map[string]any{
+		"contact_id": "ct1", "external_id": "j@s.whatsapp.net",
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (%s)", rec.Code, rec.Body.String())
+	}
+	if len(up.calls) != 0 {
+		t.Error("the updater must not be called when the token is invalid")
+	}
 }
 
 // postInbound issues a message POST with an optional X-Inbound-Token header.

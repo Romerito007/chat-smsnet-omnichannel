@@ -203,6 +203,10 @@ func registerChannels(p *paths) {
 		summary: "Report a message delivery status (channel-authenticated; OPTIONAL)",
 		public:  true, params: inboundParams, reqBody: body(ref("DeliveryReceiptRequest")),
 		responses: M{"200": jsonResp("Accepted", freeObject())}}))
+	p.add("POST", "/v1/inbound/channel/{channel}/contact-identity", op(opConfig{tag: "channels",
+		summary: "Persist a verified channel identity onto a contact (channel-authenticated). Idempotent; never steals an identity owned by another contact. Used by the WhatsApp gateway to store a resolved JID so later webhooks carry source=identity.",
+		public:  true, params: inboundParams, reqBody: body(ref("ContactIdentityRequest")),
+		responses: M{"200": jsonResp("Result {ok, applied}", freeObject())}}))
 }
 
 func registerIntegrations(p *paths) {

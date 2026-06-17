@@ -796,6 +796,24 @@ components:
                 phone:
                     type: string
             type: object
+        ContactIdentityRequest:
+            properties:
+                channel:
+                    description: Identity channel slug (e.g. "whatsapp"). Optional — defaults to the {channel} path type.
+                    type: string
+                contact_id:
+                    description: The chat's contact id (as delivered in the message_created webhook contact.id). The identity is added to THIS contact.
+                    type: string
+                external_id:
+                    description: The verified external identifier to persist, e.g. a WhatsApp JID "554499088478@s.whatsapp.net".
+                    type: string
+                inbound_token:
+                    description: Channel integration token (alternative to the X-Inbound-Token header).
+                    type: string
+            required:
+                - contact_id
+                - external_id
+            type: object
         ContratoOption:
             properties:
                 endereco:
@@ -7958,6 +7976,46 @@ paths:
             summary: Update holiday
             tags:
                 - businesshours
+    /v1/inbound/channel/{channel}/contact-identity:
+        post:
+            operationId: postInboundChannelByChannelContactIdentity
+            parameters:
+                - description: channel type
+                  in: path
+                  name: channel
+                  required: true
+                  schema:
+                    type: string
+                - description: Channel integration token (preferred over the inbound_token body field).
+                  in: header
+                  name: X-Inbound-Token
+                  required: false
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ContactIdentityRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: true
+                                type: object
+                    description: Result {ok, applied}
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            security: []
+            summary: Persist a verified channel identity onto a contact (channel-authenticated). Idempotent; never steals an identity owned by another contact. Used by the WhatsApp gateway to store a resolved JID so later webhooks carry source=identity.
+            tags:
+                - channels
     /v1/inbound/channel/{channel}/delivery-receipts:
         post:
             operationId: postInboundChannelByChannelDeliveryReceipts

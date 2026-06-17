@@ -96,3 +96,33 @@ sem adaptação. Modelado no OpenAPI como `ChannelOutboundMessage` + a rota púb
 > A mesma `Message` tem **duas** URLs por trilho: interna (JWT, p/ o front) e
 > assinada/pública (integração, p/ o sistema externo). A interna fica armazenada;
 > a de integração é gerada e assinada **na hora da entrega** do canal.
+
+### 3. Gravar identity verificada — `POST /v1/inbound/channel/{channel}/contact-identity`
+Auth: `X-Inbound-Token: <token>` (ou campo `inbound_token`), **sem JWT** —
+mesma borda do inbound. O gateway de WhatsApp, depois de resolver/verificar a
+**JID** do destinatário, chama este endpoint para **persistir** a identity de
+volta no contato, para que os webhooks seguintes saiam com `source=identity`
+(sem re-verificar o telefone toda vez).
+
+```json
+{ "inbound_token":"<T>", "contact_id":"<id do contato no chat>",
+  "channel":"whatsapp", "external_id":"554499088478@s.whatsapp.net" }
+```
+- `contact_id` = o `contact.id` que o chat entregou no webhook (`WebhookContact.ID`).
+- `channel` é opcional — default = o `{channel}` do path (o type da conexão).
+- Resposta: `{ "ok": true, "applied": true|false }`.
+
+Comportamento:
+- **Idempotente e aditivo:** adiciona a identity `{channel, external_id}` ao
+  contato só se ainda não existir (`HasIdentity`); chamar 2× não duplica nem erra
+  (`applied:false`). Nunca sobrescreve outras identities.
+- **Tenant** vem só do `inbound_token` (nunca de header); o contato precisa ser do
+  tenant do canal (cross-tenant → `not_found`).
+- **Unicidade:** se a JID já pertence a OUTRO contato, **não rouba** — loga
+  `CONTACT_IDENTITY_IN_USE_BY_OTHER` e responde `applied:false` (não é erro, para o
+  gateway não falhar). Isso evita que uma `(channel, external_id)` aponte para dois
+  contatos e quebre o roteamento.
+- **Auditoria:** `contact.identity_updated` (sem PII além do `channel`).
+
+Modelado no OpenAPI como `ContactIdentityRequest` + a rota pública
+`/v1/inbound/channel/{channel}/contact-identity`.

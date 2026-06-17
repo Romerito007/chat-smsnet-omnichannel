@@ -41,5 +41,6 @@ func registerChannelRoutes(r chi.Router, c *container.Container) {
 		pub.Use(middleware.RateLimitScoped(c.Redis, policy.InboundChannelRateLimit, "inbound_channel"))
 		pub.Post("/inbound/channel/{channel}/messages", inbound.HandleMessage)
 		pub.Post("/inbound/channel/{channel}/delivery-receipts", inbound.HandleDeliveryReceipts)
+		pub.Post("/inbound/channel/{channel}/contact-identity", inbound.HandleContactIdentity)
 	})
 }

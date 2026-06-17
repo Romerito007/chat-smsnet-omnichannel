@@ -31,17 +31,24 @@ type ReceiptApplier interface {
 	ApplyDeliveryReceipt(ctx context.Context, messageID, status string) error
 }
 
+// ContactIdentityUpdater persists a verified channel identity (e.g. a WhatsApp JID)
+// onto a contact. Implemented by the contacts service. Idempotent and additive.
+type ContactIdentityUpdater interface {
+	AddChannelIdentity(ctx context.Context, contactID, channel, externalID string) (applied bool, err error)
+}
+
 // InboundController serves the public, signature-authenticated inbound endpoints
 // (messages and delivery receipts).
 type InboundController struct {
 	connections *channelservice.ConnectionService
 	inbound     *channelservice.InboundService
 	receipts    ReceiptApplier
+	identities  ContactIdentityUpdater
 }
 
 // NewInboundController builds the controller.
-func NewInboundController(connections *channelservice.ConnectionService, inbound *channelservice.InboundService, receipts ReceiptApplier) *InboundController {
-	return &InboundController{connections: connections, inbound: inbound, receipts: receipts}
+func NewInboundController(connections *channelservice.ConnectionService, inbound *channelservice.InboundService, receipts ReceiptApplier, identities ContactIdentityUpdater) *InboundController {
+	return &InboundController{connections: connections, inbound: inbound, receipts: receipts, identities: identities}
 }
 
 // verifyHeaders extracts the signature/secret headers an adapter checks.
@@ -157,6 +164,53 @@ func parseMultipartInbound(r *http.Request) (dto.InboundRequest, []chcontracts.R
 		raw = append(raw, chcontracts.RawFile{Filename: fh.Filename, ContentType: ct, Data: data})
 	}
 	return req, raw, nil
+}
+
+// HandleContactIdentity processes POST /v1/inbound/channel/{channel}/contact-identity.
+// A channel integration (the WhatsApp gateway) calls it to persist a VERIFIED
+// identity (e.g. a resolved JID) onto an existing contact, so later webhooks carry
+// source=identity without re-verifying the phone. Edge-authenticated by the channel
+// inbound token (NOT the front's JWT); the tenant comes only from that token.
+func (c *InboundController) HandleContactIdentity(w http.ResponseWriter, r *http.Request) {
+	channel := chi.URLParam(r, "channel")
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboundBody))
+	if err != nil {
+		middleware.WriteError(w, r, apperror.Validation("unreadable request body"))
+		return
+	}
+	var req struct {
+		InboundToken string `json:"inbound_token"`
+		ContactID    string `json:"contact_id"`
+		Channel      string `json:"channel"`
+		ExternalID   string `json:"external_id"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		middleware.WriteError(w, r, apperror.Validation("invalid JSON body").Wrap(err))
+		return
+	}
+
+	token := r.Header.Get("X-Inbound-Token")
+	if token == "" {
+		token = req.InboundToken
+	}
+	conn, err := c.connections.ResolveInbound(r.Context(), token, chentity.Type(channel), body, verifyHeaders(r))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	// The identity channel defaults to the path channel type (the connection's type).
+	identityChannel := strings.TrimSpace(req.Channel)
+	if identityChannel == "" {
+		identityChannel = channel
+	}
+
+	ctx := shared.WithTenant(r.Context(), conn.TenantID)
+	applied, err := c.identities.AddChannelIdentity(ctx, req.ContactID, identityChannel, req.ExternalID)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "applied": applied})
 }
 
 // HandleDeliveryReceipts processes POST /v1/inbound/channel/{channel}/delivery-receipts.
