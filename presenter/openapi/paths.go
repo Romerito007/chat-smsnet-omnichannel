@@ -302,6 +302,9 @@ func registerCopilotMCP(p *paths) {
 		params: asstIDP, responses: M{"204": emptyResp("Deleted"), "404": errorResponse("Not found.")}}))
 	p.add("POST", "/v1/copilot/suggest-reply", op(opConfig{tag: "copilot", summary: "Draft a reply (agentic; may propose write actions)",
 		reqBody: body(ref("SuggestReplyRequest")), responses: M{"200": jsonResp("Result", ref("CopilotResult"))}}))
+	p.add("POST", "/v1/copilot/ask", op(opConfig{tag: "copilot",
+		summary: "Agent-facing Q&A chat: the copilot ANSWERS THE AGENT about the customer (agentic; uses tools to look up data; may propose write actions). Send the running agent↔assistant history (ephemeral; the backend is stateless and caps it).",
+		reqBody: body(ref("AskRequest")), responses: M{"200": jsonResp("Result", ref("CopilotResult"))}}))
 	p.add("POST", "/v1/copilot/summarize", op(opConfig{tag: "copilot", summary: "Summarize the conversation",
 		reqBody: body(ref("SummarizeRequest")), responses: M{"200": jsonResp("Result", ref("CopilotResult"))}}))
 	p.add("POST", "/v1/copilot/classify", op(opConfig{tag: "copilot", summary: "Classify into one of the given categories",

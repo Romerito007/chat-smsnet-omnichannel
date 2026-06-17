@@ -32,6 +32,8 @@ func systemPrompt(action entity.Action) string {
 		return "You are a customer-support classifier. Classify the conversation into exactly one of the categories listed in the instruction. Respond with only the chosen category name, nothing else."
 	case entity.ActionNextAction:
 		return "You are a customer-support copilot. Recommend the single best next action for the agent as one short imperative sentence. Output only that sentence."
+	case entity.ActionAgentChat:
+		return "Você é o copiloto que ajuda o ATENDENTE (você NÃO fala com o cliente). Responda à pergunta do atendente sobre o cliente de forma direta e objetiva, em português. Use as ferramentas disponíveis para consultar os dados do cliente (cadastro, faturas, planos) quando necessário, antes de responder. NÃO redija como se estivesse falando com o cliente — fale com o atendente. Quando uma ação de escrita for útil (liberar acesso, abrir chamado), proponha-a para a aprovação do atendente."
 	default:
 		return "You are a helpful customer-support copilot."
 	}
@@ -46,17 +48,40 @@ func renderContext(pc contracts.PromptContext) string {
 	b.WriteString(pc.Channel)
 	b.WriteString("\n")
 	if pc.Customer != nil {
-		b.WriteString("Customer: ")
-		b.WriteString(strings.TrimSpace(pc.Customer.Name + " " + pc.Customer.Phone + " " + pc.Customer.Document))
-		b.WriteString("\n")
+		// Labeled fields so the model can reliably extract the document/phone (e.g. to
+		// pass cpfcnpj to a lookup tool). Only non-empty fields are emitted.
+		writeField(&b, "Cliente", pc.Customer.Name)
+		writeField(&b, "Telefone", pc.Customer.Phone)
+		writeField(&b, "CPF/CNPJ", pc.Customer.Document)
 	}
 	b.WriteString("Transcript:\n")
 	b.WriteString(renderTranscript(pc))
+	// Agent↔assistant side chat (agent_chat mode) — kept distinct from the customer
+	// transcript so the model answers the AGENT with the running context in mind.
+	if len(pc.AgentChat) > 0 {
+		b.WriteString("\nConversa atendente↔assistente até aqui:\n")
+		for _, t := range pc.AgentChat {
+			b.WriteString(t.Role)
+			b.WriteString(": ")
+			b.WriteString(t.Text)
+			b.WriteString("\n")
+		}
+	}
 	if pc.Instruction != "" {
 		b.WriteString("\nInstruction: ")
 		b.WriteString(pc.Instruction)
 	}
 	return b.String()
+}
+
+// writeField emits "Label: value\n" only when value is non-empty (after trim).
+func writeField(b *strings.Builder, label, value string) {
+	if v := strings.TrimSpace(value); v != "" {
+		b.WriteString(label)
+		b.WriteString(": ")
+		b.WriteString(v)
+		b.WriteString("\n")
+	}
 }
 
 func renderTranscript(pc contracts.PromptContext) string {

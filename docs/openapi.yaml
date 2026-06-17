@@ -84,6 +84,32 @@ components:
                         type: string
                     type: array
             type: object
+        AskRequest:
+            properties:
+                conversation_id:
+                    type: string
+                history:
+                    description: The prior agent↔assistant turns (oldest first), so the assistant keeps the thread. Ephemeral and front-managed; the backend does not persist it and caps it to the last few turns.
+                    items:
+                        properties:
+                            role:
+                                enum:
+                                    - agent
+                                    - assistant
+                                type: string
+                            text:
+                                type: string
+                        required:
+                            - role
+                            - text
+                        type: object
+                    type: array
+                instruction:
+                    description: The agent's question in natural language (e.g. "como está a fatura desse cliente?").
+                    type: string
+            required:
+                - conversation_id
+            type: object
         AssignRequest:
             properties:
                 agent_id:
@@ -7030,6 +7056,35 @@ paths:
             summary: Signal typing stop
             tags:
                 - conversations
+    /v1/copilot/ask:
+        post:
+            operationId: postCopilotAsk
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AskRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CopilotResult'
+                    description: Result
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Agent-facing Q&A chat: the copilot ANSWERS THE AGENT about the customer (agentic; uses tools to look up data; may propose write actions). Send the running agent↔assistant history (ephemeral; the backend is stateless and caps it).'
+            tags:
+                - copilot
     /v1/copilot/assistants:
         get:
             operationId: getCopilotAssistants

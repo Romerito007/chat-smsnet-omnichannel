@@ -13,6 +13,10 @@ import (
 // transcriptLimit bounds how many recent messages are included in the context.
 const transcriptLimit = 30
 
+// agentChatLimit bounds how many recent agent↔assistant turns are kept (the front
+// sends the whole side chat; the backend caps it to keep the prompt bounded).
+const agentChatLimit = 20
+
 // ContextBuilder assembles the policy-filtered PromptContext for a conversation.
 // The only pre-injected data section is the customer profile, gated by
 // allow_customer_data; financial/monitoring data are consulted on demand via ISP
@@ -29,12 +33,14 @@ func NewContextBuilder(messages convrepo.MessageRepository, customer contracts.C
 }
 
 // Build assembles the context, enforcing the assistant's customer-data gate (from
-// the resolved Behavior).
-func (b *ContextBuilder) Build(ctx context.Context, beh entity.Behavior, conv *conventity.Conversation, instruction string) contracts.PromptContext {
+// the resolved Behavior). agentChat is the agent↔assistant side chat (nil for every
+// action except agent_chat); it is capped to the last agentChatLimit turns.
+func (b *ContextBuilder) Build(ctx context.Context, beh entity.Behavior, conv *conventity.Conversation, instruction string, agentChat []contracts.Turn) contracts.PromptContext {
 	pc := contracts.PromptContext{
 		Channel:     conv.Channel,
 		Instruction: instruction,
 		Transcript:  b.transcript(ctx, conv.ID),
+		AgentChat:   capTurns(agentChat, agentChatLimit),
 	}
 
 	// Customer profile — only when the gate allows AND a source is wired.
@@ -44,6 +50,14 @@ func (b *ContextBuilder) Build(ctx context.Context, beh entity.Behavior, conv *c
 		}
 	}
 	return pc
+}
+
+// capTurns keeps only the last n turns (the most recent context), preserving order.
+func capTurns(turns []contracts.Turn, n int) []contracts.Turn {
+	if len(turns) <= n {
+		return turns
+	}
+	return turns[len(turns)-n:]
 }
 
 // transcript loads the recent messages newest-first and returns them in

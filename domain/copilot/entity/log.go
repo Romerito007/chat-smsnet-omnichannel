@@ -10,6 +10,10 @@ const (
 	ActionSummarize    Action = "summarize"
 	ActionClassify     Action = "classify"
 	ActionNextAction   Action = "next_action"
+	// ActionAgentChat is the agent-facing Q&A mode: the copilot answers the AGENT's
+	// question about the customer (using tools to look up data), instead of drafting
+	// a reply to the customer.
+	ActionAgentChat Action = "agent_chat"
 )
 
 // LogStatus is the outcome of a copilot call.

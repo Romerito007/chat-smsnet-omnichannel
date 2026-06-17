@@ -188,3 +188,35 @@ func TestAgentic_WriteIsProposedNeverExecuted(t *testing.T) {
 		t.Errorf("the write should be recorded as a proposal: %v", session.proposed)
 	}
 }
+
+// AgentChat (agent-facing Q&A) runs the SAME agentic loop as suggest_reply, so the
+// model can call tools to answer the agent's question.
+func TestAgentChat_RunsAgenticLoopWithHistory(t *testing.T) {
+	prov := &scriptedProvider{responses: []contracts.Response{
+		{ToolCalls: []contracts.ToolCall{{ID: "c1", Name: "consultar_cliente", Arguments: `{}`}}},
+		{Text: "A fatura está vencida há 3 dias, R$94,90."},
+	}}
+	session := &fakeSession{
+		tools:  []contracts.ToolDefinition{{Name: "consultar_cliente", ReadOnly: true}},
+		writes: map[string]bool{},
+	}
+	svc, _ := agenticService(prov, session)
+
+	res, err := svc.AgentChat(allCtx(), contracts.AgentChatInput{
+		ConversationID: "conv1",
+		Instruction:    "como está a fatura desse cliente?",
+		History:        []contracts.AgentTurn{{Role: "agent", Text: "oi"}, {Role: "assistant", Text: "olá"}},
+	})
+	if err != nil {
+		t.Fatalf("agent chat: %v", err)
+	}
+	if res.Action != "agent_chat" {
+		t.Errorf("action = %q, want agent_chat", res.Action)
+	}
+	if res.Text != "A fatura está vencida há 3 dias, R$94,90." {
+		t.Errorf("unexpected answer: %q", res.Text)
+	}
+	if len(session.executed) != 1 || session.executed[0] != "consultar_cliente" {
+		t.Errorf("agent_chat must use tools (agentic loop): %v", session.executed)
+	}
+}

@@ -65,6 +65,34 @@ type SuggestReplyRequest struct {
 	Instruction    string `json:"instruction"`
 }
 
+// AskRequest is the body of POST /v1/copilot/ask — the agent-facing Q&A chat. The
+// front sends the running agent↔assistant history (ephemeral; the backend is
+// stateless and caps it server-side).
+type AskRequest struct {
+	ConversationID string         `json:"conversation_id"`
+	Instruction    string         `json:"instruction"`
+	History        []AgentTurnDTO `json:"history"`
+}
+
+// AgentTurnDTO is one prior turn of the agent↔assistant side chat.
+type AgentTurnDTO struct {
+	Role string `json:"role"` // agent | assistant
+	Text string `json:"text"`
+}
+
+// ToInput maps the request to the service input.
+func (r AskRequest) ToInput() ccontracts.AgentChatInput {
+	hist := make([]ccontracts.AgentTurn, 0, len(r.History))
+	for _, t := range r.History {
+		hist = append(hist, ccontracts.AgentTurn{Role: t.Role, Text: t.Text})
+	}
+	return ccontracts.AgentChatInput{
+		ConversationID: r.ConversationID,
+		Instruction:    r.Instruction,
+		History:        hist,
+	}
+}
+
 // SummarizeRequest is the body of POST /v1/copilot/summarize.
 type SummarizeRequest struct {
 	ConversationID string `json:"conversation_id"`

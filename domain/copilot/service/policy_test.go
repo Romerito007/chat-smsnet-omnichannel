@@ -144,7 +144,7 @@ func conv() *conventity.Conversation {
 
 func TestContext_AllPoliciesDisabled_NoEnrichment(t *testing.T) {
 	b := builderWithAllSources(sampleMessages())
-	pc := b.Build(context.Background(), entity.Behavior{}, conv(), "") // all gates false
+	pc := b.Build(context.Background(), entity.Behavior{}, conv(), "", nil) // all gates false
 
 	if pc.Customer != nil {
 		t.Errorf("customer data leaked despite allow_customer_data=false: %+v", pc.Customer)
@@ -167,7 +167,7 @@ func TestContext_AllPoliciesDisabled_NoEnrichment(t *testing.T) {
 func TestContext_CustomerEnrichmentWhenAllowed(t *testing.T) {
 	b := builderWithAllSources(sampleMessages())
 	beh := entity.Behavior{AllowCustomerData: true}
-	pc := b.Build(context.Background(), beh, conv(), "")
+	pc := b.Build(context.Background(), beh, conv(), "", nil)
 	if pc.Customer == nil {
 		t.Errorf("customer should be present when allow_customer_data is on: %+v", pc)
 	}
@@ -177,7 +177,7 @@ func TestContext_NilSourcesAreSafe(t *testing.T) {
 	// Gate on but no source wired → no data, no panic.
 	b := NewContextBuilder(sampleMessages(), nil)
 	beh := entity.Behavior{AllowCustomerData: true}
-	pc := b.Build(context.Background(), beh, conv(), "")
+	pc := b.Build(context.Background(), beh, conv(), "", nil)
 	if pc.Customer != nil {
 		t.Errorf("nil source should yield no enrichment")
 	}

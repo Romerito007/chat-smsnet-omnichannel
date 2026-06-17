@@ -33,6 +33,7 @@ func registerCopilotRoutes(r chi.Router, c *container.Container) {
 
 		// Inference.
 		p.With(middleware.RequirePermission(authz.CopilotUse)).Post("/copilot/suggest-reply", ctl.SuggestReply)
+		p.With(middleware.RequirePermission(authz.CopilotUse)).Post("/copilot/ask", ctl.Ask)
 		p.With(middleware.RequirePermission(authz.CopilotUse)).Post("/copilot/summarize", ctl.Summarize)
 		p.With(middleware.RequirePermission(authz.CopilotUse)).Post("/copilot/classify", ctl.Classify)
 		p.With(middleware.RequirePermission(authz.CopilotUse)).Post("/copilot/next-action", ctl.NextAction)

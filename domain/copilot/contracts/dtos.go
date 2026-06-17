@@ -23,6 +23,22 @@ type SuggestReplyInput struct {
 	Instruction    string
 }
 
+// AgentChatInput is one turn of the AGENT↔assistant side chat: the agent's new
+// question plus the prior turns (front-managed, ephemeral). The backend is
+// stateless — it does not persist the history; it bounds it to the last few turns.
+type AgentChatInput struct {
+	ConversationID string
+	Instruction    string      // the agent's new question
+	History        []AgentTurn // prior agent↔assistant turns (oldest first)
+}
+
+// AgentTurn is one message of the agent↔assistant side chat. Role is "agent" or
+// "assistant"; anything else is treated as "agent".
+type AgentTurn struct {
+	Role string
+	Text string
+}
+
 // SummarizeInput requests a conversation summary.
 type SummarizeInput struct {
 	ConversationID string

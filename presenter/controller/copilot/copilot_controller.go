@@ -65,6 +65,23 @@ func (c *Controller) SuggestReply(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, res)
 }
 
+// Ask handles POST /v1/copilot/ask — the agent-facing Q&A chat. The copilot answers
+// the agent's question about the customer (using tools), keeping the front-supplied
+// agent↔assistant history. Returns the same Result shape (text + proposed_actions).
+func (c *Controller) Ask(w http.ResponseWriter, r *http.Request) {
+	var req dto.AskRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	res, err := c.copilot.AgentChat(r.Context(), req.ToInput())
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, res)
+}
+
 // Summarize handles POST /v1/copilot/summarize.
 func (c *Controller) Summarize(w http.ResponseWriter, r *http.Request) {
 	var req dto.SummarizeRequest

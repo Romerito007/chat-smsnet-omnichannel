@@ -95,6 +95,10 @@ type PromptContext struct {
 	Transcript  []Turn
 	Instruction string        // action-specific guidance (e.g. classify categories)
 	Customer    *CustomerInfo // nil unless allow_customer_data
+	// AgentChat is the AGENT↔assistant side chat (role agent|assistant), DISTINCT
+	// from Transcript (the customer conversation). Only set for the agent_chat
+	// action, so the assistant remembers the agent's earlier questions.
+	AgentChat []Turn
 }
 
 // Turn is one message in the conversation transcript.

@@ -109,12 +109,34 @@ func NewService(
 
 // SuggestReply drafts a reply for the conversation.
 func (s *Service) SuggestReply(ctx context.Context, in contracts.SuggestReplyInput) (contracts.Result, error) {
-	return s.run(ctx, in.ConversationID, entity.ActionSuggestReply, in.Instruction, nil)
+	return s.run(ctx, in.ConversationID, entity.ActionSuggestReply, in.Instruction, nil, nil)
+}
+
+// AgentChat answers the AGENT's question about the customer (agent-facing Q&A), with
+// tools + write proposals, keeping the front-supplied agent↔assistant history.
+func (s *Service) AgentChat(ctx context.Context, in contracts.AgentChatInput) (contracts.Result, error) {
+	return s.run(ctx, in.ConversationID, entity.ActionAgentChat, in.Instruction, nil, toTurns(in.History))
+}
+
+// toTurns maps the side-chat input turns to context turns (role normalized).
+func toTurns(in []contracts.AgentTurn) []contracts.Turn {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]contracts.Turn, 0, len(in))
+	for _, t := range in {
+		role := "agent"
+		if t.Role == "assistant" {
+			role = "assistant"
+		}
+		out = append(out, contracts.Turn{Role: role, Text: t.Text})
+	}
+	return out
 }
 
 // Summarize summarizes the conversation.
 func (s *Service) Summarize(ctx context.Context, in contracts.SummarizeInput) (contracts.Result, error) {
-	return s.run(ctx, in.ConversationID, entity.ActionSummarize, "", nil)
+	return s.run(ctx, in.ConversationID, entity.ActionSummarize, "", nil, nil)
 }
 
 // Classify classifies the conversation into one of the given categories.
@@ -123,16 +145,17 @@ func (s *Service) Classify(ctx context.Context, in contracts.ClassifyInput) (con
 		return contracts.Result{}, apperror.Validation("at least one category is required").
 			WithDetails(map[string]any{"categories": "is required"})
 	}
-	return s.run(ctx, in.ConversationID, entity.ActionClassify, "categories: "+strings.Join(in.Categories, ", "), in.Categories)
+	return s.run(ctx, in.ConversationID, entity.ActionClassify, "categories: "+strings.Join(in.Categories, ", "), in.Categories, nil)
 }
 
 // NextAction recommends the next action for the conversation.
 func (s *Service) NextAction(ctx context.Context, in contracts.NextActionInput) (contracts.Result, error) {
-	return s.run(ctx, in.ConversationID, entity.ActionNextAction, "", nil)
+	return s.run(ctx, in.ConversationID, entity.ActionNextAction, "", nil, nil)
 }
 
-// run is the shared pipeline for every action.
-func (s *Service) run(ctx context.Context, conversationID string, action entity.Action, instruction string, categories []string) (contracts.Result, error) {
+// run is the shared pipeline for every action. agentChat is the agent↔assistant
+// side chat (only for agent_chat; nil otherwise).
+func (s *Service) run(ctx context.Context, conversationID string, action entity.Action, instruction string, categories []string, agentChat []contracts.Turn) (contracts.Result, error) {
 	conv, err := s.loadVisible(ctx, conversationID)
 	if err != nil {
 		return contracts.Result{}, err
@@ -170,7 +193,7 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 			WithDetails(map[string]any{"category": "api_key_missing"})
 	}
 
-	pc := s.builder.Build(ctx, behavior, conv, instruction)
+	pc := s.builder.Build(ctx, behavior, conv, instruction, agentChat)
 	base := contracts.Request{
 		Action:             action,
 		Model:              cfg.Model,
@@ -184,7 +207,7 @@ func (s *Service) run(ctx context.Context, conversationID string, action entity.
 
 	var resp contracts.Response
 	var proposed []contracts.ProposedAction
-	if action == entity.ActionSuggestReply && s.tools != nil {
+	if (action == entity.ActionSuggestReply || action == entity.ActionAgentChat) && s.tools != nil {
 		resp, proposed, err = s.agenticLoop(ctx, conv.ID, provider, base, behavior)
 	} else {
 		resp, err = provider.Infer(ctx, base)
