@@ -30,6 +30,7 @@ type ConnectionService struct {
 	webhooks shared.ChannelWebhookManager
 	notifier shared.Notifier
 	audience TemplateAudience
+	emitter  ChannelEventEmitter
 }
 
 // TemplateAudience resolves the user ids to notify when a channel's WhatsApp
@@ -37,6 +38,21 @@ type ConnectionService struct {
 // user service. Optional: without it, no in-app notification is sent.
 type TemplateAudience interface {
 	NotifyRecipients(ctx context.Context) ([]string, error)
+}
+
+// ChannelEventEmitter delivers an event to a channel's MANAGED webhook (the
+// gateway). Implemented by the webhooks dispatcher; used by SyncTemplates to ask the
+// gateway to push the channel's WhatsApp templates (mirrors the groups sync).
+type ChannelEventEmitter interface {
+	EmitToChannel(ctx context.Context, tenantID, channelID, event string, payload any) error
+}
+
+// SetChannelEmitter wires the channel-managed-webhook emitter used by SyncTemplates.
+// Optional: without it, SyncTemplates returns an integration error.
+func (s *ConnectionService) SetChannelEmitter(e ChannelEventEmitter) {
+	if e != nil {
+		s.emitter = e
+	}
 }
 
 // SetNotifier wires the in-app notifier used to alert agents when the channel's
@@ -251,6 +267,40 @@ func (s *ConnectionService) RotateOutboundSecret(ctx context.Context, id string)
 		Data:         map[string]any{"type": string(conn.Type)},
 	})
 	return conn, nil
+}
+
+// eventTemplatesSyncRequested is the event the chat emits to a channel's managed
+// webhook to ask the gateway to push the channel's WhatsApp templates. It mirrors the
+// groups sync (group_sync_requested) — NOT in the public webhook catalog.
+const eventTemplatesSyncRequested = "templates_sync_requested"
+
+// SyncTemplates asks the channel's gateway to push its WhatsApp templates, by
+// emitting templates_sync_requested to the channel's MANAGED webhook (exactly like
+// the groups sync). Asynchronous: the gateway returns the templates at
+// POST /v1/inbound/channel/{channel}/templates. Returns an error when the channel has
+// no managed webhook (no outbound_url). Audited as channel.templates_sync_requested.
+func (s *ConnectionService) SyncTemplates(ctx context.Context, channelID string) error {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return err
+	}
+	channelID = strings.TrimSpace(channelID)
+	if channelID == "" {
+		return apperror.Validation("channel id is required")
+	}
+	if s.emitter == nil {
+		return apperror.Integration("template sync is not configured")
+	}
+	if err := s.emitter.EmitToChannel(ctx, tenantID, channelID, eventTemplatesSyncRequested, map[string]any{"channel_id": channelID}); err != nil {
+		return err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		TenantID:     tenantID,
+		Action:       "channel.templates_sync_requested",
+		ResourceType: "channel",
+		ResourceID:   channelID,
+	})
+	return nil
 }
 
 // ReplaceTemplates stores a WhatsApp template mirror the gateway PUSHED for a

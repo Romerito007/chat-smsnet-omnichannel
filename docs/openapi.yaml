@@ -5717,6 +5717,41 @@ paths:
             summary: Rotate the channel outbound HMAC secret (revokes the prior one; returned once). The integrator must switch to the new secret; the channel's managed webhook is re-synced to sign with it.
             tags:
                 - channels
+    /v1/channels/{id}/sync-templates:
+        post:
+            operationId: postChannelsByIdSyncTemplates
+            parameters:
+                - description: channel id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "202":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: true
+                                type: object
+                    description: Accepted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Request a WhatsApp template sync from the channel''s gateway (channel.manage). Asynchronous: emits templates_sync_requested to the channel''s managed webhook (mirrors groups sync); the gateway pushes the templates to POST /v1/inbound/channel/{channel}/templates. Returns 409 when the channel has no managed webhook.'
+            tags:
+                - channels
     /v1/channels/{id}/test:
         post:
             operationId: postChannelsByIdTest
@@ -8506,8 +8541,8 @@ paths:
             tags:
                 - channels
     /v1/inbound/channel/{channel}/templates:
-        put:
-            operationId: putInboundChannelByChannelTemplates
+        post:
+            operationId: postInboundChannelByChannelTemplates
             parameters:
                 - description: channel type
                   in: path
@@ -8542,7 +8577,7 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             security: []
-            summary: Push the channel's WhatsApp template mirror (channel-authenticated). The gateway PUTs the full {templates:[...]} list; the chat validates it and REPLACES the channel's whatsapp_templates wholesale (it is a render-only mirror), then alerts the tenant's agents in-app. Tenant/channel come only from the inbound token.
+            summary: Receive the channel's WhatsApp template mirror (channel-authenticated). The gateway POSTs the full {templates:[...]} list in response to a templates_sync_requested event; the chat validates it and REPLACES the channel's whatsapp_templates wholesale (it is a render-only mirror), then alerts the tenant's agents in-app. Idempotent. Tenant/channel come only from the inbound token.
             tags:
                 - channels
     /v1/mcp/servers:

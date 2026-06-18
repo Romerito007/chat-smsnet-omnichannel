@@ -422,3 +422,45 @@ func TestReplaceTemplates_RejectsInvalidWithoutPersistOrNotify(t *testing.T) {
 		t.Errorf("an invalid push must not notify, got %d", len(notifier.sent))
 	}
 }
+
+// fakeChannelEmitter records EmitToChannel calls (the managed-webhook emit).
+type fakeChannelEmitter struct {
+	calls   int
+	event   string
+	channel string
+	err     error
+}
+
+func (e *fakeChannelEmitter) EmitToChannel(_ context.Context, _, channelID, event string, _ any) error {
+	e.calls++
+	e.event = event
+	e.channel = channelID
+	return e.err
+}
+
+func TestSyncTemplates_EmitsEventToManagedWebhook(t *testing.T) {
+	svc, _, _ := newConnService()
+	em := &fakeChannelEmitter{}
+	svc.SetChannelEmitter(em)
+	if err := svc.SyncTemplates(tenantCtx(), "c1"); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if em.calls != 1 || em.event != "templates_sync_requested" || em.channel != "c1" {
+		t.Fatalf("expected one templates_sync_requested emit to c1, got %+v", em)
+	}
+}
+
+func TestSyncTemplates_NoEmitterConfigured(t *testing.T) {
+	svc, _, _ := newConnService()
+	if err := svc.SyncTemplates(tenantCtx(), "c1"); apperror.From(err).Code != apperror.CodeIntegrationUnavailable {
+		t.Fatalf("no emitter must be an integration error, got %v", err)
+	}
+}
+
+func TestSyncTemplates_PropagatesEmitterError(t *testing.T) {
+	svc, _, _ := newConnService()
+	svc.SetChannelEmitter(&fakeChannelEmitter{err: apperror.Conflict("no managed webhook")})
+	if err := svc.SyncTemplates(tenantCtx(), "c1"); apperror.From(err).Code != apperror.CodeConflict {
+		t.Fatalf("emitter error must propagate, got %v", err)
+	}
+}

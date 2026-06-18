@@ -70,6 +70,9 @@ func ConnectionService(c *container.Container) *channelservice.ConnectionService
 	// in-app (the bell), using the existing notification pipeline.
 	svc.SetNotifier(NotificationEnqueuer(c))
 	svc.SetTemplateAudience(channelTemplateAudience{users: UserService(c)})
+	// sync-templates emits templates_sync_requested to the channel's managed webhook
+	// (the gateway), mirroring the groups sync.
+	svc.SetChannelEmitter(WebhookDispatcher(c))
 	svc.SetAuditor(AuditService(c))
 	// A channel with an outbound URL produces a managed webhook (full pipeline)
 	// instead of a separate outbound rail.

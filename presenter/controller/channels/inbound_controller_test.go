@@ -303,13 +303,13 @@ func templatesRouter(conn *entity.ChannelConnection) http.Handler {
 	connSvc := chservice.NewConnectionService(&seededConnRepo{conn: conn}, oneAdapterRegistry{}, shared.SystemClock{})
 	ctl := channels.NewInboundController(connSvc, nil, nil, nil, nil)
 	r := chi.NewRouter()
-	r.Put("/inbound/channel/{channel}/templates", ctl.HandleTemplates)
+	r.Post("/inbound/channel/{channel}/templates", ctl.HandleTemplates)
 	return r
 }
 
 func putTemplates(h http.Handler, header string, body map[string]any) *httptest.ResponseRecorder {
 	raw, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPut, "/inbound/channel/whatsapp/templates", bytes.NewReader(raw))
+	req := httptest.NewRequest(http.MethodPost, "/inbound/channel/whatsapp/templates", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
 	if header != "" {
 		req.Header.Set("X-Inbound-Token", header)

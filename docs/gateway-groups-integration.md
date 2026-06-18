@@ -282,6 +282,44 @@ Sem novidade de transporte: a resposta do atendente sai no **mesmo webhook
 
 ---
 
+# Sincronizar templates de WhatsApp (mesmo padrão dos grupos)
+
+O cadastro de **templates** espelha **ponto a ponto** o sync de grupos: o chat
+**dispara um evento**, o gateway **empurra de volta** a lista. O chat **não puxa**.
+
+1. Um supervisor chama `POST /v1/channels/{id}/sync-templates` (JWT, perm
+   `channel.manage`) → `202`. Isso emite, **só** ao webhook **gerenciado** do canal, o
+   evento **`templates_sync_requested`** (análogo a `group_sync_requested`):
+   ```json
+   { "id":"del_...", "event":"templates_sync_requested",
+     "created_at":"...", "data":{ "channel_id":"<id>" } }
+   ```
+   Mesmos headers/assinatura dos outros eventos (`X-Webhook-Event`,
+   `X-Webhook-Timestamp`, `X-Webhook-Signature: sha256=<hex>`, `X-Webhook-Delivery-Id`;
+   HMAC sobre `"<timestamp>.<corpo>"`). Sem webhook gerenciado → `409`.
+
+2. O gateway responde empurrando a lista para
+   **`POST /v1/inbound/channel/{channel}/templates`** (borda por `inbound_token`, sem
+   JWT; `{channel}` = `whatsapp`):
+   ```json
+   { "inbound_token":"<T>", "templates":[
+     { "id":"hsm_boas_vindas", "name":"Boas-vindas", "language":"pt_BR",
+       "body":{ "text":"Olá {{nome}}", "variables":[{"key":"nome"}] },
+       "header":{"type":"text","text":"Oi"}, "buttons":[], "footer":"" }
+   ] }
+   ```
+   - `templates[]` é o shape `WhatsAppTemplate` já existente. `id` e `name` são
+     obrigatórios.
+   - O chat valida e **substitui** o `whatsapp_templates` do canal **inteiro** (é
+     mirror) → `200` `{ "ok": true, "count": <n> }`. **Idempotente** (re-enviar
+     substitui, sem duplicar). Tenant/canal vêm **só** do `inbound_token`.
+   - Após salvar, o chat **notifica os atendentes** in-app (o sino) que os modelos do
+     canal foram atualizados.
+
+O front continua lendo os templates por `GET /v1/channels/{id}` (inalterado).
+
+---
+
 ## Prompt pronto (cole no agente que implementa o gateway)
 
 > Você vai implementar, no gateway de WhatsApp, a **sincronização de grupos** com o

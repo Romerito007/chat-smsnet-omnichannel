@@ -112,6 +112,17 @@ func (c *ConnectionController) RotateOutboundSecret(w http.ResponseWriter, r *ht
 	middleware.WriteJSON(w, http.StatusOK, dto.NewRotatedOutboundSecretResponse(conn))
 }
 
+// SyncTemplates handles POST /v1/channels/{id}/sync-templates. It emits
+// templates_sync_requested to the channel's managed webhook (the gateway), which then
+// pushes the templates back to the inbound templates endpoint. Asynchronous → 202.
+func (c *ConnectionController) SyncTemplates(w http.ResponseWriter, r *http.Request) {
+	if err := c.connections.SyncTemplates(r.Context(), chi.URLParam(r, "id")); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusAccepted, map[string]any{"ok": true})
+}
+
 // Test handles POST /v1/channels/{id}/test.
 func (c *ConnectionController) Test(w http.ResponseWriter, r *http.Request) {
 	result, _, err := c.connections.Test(r.Context(), chi.URLParam(r, "id"))

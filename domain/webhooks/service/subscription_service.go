@@ -226,6 +226,11 @@ var managedChannelEvents = []string{
 	entity.EventConversationUpdated,
 	entity.EventMessageCreated,
 	entity.EventMessageUpdated,
+	// Channel-control events the chat emits to the gateway (delivered via
+	// EmitToChannel) asking it to push groups / templates back. Declared here so the
+	// managed subscription self-documents them; not part of the public catalog.
+	entity.EventGroupSyncRequested,
+	entity.EventTemplatesSyncRequested,
 }
 
 // SyncChannelWebhook upserts the subscription managed by a channel connection.

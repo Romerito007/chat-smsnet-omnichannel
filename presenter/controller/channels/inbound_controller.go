@@ -372,11 +372,12 @@ func (c *InboundController) HandleGroups(w http.ResponseWriter, r *http.Request)
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "upserted": n})
 }
 
-// HandleTemplates processes PUT /v1/inbound/channel/{channel}/templates. The WhatsApp
-// gateway PUSHES the channel's current WhatsApp template mirror here (the chat no
-// longer pulls). It is edge-authenticated by the channel inbound token (NOT the
-// front's JWT); the tenant/channel come only from that token. The list REPLACES the
-// channel's whatsapp_templates wholesale (it is a mirror) and alerts the agents.
+// HandleTemplates processes POST /v1/inbound/channel/{channel}/templates. The WhatsApp
+// gateway PUSHES the channel's current WhatsApp template mirror here (in response to a
+// templates_sync_requested event). It is edge-authenticated by the channel inbound
+// token (NOT the front's JWT); the tenant/channel come only from that token. The list
+// REPLACES the channel's whatsapp_templates wholesale (it is a mirror) and alerts the
+// agents.
 func (c *InboundController) HandleTemplates(w http.ResponseWriter, r *http.Request) {
 	channel := chi.URLParam(r, "channel")
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboundBody))

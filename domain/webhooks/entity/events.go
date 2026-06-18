@@ -20,6 +20,14 @@ const (
 	EventSLABreached               = "sla_breached"                // ours
 )
 
+// Channel-control events are delivered ONLY to a channel's managed webhook (via
+// Dispatcher.EmitToChannel), asking the gateway to push data back. They are
+// intentionally kept OUT of the public SupportedEvents catalog.
+const (
+	EventGroupSyncRequested     = "group_sync_requested"
+	EventTemplatesSyncRequested = "templates_sync_requested"
+)
+
 // SupportedEvents is the closed set of wire events a subscription may register
 // for. Subscriptions are validated against it so a typo never silently drops events.
 var SupportedEvents = []string{

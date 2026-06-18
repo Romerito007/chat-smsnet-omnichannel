@@ -185,6 +185,10 @@ func registerChannels(p *paths) {
 		summary:   "Rotate the channel outbound HMAC secret (revokes the prior one; returned once). The integrator must switch to the new secret; the channel's managed webhook is re-synced to sign with it.",
 		params:    idp,
 		responses: M{"200": jsonResp("Rotated", ref("RotatedOutboundSecret")), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/channels/{id}/sync-templates", op(opConfig{tag: "channels",
+		summary:   "Request a WhatsApp template sync from the channel's gateway (channel.manage). Asynchronous: emits templates_sync_requested to the channel's managed webhook (mirrors groups sync); the gateway pushes the templates to POST /v1/inbound/channel/{channel}/templates. Returns 409 when the channel has no managed webhook.",
+		params:    idp,
+		responses: M{"202": jsonResp("Accepted", freeObject()), "404": respRef("Error404"), "409": respRef("Error409")}}))
 
 	// Public inbound endpoints authenticate with the channel integration token via
 	// the X-Inbound-Token header (preferred) or an inbound_token body field — never
@@ -211,8 +215,8 @@ func registerChannels(p *paths) {
 		summary: "Receive a WhatsApp group-sync batch (channel-authenticated). The gateway pushes the channel's group list in batches (≤2000) in response to a group_sync_requested event. Upsert is idempotent by (tenant, group_jid) and never resets the operator's attend choice.",
 		public:  true, params: inboundParams, reqBody: body(ref("GroupBatchRequest")),
 		responses: M{"200": jsonResp("Result {ok, upserted}", freeObject())}}))
-	p.add("PUT", "/v1/inbound/channel/{channel}/templates", op(opConfig{tag: "channels",
-		summary: "Push the channel's WhatsApp template mirror (channel-authenticated). The gateway PUTs the full {templates:[...]} list; the chat validates it and REPLACES the channel's whatsapp_templates wholesale (it is a render-only mirror), then alerts the tenant's agents in-app. Tenant/channel come only from the inbound token.",
+	p.add("POST", "/v1/inbound/channel/{channel}/templates", op(opConfig{tag: "channels",
+		summary: "Receive the channel's WhatsApp template mirror (channel-authenticated). The gateway POSTs the full {templates:[...]} list in response to a templates_sync_requested event; the chat validates it and REPLACES the channel's whatsapp_templates wholesale (it is a render-only mirror), then alerts the tenant's agents in-app. Idempotent. Tenant/channel come only from the inbound token.",
 		public:  true, params: inboundParams, reqBody: body(ref("TemplatesPushRequest")),
 		responses: M{"200": jsonResp("Result {ok, count}", freeObject()), "400": respRef("Error400")}}))
 }
