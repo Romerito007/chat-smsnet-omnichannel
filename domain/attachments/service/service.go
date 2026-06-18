@@ -124,7 +124,10 @@ func (s *Service) AttachmentReady(ctx context.Context, attachmentID string) (boo
 // for delivery to an EXTERNAL system on the integration rail (the internal
 // download URL is JWT-gated and unusable by an integrator). The token encodes the
 // storage key + content-type + filename + expiry, HMAC-signed, so the public
-// handler serves the object without a JWT or DB lookup. Tenant-scoped lookup.
+// handler serves the object without a JWT or DB lookup. It goes through the SAME
+// channelMediaURL helper as the internal mediaURL, so the URL carries the
+// content-type extension (e.g. .ogg) external systems (WhatsApp/Nexxa) infer the
+// type from. Tenant-scoped lookup.
 func (s *Service) IntegrationMediaURL(ctx context.Context, attachmentID string) (string, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return "", err

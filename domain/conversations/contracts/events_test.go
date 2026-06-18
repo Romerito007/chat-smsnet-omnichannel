@@ -83,3 +83,29 @@ func mustJSON(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+// The outbound-webhook message payload (delivered to the gateway) must carry the
+// media URL produced by the integration resolver — which includes the content-type
+// extension (e.g. .ogg). This is the URL the gateway forwards to WhatsApp/Nexxa.
+func TestNewIntegrationMessagePayload_CarriesExtensionURL(t *testing.T) {
+	msg := &entity.Message{
+		ID: "m1", ConversationID: "c1", SenderType: entity.SenderAgent,
+		Direction: entity.DirectionOutbound, MessageType: entity.MessageAudio,
+		Attachments: []entity.Attachment{
+			{ID: "att1", URL: "http://api/v1/channel-media/tok", ContentType: "audio/ogg", Filename: "voice.ogg"},
+		},
+	}
+	// The resolver hands the signed, extension-bearing URL keyed by attachment id.
+	mediaURLs := map[string]string{"att1": "http://api/v1/channel-media/tok.ogg"}
+
+	p := NewIntegrationMessagePayload(msg, mediaURLs)
+	if len(p.Attachments) != 1 {
+		t.Fatalf("expected one attachment, got %d", len(p.Attachments))
+	}
+	if got := p.Attachments[0].URL; got != "http://api/v1/channel-media/tok.ogg" {
+		t.Errorf("outbound webhook attachment URL must carry the extension, got %q", got)
+	}
+	if !strings.HasSuffix(p.Attachments[0].URL, ".ogg") {
+		t.Errorf("audio URL delivered to the gateway must end with .ogg, got %q", p.Attachments[0].URL)
+	}
+}

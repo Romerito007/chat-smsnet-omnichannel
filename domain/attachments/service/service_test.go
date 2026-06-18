@@ -799,3 +799,42 @@ func TestConfirm_RemuxFailureKeepsOriginal(t *testing.T) {
 }
 
 var errInjected = errors.New("ffmpeg boom")
+
+// IntegrationMediaURL (the URL delivered to external systems via the outbound
+// webhook) appends the content-type extension just like the internal mediaURL — so
+// the gateway/Nexxa can infer the type from the URL. This is the URL that reaches
+// WhatsApp, so .ogg here is what fixes audio.
+func TestIntegrationMediaURL_AppendsExtension(t *testing.T) {
+	repo := newRepo()
+	svc := newSvc(repo, &fakeConvRepo{}, &fakeMsgRepo{}, &fakeStorage{provider: "s3"},
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t", MediaURLTTL: time.Minute})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	cases := []struct{ id, ct, suffix string }{
+		{"aud", "audio/ogg", ".ogg"},
+		{"img", "image/jpeg", ".jpg"},
+		{"unknown", "application/zip", ""},
+	}
+	for _, c := range cases {
+		repo.items[c.id] = &entity.Attachment{
+			ID: c.id, TenantID: "t1", StorageKey: "k/" + c.id, ContentType: c.ct,
+			Filename: "f", Status: entity.StatusReady,
+		}
+		url, err := svc.IntegrationMediaURL(ctx, c.id)
+		if err != nil {
+			t.Fatalf("%s: %v", c.id, err)
+		}
+		if !strings.HasPrefix(url, "http://api/v1/channel-media/") {
+			t.Errorf("%s: wrong prefix: %q", c.id, url)
+		}
+		if c.suffix == "" {
+			for _, ext := range knownMediaExtensions {
+				if strings.HasSuffix(url, ext) {
+					t.Errorf("%s (unknown type) must have no extension: %q", c.id, url)
+				}
+			}
+		} else if !strings.HasSuffix(url, c.suffix) {
+			t.Errorf("%s must end with %q: %q", c.id, c.suffix, url)
+		}
+	}
+}
