@@ -77,11 +77,21 @@ func NewSurveyResponses(items []*centity.CSATSurvey) []SurveyResponse {
 // ResponseResponse is the reporting view of a CSAT response. It deliberately
 // omits the public token.
 type ResponseResponse struct {
-	ID             string     `json:"id"`
-	ConversationID string     `json:"conversation_id"`
-	ContactID      string     `json:"contact_id,omitempty"`
-	SurveyID       string     `json:"survey_id"`
-	AgentID        string     `json:"agent_id,omitempty"`
+	ID             string `json:"id"`
+	ConversationID string `json:"conversation_id"`
+	ContactID      string `json:"contact_id,omitempty"`
+	// ContactName is read-only/derived: the contact's display name, resolved in batch
+	// so the report renders the name instead of a raw id. Empty when unresolved.
+	ContactName string `json:"contact_name,omitempty"`
+	SurveyID    string `json:"survey_id"`
+	// SurveyName is read-only/derived: resolved in batch from survey_id. Empty when
+	// unresolved.
+	SurveyName string `json:"survey_name,omitempty"`
+	AgentID    string `json:"agent_id,omitempty"`
+	// AgentName / AgentAvatarURL are read-only/derived: the agent's name + signed
+	// avatar URL, resolved in batch from agent_id. Empty when no agent or unresolved.
+	AgentName      string     `json:"agent_name,omitempty"`
+	AgentAvatarURL string     `json:"agent_avatar_url,omitempty"`
 	Score          *int       `json:"score,omitempty"`
 	Comment        string     `json:"comment,omitempty"`
 	SentAt         *time.Time `json:"sent_at,omitempty"`

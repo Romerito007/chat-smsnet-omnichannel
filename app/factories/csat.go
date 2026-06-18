@@ -28,7 +28,10 @@ func CSATService(c *container.Container) *cservice.Service {
 	)
 }
 
-// CSATController builds the CSAT controller.
+// CSATController builds the CSAT controller, wiring the contact/agent/survey
+// directories so the responses report carries resolved names (not raw ids).
 func CSATController(c *container.Container) *csatctl.Controller {
-	return csatctl.NewController(CSATSurveyService(c), CSATService(c))
+	surveys := CSATSurveyService(c)
+	return csatctl.NewController(surveys, CSATService(c)).
+		SetDirectories(ContactService(c), UserService(c), surveys)
 }

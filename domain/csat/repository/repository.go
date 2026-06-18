@@ -14,6 +14,9 @@ type SurveyRepository interface {
 	Update(ctx context.Context, s *entity.CSATSurvey) error
 	Delete(ctx context.Context, id string) error
 	FindByID(ctx context.Context, id string) (*entity.CSATSurvey, error)
+	// FindByIDs returns the tenant's surveys for the given ids (batch lookup for
+	// name enrichment); missing ids are simply absent.
+	FindByIDs(ctx context.Context, ids []string) ([]*entity.CSATSurvey, error)
 	List(ctx context.Context, page shared.PageRequest) ([]*entity.CSATSurvey, error)
 	// ListEnabled returns every enabled survey for the tenant (for matching on
 	// close).

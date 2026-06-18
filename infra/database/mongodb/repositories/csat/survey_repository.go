@@ -101,6 +101,17 @@ func (r *SurveyRepository) List(ctx context.Context, page shared.PageRequest) ([
 	return r.query(ctx, filter, opts)
 }
 
+func (r *SurveyRepository) FindByIDs(ctx context.Context, ids []string) ([]*entity.CSATSurvey, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return r.query(ctx, bson.M{"tenant_id": tenantID, "_id": bson.M{"$in": ids}}, nil)
+}
+
 func (r *SurveyRepository) ListEnabled(ctx context.Context) ([]*entity.CSATSurvey, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

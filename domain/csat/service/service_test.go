@@ -29,6 +29,15 @@ func (r *fakeSurveyRepo) FindByID(_ context.Context, id string) (*entity.CSATSur
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeSurveyRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.CSATSurvey, error) {
+	var out []*entity.CSATSurvey
+	for _, id := range ids {
+		if s, ok := r.items[id]; ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
 func (r *fakeSurveyRepo) List(context.Context, shared.PageRequest) ([]*entity.CSATSurvey, error) {
 	return nil, nil
 }

@@ -139,3 +139,21 @@ func (s *SurveyService) List(ctx context.Context, page shared.PageRequest) ([]*e
 	}
 	return s.repo.List(ctx, page.Normalize())
 }
+
+// SurveyNames resolves a set of survey ids to their names in ONE batch lookup, for
+// enriching the CSAT responses report (survey_id → survey_name). Missing ids are
+// absent from the map.
+func (s *SurveyService) SurveyNames(ctx context.Context, ids []string) (map[string]string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	surveys, err := s.repo.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(surveys))
+	for _, sv := range surveys {
+		out[sv.ID] = sv.Name
+	}
+	return out, nil
+}

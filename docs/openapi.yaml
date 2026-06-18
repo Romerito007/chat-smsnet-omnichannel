@@ -417,11 +417,20 @@ components:
             type: object
         CSATResponse:
             properties:
+                agent_avatar_url:
+                    description: 'Read-only, derived: the agent''s short-lived signed avatar URL, resolved in batch; empty when no agent or unresolved.'
+                    type: string
                 agent_id:
+                    type: string
+                agent_name:
+                    description: 'Read-only, derived: the agent''s display name, resolved in batch so the report renders the name instead of a raw id; empty when no agent or unresolved.'
                     type: string
                 comment:
                     type: string
                 contact_id:
+                    type: string
+                contact_name:
+                    description: 'Read-only, derived: the contact''s display name, resolved in batch so the report renders the name instead of a raw id; empty when unresolved.'
                     type: string
                 conversation_id:
                     type: string
@@ -441,6 +450,9 @@ components:
                 status:
                     type: string
                 survey_id:
+                    type: string
+                survey_name:
+                    description: 'Read-only, derived: the survey''s name, resolved in batch so the report renders the name instead of a raw id; empty when unresolved.'
                     type: string
             type: object
         CannedResponse:

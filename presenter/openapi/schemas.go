@@ -925,7 +925,11 @@ func schemas() M {
 		"UpdateSurveyRequest": object(M{"name": str(), "scale": str(), "question_text": str(), "sector_ids": arr(str()), "delay_seconds": integer(), "enabled": boolean()}),
 		"CSATResponse": object(M{
 			"id": str(), "conversation_id": str(), "contact_id": str(), "survey_id": str(), "agent_id": str(),
-			"score": integer(), "comment": str(), "sent_at": dateTime(), "responded_at": dateTime(), "status": str(), "created_at": dateTime(),
+			"contact_name":     describedStr("Read-only, derived: the contact's display name, resolved in batch so the report renders the name instead of a raw id; empty when unresolved."),
+			"survey_name":      describedStr("Read-only, derived: the survey's name, resolved in batch so the report renders the name instead of a raw id; empty when unresolved."),
+			"agent_name":       describedStr("Read-only, derived: the agent's display name, resolved in batch so the report renders the name instead of a raw id; empty when no agent or unresolved."),
+			"agent_avatar_url": describedStr("Read-only, derived: the agent's short-lived signed avatar URL, resolved in batch; empty when no agent or unresolved."),
+			"score":            integer(), "comment": str(), "sent_at": dateTime(), "responded_at": dateTime(), "status": str(), "created_at": dateTime(),
 		}),
 		"SubmitCSATRequest": object(M{"score": integer(), "comment": str()}, "score"),
 
