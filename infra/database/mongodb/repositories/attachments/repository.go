@@ -79,6 +79,13 @@ func (r *Repository) Update(ctx context.Context, a *entity.Attachment) error {
 			"message_id": a.MessageID,
 			"signed_url": a.SignedURL,
 			"status":     string(a.Status),
+			// The audio remux (webm->ogg) on Confirm rewrites these, so they must be
+			// persisted — not just signed_url — or IntegrationMediaURL re-reads the
+			// stale webm content_type/storage_key and serves an extension-less URL.
+			"content_type": a.ContentType,
+			"filename":     a.Filename,
+			"storage_key":  a.StorageKey,
+			"size":         a.Size,
 		}},
 	)
 	if err != nil {

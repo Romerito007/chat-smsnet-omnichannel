@@ -838,3 +838,49 @@ func TestIntegrationMediaURL_AppendsExtension(t *testing.T) {
 		}
 	}
 }
+
+// After a remux Confirm, the PERSISTED record (re-read via FindByID) must reflect the
+// .ogg result — content_type, filename and storage_key — and IntegrationMediaURL,
+// which re-reads that record, must then produce a .ogg URL for the gateway. Guards
+// the bug where only signed_url was persisted while content_type/storage_key stayed
+// webm, so the integration URL came out extension-less.
+func TestConfirm_RemuxPersistsRecordForIntegrationURL(t *testing.T) {
+	repo := newRepo()
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	st := &fakeStorage{provider: "s3", getData: []byte("webm")}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, st,
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t", MediaURLTTL: time.Minute})
+	svc.SetAudioConverter(&fakeAudioConverter{out: []byte("OGG")})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["a1"] = &entity.Attachment{
+		ID: "a1", TenantID: "t1", ConversationID: "cv1",
+		ContentType: "audio/webm;codecs=opus", Filename: "voice.webm",
+		StorageKey: "attachments/t1/cv1/a1/voice.webm", Size: 999, Status: entity.StatusPending,
+	}
+	if _, err := svc.Confirm(ctx, contracts.ConfirmUpload{AttachmentID: "a1"}); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+
+	got, err := repo.FindByID(ctx, "a1")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got.ContentType != "audio/ogg" {
+		t.Errorf("persisted content_type = %q, want audio/ogg", got.ContentType)
+	}
+	if got.Filename != "voice.ogg" {
+		t.Errorf("persisted filename = %q, want voice.ogg", got.Filename)
+	}
+	if got.StorageKey != "attachments/t1/cv1/a1/voice.ogg" {
+		t.Errorf("persisted storage_key = %q, want .../voice.ogg", got.StorageKey)
+	}
+
+	url, err := svc.IntegrationMediaURL(ctx, "a1")
+	if err != nil {
+		t.Fatalf("integration url: %v", err)
+	}
+	if !strings.HasSuffix(url, ".ogg") {
+		t.Errorf("integration URL (delivered to the gateway) must end with .ogg, got %q", url)
+	}
+}

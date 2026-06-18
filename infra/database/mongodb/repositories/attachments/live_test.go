@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	acontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/attachments/contracts"
+	aentity "github.com/romerito007/chat-smsnet-omnichannel/domain/attachments/entity"
 	aservice "github.com/romerito007/chat-smsnet-omnichannel/domain/attachments/service"
 	areposcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/audit/repository"
 	auditservice "github.com/romerito007/chat-smsnet-omnichannel/domain/audit/service"
@@ -141,4 +142,54 @@ func TestAttachmentsAndAuditLive(t *testing.T) {
 		t.Fatalf("audit list by action prefix: n=%d err=%v", len(items), err)
 	}
 	t.Logf("audit ok: actor=%s type=%s ip=%s ua=%s", alog["actor_id"], alog["actor_type"], alog["ip"], alog["user_agent"])
+}
+
+// TestAttachmentUpdatePersistsRemuxedFields guards the regression where Update's $set
+// omitted content_type/filename/storage_key/size: the audio remux (webm->ogg) on
+// Confirm mutated those, but only signed_url reached Mongo, so IntegrationMediaURL
+// re-read the stale webm content_type and served an extension-less URL to the gateway.
+func TestAttachmentUpdatePersistsRemuxedFields(t *testing.T) {
+	db := connect(t)
+	_ = db.Drop(context.Background())
+	const tenant = "t-remux"
+	ctx := adminCtx(tenant, "owner-1")
+	repo := New(db)
+
+	att := &aentity.Attachment{
+		ID: "a1", TenantID: tenant, ConversationID: "cv1",
+		Filename: "voice.webm", ContentType: "audio/webm;codecs=opus",
+		StorageKey: "attachments/t/cv1/a1/voice.webm", Size: 10,
+		StorageProvider: "local", Status: aentity.StatusPending, CreatedAt: time.Now(),
+	}
+	if err := repo.Create(ctx, att); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Simulate the remux mutating the record in place, then persist.
+	att.ContentType = "audio/ogg"
+	att.Filename = "voice.ogg"
+	att.StorageKey = "attachments/t/cv1/a1/voice.ogg"
+	att.Size = 7
+	att.Status = aentity.StatusReady
+	att.SignedURL = "http://localhost:8080/v1/channel-media/tok.ogg"
+	if err := repo.Update(ctx, att); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	got, err := repo.FindByID(ctx, "a1")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got.ContentType != "audio/ogg" {
+		t.Errorf("content_type not persisted: %q", got.ContentType)
+	}
+	if got.Filename != "voice.ogg" {
+		t.Errorf("filename not persisted: %q", got.Filename)
+	}
+	if got.StorageKey != "attachments/t/cv1/a1/voice.ogg" {
+		t.Errorf("storage_key not persisted: %q", got.StorageKey)
+	}
+	if got.Size != 7 {
+		t.Errorf("size not persisted: %d", got.Size)
+	}
 }
