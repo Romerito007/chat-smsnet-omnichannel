@@ -2,7 +2,10 @@
 // command inputs.
 package contracts
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // CreateUploadURL is the POST /v1/attachments/upload-url input. Exactly one
 // target applies: a conversation attachment (ConversationID set) or an avatar
@@ -67,4 +70,17 @@ type Storage interface {
 	// Exists reports whether the object was actually uploaded — used by confirm to
 	// reject a confirmation when the client never PUT the bytes.
 	Exists(key string) (bool, error)
+	// Get reads an object's bytes server-side (e.g. to transcode it on confirm).
+	Get(key string) ([]byte, error)
+	// Delete removes an object. Best-effort cleanup (e.g. the original after a
+	// format conversion); a missing object is not an error.
+	Delete(key string) error
+}
+
+// AudioConverter remuxes browser audio to a WhatsApp-accepted container.
+// Implemented in infra/media over ffmpeg. ToOgg converts WebM/Opus to Ogg/Opus,
+// preferring a stream copy (remux, no re-encode) and falling back to an Opus
+// re-encode; the returned bool reports whether a re-encode was needed (for logging).
+type AudioConverter interface {
+	ToOgg(ctx context.Context, in []byte) (out []byte, reencoded bool, err error)
 }

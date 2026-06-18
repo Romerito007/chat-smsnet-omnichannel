@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -187,6 +188,36 @@ func (s *S3AttachmentStorage) Exists(key string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// Get reads an object's bytes server-side (e.g. to transcode it on confirm).
+func (s *S3AttachmentStorage) Get(key string) ([]byte, error) {
+	out, err := s.client.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket), Key: aws.String(key),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return nil, apperror.NotFound("attachment object not found")
+		}
+		return nil, apperror.Integration("could not read object from s3").Wrap(err)
+	}
+	defer func() { _ = out.Body.Close() }()
+	data, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, apperror.Integration("could not read object body from s3").Wrap(err)
+	}
+	return data, nil
+}
+
+// Delete removes an object; a missing object is not an error (best-effort cleanup).
+func (s *S3AttachmentStorage) Delete(key string) error {
+	_, err := s.client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket), Key: aws.String(key),
+	})
+	if err != nil && !isNotFound(err) {
+		return apperror.Integration("could not delete object from s3").Wrap(err)
+	}
+	return nil
 }
 
 // isNotFound recognizes S3's "object missing" responses across SDK error shapes.

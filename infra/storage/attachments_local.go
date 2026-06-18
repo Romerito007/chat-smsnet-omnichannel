@@ -84,6 +84,23 @@ func (s *LocalAttachmentStorage) Exists(key string) (bool, error) {
 	return true, nil
 }
 
+// Get reads an object's bytes (server-side processing, e.g. audio remux).
+func (s *LocalAttachmentStorage) Get(key string) ([]byte, error) {
+	return s.read(key)
+}
+
+// Delete removes an object; a missing file is not an error (best-effort cleanup).
+func (s *LocalAttachmentStorage) Delete(key string) error {
+	path, err := s.pathFor(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // ResolveUpload validates a signed upload token and returns the bound key,
 // content-type and max size. Used by the blob PUT endpoint (local only).
 func (s *LocalAttachmentStorage) ResolveUpload(token string) (key, contentType string, maxSize int64, err error) {

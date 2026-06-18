@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -103,7 +104,10 @@ type fakeStorage struct {
 	uploadKey string
 	putCalls  int
 	redirect  string
-	missing   bool // when true, Exists reports the object was not uploaded
+	missing   bool              // when true, Exists reports the object was not uploaded
+	objects   map[string][]byte // Put/Get/Delete object store
+	getData   []byte            // canned Get bytes when objects has no entry
+	deleted   []string          // keys passed to Delete
 }
 
 func (s *fakeStorage) Provider() string            { return s.provider }
@@ -118,7 +122,32 @@ func (s *fakeStorage) Download(_, filename string, _ time.Duration) (contracts.D
 	}
 	return contracts.DownloadResult{Data: []byte("filebytes"), Filename: filename}, nil
 }
-func (s *fakeStorage) Put(string, string, []byte) error { s.putCalls++; return nil }
+func (s *fakeStorage) Put(key, _ string, data []byte) error {
+	s.putCalls++
+	if s.objects == nil {
+		s.objects = map[string][]byte{}
+	}
+	s.objects[key] = data
+	return nil
+}
+func (s *fakeStorage) Get(key string) ([]byte, error) {
+	if s.objects != nil {
+		if b, ok := s.objects[key]; ok {
+			return b, nil
+		}
+	}
+	if s.getData != nil {
+		return s.getData, nil
+	}
+	return []byte("storedbytes"), nil
+}
+func (s *fakeStorage) Delete(key string) error {
+	s.deleted = append(s.deleted, key)
+	if s.objects != nil {
+		delete(s.objects, key)
+	}
+	return nil
+}
 
 func ctxAuth(scope authz.SectorScope, sectors []string, userID string) context.Context {
 	ctx := shared.WithTenant(context.Background(), "t1")
@@ -644,3 +673,129 @@ func TestDownloadSigned_TokenWithAndWithoutExtension(t *testing.T) {
 		t.Errorf("both forms must resolve the same object: %q vs %q", withExt.ContentType, noExt.ContentType)
 	}
 }
+
+// fakeAudioConverter is a stand-in for the ffmpeg converter.
+type fakeAudioConverter struct {
+	called    int
+	out       []byte
+	reencoded bool
+	err       error
+}
+
+func (f *fakeAudioConverter) ToOgg(_ context.Context, in []byte) ([]byte, bool, error) {
+	f.called++
+	if f.err != nil {
+		return nil, false, f.err
+	}
+	out := f.out
+	if out == nil {
+		out = []byte("OGG" + string(in))
+	}
+	return out, f.reencoded, nil
+}
+
+// (a) A WebM/Opus voice note is remuxed to Ogg/Opus on confirm: content_type,
+// filename, size and storage_key all reflect the .ogg result, and the media URL
+// (which appends an extension per content_type) ends in .ogg.
+func TestConfirm_RemuxesWebmAudioToOgg(t *testing.T) {
+	repo := newRepo()
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	st := &fakeStorage{provider: "s3", getData: []byte("webm-opus-bytes")}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, st,
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t", MediaURLTTL: time.Minute})
+	conviter := &fakeAudioConverter{out: []byte("OGGDATA")}
+	svc.SetAudioConverter(conviter)
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["a1"] = &entity.Attachment{
+		ID: "a1", TenantID: "t1", ConversationID: "cv1",
+		ContentType: "audio/webm;codecs=opus", Filename: "voice.webm",
+		StorageKey: "attachments/t1/cv1/a1/voice.webm", Size: 999, Status: entity.StatusPending,
+	}
+	att, err := svc.Confirm(ctx, contracts.ConfirmUpload{AttachmentID: "a1"})
+	if err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if conviter.called != 1 {
+		t.Fatalf("converter must be invoked once, got %d", conviter.called)
+	}
+	if att.ContentType != "audio/ogg" {
+		t.Errorf("content_type = %q, want audio/ogg", att.ContentType)
+	}
+	if att.Filename != "voice.ogg" {
+		t.Errorf("filename = %q, want voice.ogg", att.Filename)
+	}
+	if att.StorageKey != "attachments/t1/cv1/a1/voice.ogg" {
+		t.Errorf("storage_key = %q, want .../voice.ogg", att.StorageKey)
+	}
+	if att.Size != int64(len("OGGDATA")) {
+		t.Errorf("size = %d, want %d", att.Size, len("OGGDATA"))
+	}
+	// The new object was stored and the original webm removed.
+	if _, ok := st.objects["attachments/t1/cv1/a1/voice.ogg"]; !ok {
+		t.Errorf("the .ogg object must be stored")
+	}
+	if len(st.deleted) != 1 || st.deleted[0] != "attachments/t1/cv1/a1/voice.webm" {
+		t.Errorf("the original webm must be deleted, got %v", st.deleted)
+	}
+	// The signed media URL ends in .ogg (channelMediaURL appends per content_type).
+	if !strings.HasSuffix(att.SignedURL, ".ogg") {
+		t.Errorf("media URL must end with .ogg, got %q", att.SignedURL)
+	}
+}
+
+// (b) Non-webm audio (and any other type) passes through untouched.
+func TestConfirm_NonWebmAudioPassesThrough(t *testing.T) {
+	repo := newRepo()
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	st := &fakeStorage{provider: "s3"}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, st, Config{DownloadBaseURL: "http://api"})
+	conviter := &fakeAudioConverter{}
+	svc.SetAudioConverter(conviter)
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["a1"] = &entity.Attachment{
+		ID: "a1", TenantID: "t1", ConversationID: "cv1",
+		ContentType: "audio/ogg", Filename: "a.ogg", StorageKey: "k/a.ogg", Size: 10, Status: entity.StatusPending,
+	}
+	att, err := svc.Confirm(ctx, contracts.ConfirmUpload{AttachmentID: "a1"})
+	if err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if conviter.called != 0 {
+		t.Errorf("non-webm audio must not be converted")
+	}
+	if att.ContentType != "audio/ogg" || att.Filename != "a.ogg" || att.StorageKey != "k/a.ogg" {
+		t.Errorf("non-webm attachment must be untouched: %+v", att)
+	}
+}
+
+// (c) A conversion failure preserves the original upload and never fails confirm.
+func TestConfirm_RemuxFailureKeepsOriginal(t *testing.T) {
+	repo := newRepo()
+	conv := &fakeConvRepo{conv: &conventity.Conversation{ID: "cv1", TenantID: "t1", SectorID: "s1"}}
+	st := &fakeStorage{provider: "s3", getData: []byte("webm")}
+	svc := newSvc(repo, conv, &fakeMsgRepo{}, st, Config{DownloadBaseURL: "http://api"})
+	svc.SetAudioConverter(&fakeAudioConverter{err: errInjected})
+	ctx := ctxAuth(authz.ScopeAll, nil, "u1")
+
+	repo.items["a1"] = &entity.Attachment{
+		ID: "a1", TenantID: "t1", ConversationID: "cv1",
+		ContentType: "audio/webm", Filename: "voice.webm", StorageKey: "k/voice.webm", Size: 5, Status: entity.StatusPending,
+	}
+	att, err := svc.Confirm(ctx, contracts.ConfirmUpload{AttachmentID: "a1"})
+	if err != nil {
+		t.Fatalf("confirm must not fail when remux fails: %v", err)
+	}
+	if att.Status != entity.StatusReady {
+		t.Errorf("attachment must still be ready")
+	}
+	if att.ContentType != "audio/webm" || att.Filename != "voice.webm" || att.StorageKey != "k/voice.webm" {
+		t.Errorf("a failed remux must keep the original: %+v", att)
+	}
+	if len(st.deleted) != 0 {
+		t.Errorf("a failed remux must not delete the original")
+	}
+}
+
+var errInjected = errors.New("ffmpeg boom")

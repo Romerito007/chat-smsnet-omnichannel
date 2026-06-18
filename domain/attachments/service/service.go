@@ -54,7 +54,17 @@ type Service struct {
 	messages      convrepo.MessageRepository
 	clock         shared.Clock
 	cfg           Config
+	audio         contracts.AudioConverter
 	logger        shared.Logger
+}
+
+// SetAudioConverter wires the converter that remuxes browser audio (WebM/Opus) to
+// Ogg/Opus on confirm, so outbound audio is in a WhatsApp-accepted container.
+// Optional: without it, audio is stored as uploaded.
+func (s *Service) SetAudioConverter(a contracts.AudioConverter) {
+	if a != nil {
+		s.audio = a
+	}
 }
 
 // SetLogger wires the structured logger used to record the concrete cause of an
@@ -351,6 +361,10 @@ func (s *Service) Confirm(ctx context.Context, cmd contracts.ConfirmUpload) (*en
 	if strings.TrimSpace(att.ContentType) == "" {
 		att.ContentType = "application/octet-stream"
 	}
+	// Browser voice notes arrive as WebM/Opus, which WhatsApp rejects. Remux to
+	// Ogg/Opus here so the persisted attachment (and the outbound webhook media URL)
+	// are .ogg for every channel. Best-effort: a failure keeps the original.
+	s.maybeConvertAudio(ctx, att)
 	att.Status = entity.StatusReady
 	att.SignedURL = s.mediaURL(att.StorageKey, att.ContentType, att.Filename)
 	if err := s.repo.Update(ctx, att); err != nil {
@@ -721,6 +735,72 @@ func stripMediaExtension(token string) string {
 		}
 	}
 	return token
+}
+
+// maybeConvertAudio remuxes a WebM/Opus attachment to Ogg/Opus in place (storage +
+// record) so outbound audio works on WhatsApp. It mutates att on success; on any
+// failure it logs AUDIO_REMUX_FAILED and leaves the original untouched (never loses
+// the upload). No-op when no converter is wired or the type does not need it.
+func (s *Service) maybeConvertAudio(ctx context.Context, att *entity.Attachment) {
+	if s.audio == nil || !needsOggConversion(att.ContentType) {
+		return
+	}
+	log := shared.LoggerFrom(ctx, s.logger)
+
+	data, err := s.storage.Get(att.StorageKey)
+	if err != nil {
+		log.Error("AUDIO_REMUX_FAILED", "stage", "read", "attachment_id", att.ID,
+			"storage_key", att.StorageKey, "content_type", att.ContentType, "error", err.Error())
+		return
+	}
+	ogg, reencoded, err := s.audio.ToOgg(ctx, data)
+	if err != nil {
+		log.Error("AUDIO_REMUX_FAILED", "stage", "convert", "attachment_id", att.ID,
+			"content_type", att.ContentType, "error", err.Error())
+		return
+	}
+
+	newKey := swapToOgg(att.StorageKey)
+	if err := s.storage.Put(newKey, "audio/ogg", ogg); err != nil {
+		log.Error("AUDIO_REMUX_FAILED", "stage", "store", "attachment_id", att.ID,
+			"storage_key", newKey, "error", err.Error())
+		return
+	}
+	// Remove the original WebM object so it does not linger as orphaned storage.
+	oldKey := att.StorageKey
+	if newKey != oldKey {
+		if derr := s.storage.Delete(oldKey); derr != nil {
+			log.Warn("AUDIO_REMUX_ORPHAN", "attachment_id", att.ID, "storage_key", oldKey, "error", derr.Error())
+		}
+	}
+
+	att.StorageKey = newKey
+	att.Filename = swapToOgg(att.Filename)
+	att.ContentType = "audio/ogg"
+	att.Size = int64(len(ogg))
+	log.Info("AUDIO_REMUX_OK", "attachment_id", att.ID, "path",
+		map[bool]string{false: "copy", true: "reencode"}[reencoded],
+		"storage_key", newKey, "size", att.Size)
+}
+
+// needsOggConversion reports whether a content type is WebM audio (the only family
+// browsers record that WhatsApp rejects). Other audio types pass through untouched.
+func needsOggConversion(contentType string) bool {
+	ct := contentType
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "audio/webm")
+}
+
+// swapToOgg replaces a name's last extension with .ogg (appends it when there is
+// none). Storage keys carry a single dot — the filename extension — so this rewrites
+// exactly that.
+func swapToOgg(name string) string {
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		return name[:i] + ".ogg"
+	}
+	return name + ".ogg"
 }
 
 // authorizeAttachment enforces access to an already-loaded attachment. Avatar

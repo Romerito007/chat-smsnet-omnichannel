@@ -6,6 +6,7 @@ import (
 	aservice "github.com/romerito007/chat-smsnet-omnichannel/domain/attachments/service"
 	attachrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/attachments"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
+	"github.com/romerito007/chat-smsnet-omnichannel/infra/media"
 	"github.com/romerito007/chat-smsnet-omnichannel/infra/storage"
 	attachctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/attachments"
 )
@@ -66,6 +67,8 @@ func AttachmentService(c *container.Container) *aservice.Service {
 	)
 	// Log the concrete cause of an inbound-storage failure (provider/key/cause).
 	svc.SetLogger(c.Logger)
+	// Remux browser audio (WebM/Opus) to Ogg/Opus on confirm (WhatsApp-accepted).
+	svc.SetAudioConverter(media.NewFFmpegAudioConverter())
 	return svc
 }
 
@@ -92,5 +95,8 @@ func AttachmentController(c *container.Container) *attachctl.Controller {
 			SigningSecret: cfg.SigningSecret,
 		},
 	)
+	svc.SetLogger(c.Logger)
+	// Confirm remuxes WebM/Opus voice notes to Ogg/Opus before persisting.
+	svc.SetAudioConverter(media.NewFFmpegAudioConverter())
 	return attachctl.NewController(svc, blob)
 }
