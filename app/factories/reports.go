@@ -28,10 +28,11 @@ func ReportService(c *container.Container) *reportservice.Service {
 	return svc
 }
 
-// ReportController builds the reports controller, wired with the agent (IAM) and
-// sector directories so per-agent/per-sector rows resolve display names instead
+// ReportController builds the reports controller, wired with the agent (IAM),
+// sector and close-reason directories so per-agent/per-sector rows and the
+// conversations by_sector/closed_by_reason buckets resolve display names instead
 // of returning raw ids.
 func ReportController(c *container.Container) *reportctl.Controller {
 	return reportctl.NewController(ReportService(c), ReportFileStore(c)).
-		SetDirectories(UserService(c), SectorService(c))
+		SetDirectories(UserService(c), SectorService(c), ConversationToolsCloseReasonService(c))
 }

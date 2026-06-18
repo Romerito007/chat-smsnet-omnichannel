@@ -30,12 +30,20 @@ type SectorDirectory interface {
 	Names(ctx context.Context, ids []string) (map[string]string, error)
 }
 
+// CloseReasonDirectory resolves close-reason ids to names so the conversations
+// report's closed_by_reason buckets carry a label, not a raw id. Satisfied by the
+// close-reason service (Names). Optional.
+type CloseReasonDirectory interface {
+	Names(ctx context.Context, ids []string) (map[string]string, error)
+}
+
 // Controller serves the report endpoints.
 type Controller struct {
 	svc     rcontracts.ReportService
 	files   rcontracts.FileStore
 	agents  AgentDirectory
 	sectors SectorDirectory
+	reasons CloseReasonDirectory
 }
 
 // NewController builds the controller.
@@ -43,12 +51,14 @@ func NewController(svc rcontracts.ReportService, files rcontracts.FileStore) *Co
 	return &Controller{svc: svc, files: files}
 }
 
-// SetDirectories wires the agent and sector directories used to enrich the
-// per-agent and per-sector reports with display names (so the dashboard never
-// shows raw ids). Optional: when unset, rows carry only the raw id.
-func (c *Controller) SetDirectories(agents AgentDirectory, sectors SectorDirectory) *Controller {
+// SetDirectories wires the agent, sector and close-reason directories used to enrich
+// the reports with display names (so the dashboard never shows raw ids): per-agent
+// (name+avatar), per-sector and the conversations report's by_sector/closed_by_reason
+// bucket labels. Optional: when unset, rows/buckets carry only the raw id.
+func (c *Controller) SetDirectories(agents AgentDirectory, sectors SectorDirectory, reasons CloseReasonDirectory) *Controller {
 	c.agents = agents
 	c.sectors = sectors
+	c.reasons = reasons
 	return c
 }
 
@@ -81,10 +91,46 @@ func (c *Controller) Overview(w http.ResponseWriter, r *http.Request) {
 	write(w, r, res, err)
 }
 
-// Conversations handles GET /v1/reports/conversations.
+// Conversations handles GET /v1/reports/conversations. The by_sector and
+// closed_by_reason buckets are keyed by raw ids; each gets a resolved label so the
+// dashboard renders names. (by_status/messages_by_channel keys are already
+// human-readable.)
 func (c *Controller) Conversations(w http.ResponseWriter, r *http.Request) {
 	res, err := c.svc.Conversations(r.Context(), filter(r))
+	if err == nil {
+		c.labelBuckets(r.Context(), res.BySector, c.sectors)
+		c.labelBuckets(r.Context(), res.ClosedByReason, c.reasons)
+	}
 	write(w, r, res, err)
+}
+
+// nameResolver resolves a set of ids to display names in one batch call.
+type nameResolver interface {
+	Names(ctx context.Context, ids []string) (map[string]string, error)
+}
+
+// labelBuckets fills each bucket's Label from the resolved name of its key (an id),
+// in ONE batch call. Best-effort: a nil directory or a lookup error leaves the
+// buckets with only their raw key.
+func (c *Controller) labelBuckets(ctx context.Context, buckets []rcontracts.Bucket, dir nameResolver) {
+	if dir == nil || len(buckets) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(buckets))
+	for _, b := range buckets {
+		if b.Key != "" {
+			ids = append(ids, b.Key)
+		}
+	}
+	names, err := dir.Names(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range buckets {
+		if name, ok := names[buckets[i].Key]; ok {
+			buckets[i].Label = name
+		}
+	}
 }
 
 // Agents handles GET /v1/reports/agents. The raw agent ids are enriched with the

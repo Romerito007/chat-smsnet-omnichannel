@@ -9,8 +9,12 @@ import (
 
 // AuditLogResponse is the public view of an audit log entry.
 type AuditLogResponse struct {
-	ID           string         `json:"id"`
-	ActorID      string         `json:"actor_id,omitempty"`
+	ID      string `json:"id"`
+	ActorID string `json:"actor_id,omitempty"`
+	// ActorName is read-only/derived: the actor's display name, resolved in batch so
+	// the log renders the name instead of a raw id; empty for non-user actors
+	// (system/platform) or when unresolved.
+	ActorName    string         `json:"actor_name,omitempty"`
 	ActorType    string         `json:"actor_type,omitempty"`
 	Action       string         `json:"action"`
 	ResourceType string         `json:"resource_type,omitempty"`

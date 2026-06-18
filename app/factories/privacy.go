@@ -20,9 +20,10 @@ func AuditService(c *container.Container) *auditservice.Service {
 	return auditservice.NewService(auditrepo.New(c.Mongo.DB), clock)
 }
 
-// AuditController builds the audit-log controller.
+// AuditController builds the audit-log controller, wired with the agent (IAM)
+// directory so actor_id resolves to actor_name (raw id kept).
 func AuditController(c *container.Container) *auditctl.Controller {
-	return auditctl.NewController(AuditService(c))
+	return auditctl.NewController(AuditService(c)).SetDirectories(UserService(c))
 }
 
 // PrivacyFileStore builds the export file store (local filesystem + signed URLs).

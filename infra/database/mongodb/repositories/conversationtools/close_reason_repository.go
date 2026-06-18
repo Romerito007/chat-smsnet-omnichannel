@@ -82,6 +82,30 @@ func (r *CloseReasonRepository) FindByID(ctx context.Context, id string) (*entit
 	return toCloseReasonEntity(&m), nil
 }
 
+func (r *CloseReasonRepository) FindByIDs(ctx context.Context, ids []string) ([]*entity.CloseReason, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	cur, err := r.coll.Find(ctx, bson.M{"tenant_id": tenantID, "_id": bson.M{"$in": ids}})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []*entity.CloseReason
+	for cur.Next(ctx) {
+		var m models.CloseReason
+		if err := cur.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, toCloseReasonEntity(&m))
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
 func (r *CloseReasonRepository) List(ctx context.Context, page shared.PageRequest) ([]*entity.CloseReason, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

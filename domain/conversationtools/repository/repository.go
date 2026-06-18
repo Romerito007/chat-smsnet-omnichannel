@@ -37,5 +37,8 @@ type CloseReasonRepository interface {
 	Update(ctx context.Context, c *entity.CloseReason) error
 	Delete(ctx context.Context, id string) error
 	FindByID(ctx context.Context, id string) (*entity.CloseReason, error)
+	// FindByIDs returns the close reasons matching the ids (tenant-scoped). Used to
+	// resolve reason names for the conversations report; missing ids are absent.
+	FindByIDs(ctx context.Context, ids []string) ([]*entity.CloseReason, error)
 	List(ctx context.Context, page shared.PageRequest) ([]*entity.CloseReason, error)
 }

@@ -81,6 +81,28 @@ func (statRowsSvc) Sectors(context.Context, rcontracts.Filter) (rcontracts.Secto
 		{SectorID: "", Conversations: 2}, // sector-less: stays nameless
 	}}, nil
 }
+func (statRowsSvc) Conversations(context.Context, rcontracts.Filter) (rcontracts.ConversationsReport, error) {
+	return rcontracts.ConversationsReport{
+		ByStatus:  []rcontracts.Bucket{{Key: "open", Count: 5}}, // human-readable key, no label
+		BySector:  []rcontracts.Bucket{{Key: "s1", Count: 4}, {Key: "sX", Count: 1}},
+		ByChannel: []rcontracts.Bucket{{Key: "whatsapp", Count: 9}},
+		ClosedByReason: []rcontracts.Bucket{
+			{Key: "rsn1", Count: 3}, {Key: "rsnX", Count: 1},
+		},
+	}, nil
+}
+
+type fakeReasonDir struct{}
+
+func (fakeReasonDir) Names(_ context.Context, ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		if id == "rsn1" {
+			out[id] = "Resolvido"
+		}
+	}
+	return out, nil
+}
 
 type fakeAgentDir struct{}
 
@@ -111,7 +133,7 @@ func (fakeSectorDir) Names(_ context.Context, ids []string) (map[string]string, 
 func TestAgentsReport_EnrichesNames(t *testing.T) {
 	tm := httpharness.Tokens()
 	files := storage.NewLocalFileStoreAt(t.TempDir(), "test-secret", "http://api.test", "/v1/reports/downloads/")
-	ctl := reports.NewController(statRowsSvc{&fakeReportSvc{}}, files).SetDirectories(fakeAgentDir{}, fakeSectorDir{})
+	ctl := reports.NewController(statRowsSvc{&fakeReportSvc{}}, files).SetDirectories(fakeAgentDir{}, fakeSectorDir{}, fakeReasonDir{})
 
 	r := chi.NewRouter()
 	r.Group(func(p chi.Router) {
@@ -157,6 +179,56 @@ func TestAgentsReport_EnrichesNames(t *testing.T) {
 	}
 	if se.Sectors[1].Name != "" {
 		t.Errorf("sector-less row should stay nameless: %+v", se.Sectors[1])
+	}
+}
+
+// TestConversationsReport_LabelsBuckets proves /reports/conversations resolves the
+// by_sector and closed_by_reason bucket ids to labels in batch, leaves unresolved
+// ids label-less, and never labels the already-readable status/channel buckets.
+func TestConversationsReport_LabelsBuckets(t *testing.T) {
+	tm := httpharness.Tokens()
+	files := storage.NewLocalFileStoreAt(t.TempDir(), "test-secret", "http://api.test", "/v1/reports/downloads/")
+	ctl := reports.NewController(statRowsSvc{&fakeReportSvc{}}, files).SetDirectories(fakeAgentDir{}, fakeSectorDir{}, fakeReasonDir{})
+
+	r := chi.NewRouter()
+	r.Group(func(p chi.Router) {
+		p.Use(middleware.AuthContext(tm))
+		p.With(middleware.RequirePermission(authz.ReportView)).Get("/reports/conversations", ctl.Conversations)
+	})
+	tok := httpharness.Token(t, tm, "t1", "u1", authz.ReportView)
+
+	rec := httpharness.Do(t, r, http.MethodGet, "/reports/conversations", tok, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("conversations status = %d (%s)", rec.Code, rec.Body.String())
+	}
+	type bucket struct {
+		Key   string `json:"key"`
+		Label string `json:"label"`
+		Count int    `json:"count"`
+	}
+	var rep struct {
+		ByStatus       []bucket `json:"by_status"`
+		BySector       []bucket `json:"by_sector"`
+		ByChannel      []bucket `json:"messages_by_channel"`
+		ClosedByReason []bucket `json:"closed_by_reason"`
+	}
+	httpharness.DecodeJSON(t, rec, &rep)
+
+	if len(rep.BySector) != 2 || rep.BySector[0].Key != "s1" || rep.BySector[0].Label != "Suporte" {
+		t.Fatalf("by_sector not labeled: %+v", rep.BySector)
+	}
+	if rep.BySector[1].Label != "" { // unresolved id stays label-less
+		t.Errorf("unresolved sector bucket must stay label-less: %+v", rep.BySector[1])
+	}
+	if len(rep.ClosedByReason) != 2 || rep.ClosedByReason[0].Key != "rsn1" || rep.ClosedByReason[0].Label != "Resolvido" {
+		t.Fatalf("closed_by_reason not labeled: %+v", rep.ClosedByReason)
+	}
+	if rep.ClosedByReason[1].Label != "" {
+		t.Errorf("unresolved reason bucket must stay label-less: %+v", rep.ClosedByReason[1])
+	}
+	// Already human-readable buckets are never labeled.
+	if rep.ByStatus[0].Label != "" || rep.ByChannel[0].Label != "" {
+		t.Errorf("status/channel buckets must not be labeled: %+v %+v", rep.ByStatus, rep.ByChannel)
 	}
 }
 

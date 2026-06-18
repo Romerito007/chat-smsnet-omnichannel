@@ -177,6 +177,9 @@ components:
                     type: string
                 actor_id:
                     type: string
+                actor_name:
+                    description: 'Read-only, derived: the actor''s display name, resolved in batch so the log renders the name instead of a raw id; empty for non-user actors (system/platform) or when unresolved.'
+                    type: string
                 actor_type:
                     type: string
                 created_at:
@@ -351,6 +354,9 @@ components:
                 count:
                     type: integer
                 key:
+                    type: string
+                label:
+                    description: 'Read-only, derived: the resolved display name when the key is a raw id (sector, close reason), resolved in batch so the report renders the name instead of the id; empty when the key is already human-readable (status, channel, score) or unresolved.'
                     type: string
             type: object
         BusinessHours:

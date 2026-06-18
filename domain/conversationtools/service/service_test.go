@@ -122,6 +122,15 @@ func (r *fakeCloseRepo) FindByID(_ context.Context, id string) (*entity.CloseRea
 	}
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeCloseRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.CloseReason, error) {
+	var out []*entity.CloseReason
+	for _, id := range ids {
+		if c, ok := r.items[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
 func (r *fakeCloseRepo) List(context.Context, shared.PageRequest) ([]*entity.CloseReason, error) {
 	return nil, nil
 }

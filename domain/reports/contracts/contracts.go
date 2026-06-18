@@ -19,9 +19,13 @@ type Filter struct {
 	Channel    string
 }
 
-// Bucket is a generic key→count aggregation row.
+// Bucket is a generic key→count aggregation row. Label is the resolved display
+// name when the key is a raw id (sector, close reason), filled in batch at the
+// presenter so the dashboard renders the name instead of the id; empty when the key
+// is already human-readable (status, channel, score) or unresolved.
 type Bucket struct {
 	Key   string `json:"key"`
+	Label string `json:"label,omitempty"`
 	Count int    `json:"count"`
 }
 

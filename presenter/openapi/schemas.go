@@ -939,7 +939,8 @@ func schemas() M {
 		"MessageHit":      object(M{"id": str(), "conversation_id": str(), "sender_type": str(), "direction": str(), "text": str(), "created_at": dateTime()}),
 
 		// ── reports ────────────────────────────────────────────────────────────
-		"Bucket":    object(M{"key": str(), "count": integer()}),
+		"Bucket": object(M{"key": str(), "count": integer(),
+			"label": describedStr("Read-only, derived: the resolved display name when the key is a raw id (sector, close reason), resolved in batch so the report renders the name instead of the id; empty when the key is already human-readable (status, channel, score) or unresolved.")}),
 		"DateCount": object(M{"date": str(), "count": integer()}),
 		"AgentStat": object(M{
 			"agent_id":      str(),
@@ -985,7 +986,9 @@ func schemas() M {
 			"audit_logs_days": integer(), "notifications_days": integer(),
 		}),
 		"AuditLog": object(M{
-			"id": str(), "actor_id": str(), "actor_type": str(), "action": str(), "resource_type": str(),
+			"id": str(), "actor_id": str(),
+			"actor_name": describedStr("Read-only, derived: the actor's display name, resolved in batch so the log renders the name instead of a raw id; empty for non-user actors (system/platform) or when unresolved."),
+			"actor_type": str(), "action": str(), "resource_type": str(),
 			"resource_id": str(), "ip": str(), "user_agent": str(), "data": freeObject(), "created_at": dateTime(),
 		}),
 

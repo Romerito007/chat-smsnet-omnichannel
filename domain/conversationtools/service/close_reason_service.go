@@ -107,6 +107,23 @@ func (s *CloseReasonService) List(ctx context.Context, page shared.PageRequest) 
 	return s.repo.List(ctx, page.Normalize())
 }
 
+// Names resolves a set of close-reason ids to their names in ONE batch lookup, for
+// enriching the conversations report (closed_by_reason). Missing ids are absent.
+func (s *CloseReasonService) Names(ctx context.Context, ids []string) (map[string]string, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	reasons, err := s.repo.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(reasons))
+	for _, rsn := range reasons {
+		out[rsn.ID] = rsn.Name
+	}
+	return out, nil
+}
+
 // RequiresNote implements conversations' CloseReasonPolicy. An unknown reason
 // yields a not_found error; a disabled reason is treated as not requiring a note
 // (it should not be offered, but must not block closing).
