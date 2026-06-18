@@ -101,14 +101,14 @@ func TestList_RequiresTenantAndPassesFilter(t *testing.T) {
 	repo := &fakeRepo{created: []*entity.AuditLog{{ID: "a1", Action: "user.created"}}}
 	svc := NewService(repo, nil)
 
-	items, err := svc.List(userCtx("t1", "owner-1"), repository.Filter{Action: "user.", ResourceID: "u2"}, shared.PageRequest{Limit: 10})
+	items, err := svc.List(userCtx("t1", "owner-1"), repository.Filter{Action: "user.", ResourceID: "u2", ActorID: "owner-1"}, shared.PageRequest{Limit: 10})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	if len(items) != 1 {
 		t.Errorf("expected 1 item, got %d", len(items))
 	}
-	if repo.gotFilter.Action != "user." || repo.gotFilter.ResourceID != "u2" {
+	if repo.gotFilter.Action != "user." || repo.gotFilter.ResourceID != "u2" || repo.gotFilter.ActorID != "owner-1" {
 		t.Errorf("filter not passed through: %+v", repo.gotFilter)
 	}
 

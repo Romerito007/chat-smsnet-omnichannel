@@ -65,6 +65,9 @@ func (r *Repository) List(ctx context.Context, f repository.Filter, page shared.
 	if f.ResourceID != "" {
 		base["resource_id"] = f.ResourceID
 	}
+	if f.ActorID != "" {
+		base["actor_id"] = f.ActorID
+	}
 	filter := mongodb.ApplyKeyset(base, cur)
 	opts := options.Find().SetSort(mongodb.KeysetSort()).SetLimit(int64(page.Limit) + 1)
 	c, err := r.coll.Find(ctx, filter, opts)

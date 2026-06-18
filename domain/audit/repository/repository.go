@@ -15,7 +15,7 @@ type Repository interface {
 	// Create appends an audit log.
 	Create(ctx context.Context, l *entity.AuditLog) error
 	// List returns audit logs newest-first (keyset pagination), optionally
-	// filtered by action prefix and resource id when set on the filter.
+	// filtered by action prefix, resource id and actor id when set on the filter.
 	List(ctx context.Context, f Filter, page shared.PageRequest) ([]*entity.AuditLog, error)
 }
 
@@ -23,4 +23,5 @@ type Repository interface {
 type Filter struct {
 	Action     string
 	ResourceID string
+	ActorID    string
 }

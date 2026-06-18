@@ -21,13 +21,14 @@ func NewController(svc *aservice.Service) *Controller {
 	return &Controller{svc: svc}
 }
 
-// List handles GET /v1/audit, optionally filtered by ?action= (prefix) and
-// ?resource_id=. Gated on audit.view.
+// List handles GET /v1/audit, optionally filtered by ?action= (prefix),
+// ?resource_id= and ?actor_id=. Gated on audit.view.
 func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 	page := middleware.PageFromRequest(r)
 	f := arepo.Filter{
 		Action:     r.URL.Query().Get("action"),
 		ResourceID: r.URL.Query().Get("resource_id"),
+		ActorID:    r.URL.Query().Get("actor_id"),
 	}
 	items, err := c.svc.List(r.Context(), f, page)
 	if err != nil {
