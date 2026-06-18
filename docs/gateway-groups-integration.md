@@ -284,37 +284,126 @@ Sem novidade de transporte: a resposta do atendente sai no **mesmo webhook
 
 # Sincronizar templates de WhatsApp (mesmo padrão dos grupos)
 
-O cadastro de **templates** espelha **ponto a ponto** o sync de grupos: o chat
-**dispara um evento**, o gateway **empurra de volta** a lista. O chat **não puxa**.
+O cadastro de **templates** espelha **ponto a ponto** o sync de grupos (Domínio 1): o
+chat **dispara um evento**, o gateway **empurra de volta** a lista. O chat **não
+puxa** — é o mesmo trilho, só muda o `event` e o endpoint de inbound.
 
-1. Um supervisor chama `POST /v1/channels/{id}/sync-templates` (JWT, perm
-   `channel.manage`) → `202`. Isso emite, **só** ao webhook **gerenciado** do canal, o
-   evento **`templates_sync_requested`** (análogo a `group_sync_requested`):
-   ```json
-   { "id":"del_...", "event":"templates_sync_requested",
-     "created_at":"...", "data":{ "channel_id":"<id>" } }
-   ```
-   Mesmos headers/assinatura dos outros eventos (`X-Webhook-Event`,
-   `X-Webhook-Timestamp`, `X-Webhook-Signature: sha256=<hex>`, `X-Webhook-Delivery-Id`;
-   HMAC sobre `"<timestamp>.<corpo>"`). Sem webhook gerenciado → `409`.
+## Visão geral do fluxo
 
-2. O gateway responde empurrando a lista para
-   **`POST /v1/inbound/channel/{channel}/templates`** (borda por `inbound_token`, sem
-   JWT; `{channel}` = `whatsapp`):
-   ```json
-   { "inbound_token":"<T>", "templates":[
-     { "id":"hsm_boas_vindas", "name":"Boas-vindas", "language":"pt_BR",
-       "body":{ "text":"Olá {{nome}}", "variables":[{"key":"nome"}] },
-       "header":{"type":"text","text":"Oi"}, "buttons":[], "footer":"" }
-   ] }
-   ```
-   - `templates[]` é o shape `WhatsAppTemplate` já existente. `id` e `name` são
-     obrigatórios.
-   - O chat valida e **substitui** o `whatsapp_templates` do canal **inteiro** (é
-     mirror) → `200` `{ "ok": true, "count": <n> }`. **Idempotente** (re-enviar
-     substitui, sem duplicar). Tenant/canal vêm **só** do `inbound_token`.
-   - Após salvar, o chat **notifica os atendentes** in-app (o sino) que os modelos do
-     canal foram atualizados.
+```
+                  1. POST /v1/channels/{id}/sync-templates   (supervisor no chat)
+                          │
+                          ▼
+   ┌──────────┐   2. webhook "templates_sync_requested"  ┌────────────────────┐
+   │   CHAT   │ ───────────────────────────────────────► │   GATEWAY WhatsApp  │
+   │ (backend)│      (entregue ao outbound_url             │ (você implementa)  │
+   └──────────┘       do canal, assinado HMAC)            └────────────────────┘
+        ▲                                                          │
+        │   3. POST /v1/inbound/channel/whatsapp/templates         │
+        │      { inbound_token, templates:[...] }   (lista INTEIRA) │
+        └──────────────────────────────────────────────────────────┘
+              (auth por inbound_token; substitui o mirror)
+```
+
+São **dois passos** do lado do gateway:
+
+1. **Receber** o evento `templates_sync_requested` (webhook ao `outbound_url` do canal).
+2. **Responder** listando os templates aprovados (Meta/BSP) e fazendo `POST` da lista
+   **completa** para o endpoint de inbound de templates.
+
+Nada disso é síncrono: o `POST /v1/channels/{id}/sync-templates` responde `202` na
+hora; os templates chegam depois, no `POST` que o gateway empurra.
+
+## Passo 2 — Receber o evento `templates_sync_requested`
+
+Igual ao `group_sync_requested`: entregue **só ao webhook gerenciado do canal**, no
+**mesmo transporte** dos outros eventos — **não há rota nova**, só tratar mais um
+`event`.
+
+**HTTP:** `POST {outbound_url do canal}`
+
+**Headers:**
+
+| Header | Valor |
+|---|---|
+| `Content-Type` | `application/json` |
+| `X-Webhook-Event` | `templates_sync_requested` |
+| `X-Webhook-Timestamp` | epoch em segundos (string) |
+| `X-Webhook-Signature` | `sha256=<hex>` — `HMAC_SHA256(outbound_secret, timestamp + "." + rawBody)` |
+| `X-Webhook-Delivery-Id` | id único da entrega (idempotência) |
+
+**Body (envelope canônico de webhook):**
+
+```json
+{
+  "id": "del_...",
+  "event": "templates_sync_requested",
+  "created_at": "2026-06-18T12:00:00Z",
+  "data": { "channel_id": "<id do canal>" }
+}
+```
+
+Valide a assinatura igual aos demais eventos (comparação em tempo constante, janela
+anti-replay, dedupe por `X-Webhook-Delivery-Id`). Responda `2xx` rápido e processe
+assíncrono. O `data.channel_id` diz **qual canal** (e, com ele, o `inbound_token` a
+usar no passo 3). Sem webhook gerenciado no canal (sem `outbound_url`) o chat
+responde `409` ao supervisor e o evento nem sai.
+
+## Passo 3 — Empurrar os templates (lista inteira)
+
+**HTTP:** `POST {base_url_do_chat}/v1/inbound/channel/whatsapp/templates`
+(`{channel}` = o **type** do canal, `whatsapp`).
+
+**Auth (sem JWT):** header `X-Inbound-Token: <inbound_token do canal>` (ou campo
+`inbound_token` no corpo).
+
+**Body** — a **lista completa** no shape `WhatsAppTemplate`:
+
+```json
+{
+  "inbound_token": "<opcional se já mandou no header>",
+  "templates": [
+    {
+      "id": "hsm_boas_vindas",
+      "name": "Boas-vindas",
+      "language": "pt_BR",
+      "category": "MARKETING",
+      "body": { "text": "Olá {{nome}}, tudo bem?", "variables": [ { "key": "nome", "label": "Nome", "example": "João" } ] },
+      "header": { "type": "text", "text": "Oi" },
+      "buttons": [ { "type": "url", "text": "Site", "url": "https://exemplo.com" } ],
+      "footer": "Equipe Acme"
+    }
+  ]
+}
+```
+
+| Campo | Obrigatório? | Observação |
+|---|---|---|
+| `id` | **sim** | id opaco do integrador (Meta/BSP); guardado e ecoado verbatim |
+| `name` | **sim** | rótulo do seletor |
+| `language` | opcional | ex.: `pt_BR` |
+| `category` | opcional | só exibição |
+| `body.text` | opcional | texto com `{{placeholders}}` |
+| `body.variables[]` | opcional | `{ key, label?, example? }` — `key` é o nome do placeholder |
+| `header` / `buttons` / `footer` | opcional | só exibição (render-only) |
+
+**Resposta:** `200 OK` → `{ "ok": true, "count": <n> }`.
+
+**Comportamento:**
+- O chat valida (`id`/`name` obrigatórios; `variables[].key` obrigatório quando há
+  variáveis) e **substitui o `whatsapp_templates` do canal INTEIRO** (é mirror) —
+  mande sempre a lista **completa**, não um delta.
+- **Idempotente:** reenviar a mesma lista substitui sem duplicar.
+- **Tenant/canal** vêm só do `inbound_token` (nunca de header de tenant).
+- Após salvar, o chat **notifica os atendentes** in-app (o sino) que os modelos do
+  canal foram atualizados.
+
+**Erros:**
+
+| Status | Causa |
+|---|---|
+| `401` | `inbound_token` inválido/ausente ou canal desabilitado |
+| `400` | JSON inválido ou template sem `id`/`name` (lista NÃO é substituída) |
 
 O front continua lendo os templates por `GET /v1/channels/{id}` (inalterado).
 
@@ -367,3 +456,37 @@ O front continua lendo os templates por `GET /v1/channels/{id}` (inalterado).
 > Configuração necessária (por canal): `BASE_URL_CHAT`, `inbound_token`,
 > `outbound_secret`. Não invente headers de tenant: tenant e canal saem do
 > `inbound_token`.
+
+---
+
+## Prompt pronto — sincronização de TEMPLATES (cole no agente do gateway)
+
+> Você vai implementar, no gateway de WhatsApp, a **sincronização de templates** com o
+> chat omnichannel. É o **mesmo padrão** do sync de grupos — o chat dispara um evento e
+> você empurra a lista de volta. São dois pontos:
+>
+> **1) Tratar o webhook `templates_sync_requested`.** O chat já entrega webhooks ao
+> `outbound_url` do canal. Adicione o tratamento do `event == "templates_sync_requested"`
+> (idêntico ao `group_sync_requested`). Headers: `X-Webhook-Event`,
+> `X-Webhook-Timestamp`, `X-Webhook-Signature` (`sha256=<hex>`),
+> `X-Webhook-Delivery-Id`. Valide a assinatura
+> `HMAC_SHA256(outbound_secret, timestamp + "." + rawBody)` em hex, comparação em tempo
+> constante, janela anti-replay de ±5 min; dedupe por `X-Webhook-Delivery-Id`. O corpo é
+> `{ "id", "event", "created_at", "data": { "channel_id": "<id>" } }`. Responda `2xx`
+> rápido e processe assíncrono.
+>
+> **2) Empurrar a lista de templates.** Ao receber o evento, monte a **lista completa**
+> de templates aprovados da instância correspondente ao `data.channel_id` e faça
+> `POST {BASE_URL_CHAT}/v1/inbound/channel/whatsapp/templates`, autenticando com o header
+> `X-Inbound-Token: <inbound_token do canal>` (sem JWT). Corpo:
+> `{ "templates": [ { ...template... } ] }`, onde cada template tem **obrigatoriamente**
+> `id` (id opaco do integrador) e `name`, e quando disponíveis: `language`, `category`,
+> `body { text, variables:[{key,label?,example?}] }`, `header { type, text }`,
+> `buttons:[{type,text,url?}]`, `footer`. **Mande a lista INTEIRA** (é um mirror — o chat
+> substitui tudo; não mande delta). Trate a resposta `{ "ok": true, "count": n }`. Em
+> `401`, pare e logue (token errado); em `400`, logue (template sem `id`/`name` — a lista
+> não foi substituída). É idempotente: re-enviar substitui sem duplicar, então rode sob
+> demanda (ao receber o evento) e/ou periodicamente.
+>
+> Configuração necessária (por canal): `BASE_URL_CHAT`, `inbound_token`,
+> `outbound_secret`. Tenant e canal saem do `inbound_token`.
