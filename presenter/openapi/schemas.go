@@ -298,6 +298,10 @@ func schemas() M {
 			"buttons": arr(object(M{"type": str(), "text": str(), "url": str()})),
 			"footer":  str(),
 		}, "id", "name"),
+		"TemplatesPushRequest": object(M{
+			"inbound_token": describedStr("Channel integration token (alternative to the X-Inbound-Token header)."),
+			"templates":     withDesc(arr(ref("WhatsAppTemplate")), "The FULL WhatsApp template mirror; it replaces the channel's whatsapp_templates wholesale."),
+		}, "templates"),
 		"DeliveryReceiptRequest": object(M{
 			"inbound_token": describedStr("Channel integration token (alternative to the X-Inbound-Token header)."),
 			"message_id":    describedStr("The chat's own message id (as delivered in the message_created webhook). The receipt is correlated by this id."),

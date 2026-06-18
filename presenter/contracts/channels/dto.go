@@ -338,6 +338,12 @@ type WhatsAppTemplateButton struct {
 	URL  string `json:"url,omitempty"`
 }
 
+// TemplatesToEntity maps a wire template list to entities. Exported for the inbound
+// templates-push endpoint (the gateway PUTs the mirror).
+func TemplatesToEntity(in []WhatsAppTemplateDTO) []chentity.WhatsAppTemplate {
+	return templatesToEntity(in)
+}
+
 func templatesToEntity(in []WhatsAppTemplateDTO) []chentity.WhatsAppTemplate {
 	if in == nil {
 		return nil

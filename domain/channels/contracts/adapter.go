@@ -68,11 +68,3 @@ type Adapter interface {
 type AdapterRegistry interface {
 	For(t chentity.Type) Adapter
 }
-
-// TemplateFetcher fetches a channel's current WhatsApp template mirror from its
-// gateway, signing the request with the channel's outbound secret (the SAME HMAC
-// scheme as outbound delivery). Implemented in infra/channels. Used by the on-demand
-// refresh (POST /v1/channels/{id}/refresh-templates).
-type TemplateFetcher interface {
-	FetchTemplates(ctx context.Context, conn *chentity.ChannelConnection) ([]chentity.WhatsAppTemplate, error)
-}

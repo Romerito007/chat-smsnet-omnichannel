@@ -371,3 +371,43 @@ func (c *InboundController) HandleGroups(w http.ResponseWriter, r *http.Request)
 	}
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "upserted": n})
 }
+
+// HandleTemplates processes PUT /v1/inbound/channel/{channel}/templates. The WhatsApp
+// gateway PUSHES the channel's current WhatsApp template mirror here (the chat no
+// longer pulls). It is edge-authenticated by the channel inbound token (NOT the
+// front's JWT); the tenant/channel come only from that token. The list REPLACES the
+// channel's whatsapp_templates wholesale (it is a mirror) and alerts the agents.
+func (c *InboundController) HandleTemplates(w http.ResponseWriter, r *http.Request) {
+	channel := chi.URLParam(r, "channel")
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboundBody))
+	if err != nil {
+		middleware.WriteError(w, r, apperror.Validation("unreadable request body"))
+		return
+	}
+	var req struct {
+		InboundToken string                    `json:"inbound_token"`
+		Templates    []dto.WhatsAppTemplateDTO `json:"templates"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		middleware.WriteError(w, r, apperror.Validation("invalid JSON body").Wrap(err))
+		return
+	}
+
+	token := r.Header.Get("X-Inbound-Token")
+	if token == "" {
+		token = req.InboundToken
+	}
+	conn, err := c.connections.ResolveInbound(r.Context(), token, chentity.Type(channel), body, verifyHeaders(r))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+
+	ctx := shared.WithTenant(r.Context(), conn.TenantID)
+	updated, err := c.connections.ReplaceTemplates(ctx, conn.ID, dto.TemplatesToEntity(req.Templates))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "count": len(updated.WhatsAppTemplates)})
+}

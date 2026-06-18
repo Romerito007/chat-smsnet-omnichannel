@@ -15,12 +15,15 @@ const (
 	TypeSLAAtRisk        Type = "sla.at_risk"
 	TypeSLABreached      Type = "sla.breached"
 	TypeChannelError     Type = "channel.connection_error"
+	// TypeChannelTemplatesUpdated alerts agents that a channel's WhatsApp template
+	// mirror was refreshed (pushed by the gateway).
+	TypeChannelTemplatesUpdated Type = "channel.templates_updated"
 )
 
 // AllTypes is the closed set of notification types.
 var AllTypes = []Type{
 	TypeAssignedToYou, TypeTransferredToYou, TypeMention,
-	TypeSLAAtRisk, TypeSLABreached, TypeChannelError,
+	TypeSLAAtRisk, TypeSLABreached, TypeChannelError, TypeChannelTemplatesUpdated,
 }
 
 // IsValidType reports whether t is a known type.

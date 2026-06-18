@@ -35,6 +35,13 @@ func (r *seededConnRepo) FindByInboundTokenHash(_ context.Context, tokenHash str
 	return nil, apperror.NotFound("none")
 }
 
+func (r *seededConnRepo) FindByID(_ context.Context, id string) (*entity.ChannelConnection, error) {
+	if r.conn != nil && r.conn.ID == id {
+		return r.conn, nil
+	}
+	return nil, apperror.NotFound("none")
+}
+
 // passthroughAdapter accepts inbound traffic on the token alone (no HMAC secret).
 type passthroughAdapter struct{}
 
@@ -289,5 +296,57 @@ func TestInbound_AuthenticatesByToken_HeaderAndBody(t *testing.T) {
 	// Body-field path uses the same service entry point.
 	if _, err := connSvc.ResolveInbound(context.Background(), "the-real-token", entity.TypeWhatsApp, []byte(`{}`), nil); err != nil {
 		t.Fatalf("body token should authenticate: %v", err)
+	}
+}
+
+func templatesRouter(conn *entity.ChannelConnection) http.Handler {
+	connSvc := chservice.NewConnectionService(&seededConnRepo{conn: conn}, oneAdapterRegistry{}, shared.SystemClock{})
+	ctl := channels.NewInboundController(connSvc, nil, nil, nil, nil)
+	r := chi.NewRouter()
+	r.Put("/inbound/channel/{channel}/templates", ctl.HandleTemplates)
+	return r
+}
+
+func putTemplates(h http.Handler, header string, body map[string]any) *httptest.ResponseRecorder {
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPut, "/inbound/channel/whatsapp/templates", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	if header != "" {
+		req.Header.Set("X-Inbound-Token", header)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestTemplates_TokenAuth_ReplacesMirror: the gateway PUSHES the template mirror,
+// authenticated by the channel inbound token (no JWT); the chat replaces and returns
+// the count.
+func TestTemplates_TokenAuth_ReplacesMirror(t *testing.T) {
+	rec := putTemplates(templatesRouter(seededConn()), "the-real-token", map[string]any{
+		"templates": []map[string]any{
+			{"id": "t1", "name": "Boas-vindas", "body": map[string]any{"text": "Olá"}},
+			{"id": "t2", "name": "Cobrança", "body": map[string]any{"text": "Segue o boleto"}},
+		},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		OK    bool `json:"ok"`
+		Count int  `json:"count"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if !resp.OK || resp.Count != 2 {
+		t.Errorf("response = %s, want ok + count 2", rec.Body.String())
+	}
+}
+
+func TestTemplates_RejectsInvalidToken_401(t *testing.T) {
+	rec := putTemplates(templatesRouter(seededConn()), "wrong-token", map[string]any{
+		"templates": []map[string]any{{"id": "t1", "name": "x", "body": map[string]any{"text": "y"}}},
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (%s)", rec.Code, rec.Body.String())
 	}
 }

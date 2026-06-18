@@ -22,21 +22,36 @@ import (
 
 // ConnectionService manages channel connections and authenticates inbound calls.
 type ConnectionService struct {
-	repo      repository.ConnectionRepository
-	registry  contracts.AdapterRegistry
-	clock     shared.Clock
-	health    contracts.ConnectionHealthChecker
-	auditor   shared.Auditor
-	webhooks  shared.ChannelWebhookManager
-	templates contracts.TemplateFetcher
+	repo     repository.ConnectionRepository
+	registry contracts.AdapterRegistry
+	clock    shared.Clock
+	health   contracts.ConnectionHealthChecker
+	auditor  shared.Auditor
+	webhooks shared.ChannelWebhookManager
+	notifier shared.Notifier
+	audience TemplateAudience
 }
 
-// SetTemplateFetcher wires the fetcher that pulls a channel's WhatsApp templates
-// from its gateway for the on-demand refresh. Optional: without it, RefreshTemplates
-// returns an integration error.
-func (s *ConnectionService) SetTemplateFetcher(f contracts.TemplateFetcher) {
-	if f != nil {
-		s.templates = f
+// TemplateAudience resolves the user ids to notify when a channel's WhatsApp
+// templates are updated (the gateway pushed a new mirror). Implemented over the IAM
+// user service. Optional: without it, no in-app notification is sent.
+type TemplateAudience interface {
+	NotifyRecipients(ctx context.Context) ([]string, error)
+}
+
+// SetNotifier wires the in-app notifier used to alert agents when the channel's
+// WhatsApp templates are refreshed by the gateway. Optional (default no-op).
+func (s *ConnectionService) SetNotifier(n shared.Notifier) {
+	if n != nil {
+		s.notifier = n
+	}
+}
+
+// SetTemplateAudience wires the resolver of notification recipients for a template
+// update. Optional: without it (or without a notifier) no notification is sent.
+func (s *ConnectionService) SetTemplateAudience(a TemplateAudience) {
+	if a != nil {
+		s.audience = a
 	}
 }
 
@@ -45,7 +60,7 @@ func NewConnectionService(repo repository.ConnectionRepository, registry contrac
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &ConnectionService{repo: repo, registry: registry, clock: clock, health: contracts.NoopHealthChecker{}, auditor: shared.NoopAuditor{}, webhooks: shared.NoopChannelWebhookManager{}}
+	return &ConnectionService{repo: repo, registry: registry, clock: clock, health: contracts.NoopHealthChecker{}, auditor: shared.NoopAuditor{}, webhooks: shared.NoopChannelWebhookManager{}, notifier: shared.NoopNotifier{}}
 }
 
 // SetWebhookManager wires the manager that keeps the channel's MANAGED webhook
@@ -238,50 +253,65 @@ func (s *ConnectionService) RotateOutboundSecret(ctx context.Context, id string)
 	return conn, nil
 }
 
-// RefreshTemplates fetches the channel's current WhatsApp templates from its gateway
-// (signed with the outbound secret, same HMAC scheme as outbound delivery) and
-// REPLACES the stored render-only mirror with the result. The mirror is replaced
-// wholesale only on a successful, valid fetch: any gateway failure (timeout, 5xx,
-// transport) or an invalid payload returns an error and leaves the existing
-// templates untouched. Requires channel.manage. Audited as channel.templates_refreshed.
-func (s *ConnectionService) RefreshTemplates(ctx context.Context, id string) (*entity.ChannelConnection, error) {
+// ReplaceTemplates stores a WhatsApp template mirror the gateway PUSHED for a
+// channel (PUT /v1/inbound/channel/{channel}/templates, resolved by the channel's
+// inbound token). It validates the payload and REPLACES whatsapp_templates wholesale
+// (it is a mirror). On success it alerts the tenant's agents in-app that the
+// channel's templates changed. Audited as channel.templates_updated.
+func (s *ConnectionService) ReplaceTemplates(ctx context.Context, channelID string, templates []entity.WhatsAppTemplate) (*entity.ChannelConnection, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := s.repo.FindByID(ctx, id)
+	if err := validateTemplates(templates); err != nil {
+		return nil, err
+	}
+	conn, err := s.repo.FindByID(ctx, channelID)
 	if err != nil {
 		return nil, err
 	}
-	if s.templates == nil {
-		return nil, apperror.Integration("template refresh is not configured")
-	}
-	if strings.TrimSpace(conn.BaseURL) == "" {
-		return nil, apperror.Validation("the channel has no outbound_url to fetch templates from")
-	}
-
-	fetched, err := s.templates.FetchTemplates(ctx, conn)
-	if err != nil {
-		// Gateway unreachable / non-2xx / decode error: keep the existing mirror.
-		return nil, apperror.Integration("could not fetch templates from the channel gateway").Wrap(err)
-	}
-	if err := validateTemplates(fetched); err != nil {
-		return nil, err // invalid payload: do not overwrite the existing mirror
-	}
-
-	conn.WhatsAppTemplates = fetched
+	conn.WhatsAppTemplates = templates
 	conn.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, conn); err != nil {
 		return nil, err
 	}
 	_ = s.auditor.Record(ctx, shared.AuditEntry{
 		TenantID:     tenantID,
-		Action:       "channel.templates_refreshed",
+		Action:       "channel.templates_updated",
 		ResourceType: "channel",
 		ResourceID:   conn.ID,
-		Data:         map[string]any{"count": len(fetched)},
+		Data:         map[string]any{"count": len(templates)},
 	})
+	s.notifyTemplatesUpdated(ctx, tenantID, conn)
 	return conn, nil
+}
+
+// notifyTemplatesUpdated fans out an in-app notification to the tenant's agents that
+// a channel's templates were refreshed. Best-effort: a notification failure never
+// affects the template update. No-op without an audience resolver.
+func (s *ConnectionService) notifyTemplatesUpdated(ctx context.Context, tenantID string, conn *entity.ChannelConnection) {
+	if s.audience == nil {
+		return
+	}
+	userIDs, err := s.audience.NotifyRecipients(ctx)
+	if err != nil {
+		return
+	}
+	name := strings.TrimSpace(conn.Name)
+	if name == "" {
+		name = string(conn.Type)
+	}
+	for _, uid := range userIDs {
+		s.notifier.Notify(ctx, shared.NotifyInput{
+			TenantID: tenantID,
+			UserID:   uid,
+			// Must match notifications/entity.TypeChannelTemplatesUpdated (a string
+			// field keeps this domain decoupled from the notifications entity).
+			Type:  "channel.templates_updated",
+			Title: "Modelos de WhatsApp atualizados",
+			Body:  "Os modelos do canal " + name + " foram atualizados.",
+		})
+	}
 }
 
 // Update applies the non-nil fields of cmd.

@@ -1,10 +1,15 @@
 package factories
 
 import (
+	"context"
+
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
 	channelservice "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/service"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
+	iamentity "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/entity"
+	iamservice "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/service"
+	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	infrachannels "github.com/romerito007/chat-smsnet-omnichannel/infra/channels"
 	channelrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/channels"
 	contactrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/contacts"
@@ -14,6 +19,25 @@ import (
 
 // channelRegistry is the shared adapter registry (stateless).
 func channelRegistry() chcontracts.AdapterRegistry { return infrachannels.NewRegistry() }
+
+// channelTemplateAudience resolves the in-app notification recipients for a channel
+// template update: the tenant's ACTIVE users (agents who use the templates). It
+// adapts the IAM user service to the channels service's TemplateAudience port.
+type channelTemplateAudience struct{ users *iamservice.UserService }
+
+func (a channelTemplateAudience) NotifyRecipients(ctx context.Context) ([]string, error) {
+	users, err := a.users.List(ctx, shared.PageRequest{Limit: shared.MaxPageSize})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(users))
+	for _, u := range users {
+		if u.Status == iamentity.StatusActive {
+			ids = append(ids, u.ID)
+		}
+	}
+	return ids, nil
+}
 
 // ContactService builds the contact service.
 func ContactService(c *container.Container) *contactservice.Service {
@@ -42,8 +66,10 @@ func ConnectionService(c *container.Container) *channelservice.ConnectionService
 		clock,
 	)
 	svc.SetHealthChecker(infrachannels.NewHealthChecker())
-	// On-demand WhatsApp template refresh: pull the mirror from the channel's gateway.
-	svc.SetTemplateFetcher(infrachannels.NewTemplateFetcher())
+	// When the gateway pushes a WhatsApp template update, alert the tenant's agents
+	// in-app (the bell), using the existing notification pipeline.
+	svc.SetNotifier(NotificationEnqueuer(c))
+	svc.SetTemplateAudience(channelTemplateAudience{users: UserService(c)})
 	svc.SetAuditor(AuditService(c))
 	// A channel with an outbound URL produces a managed webhook (full pipeline)
 	// instead of a separate outbound rail.

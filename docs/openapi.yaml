@@ -42,12 +42,6 @@ components:
                     schema:
                         $ref: '#/components/schemas/Error'
             description: Internal error (internal_error).
-        Error502:
-            content:
-                application/json:
-                    schema:
-                        $ref: '#/components/schemas/Error'
-            description: Upstream integration failure (integration_unavailable).
     schemas:
         AcceptInviteRequest:
             properties:
@@ -3438,6 +3432,19 @@ components:
                     format: date-time
                     type: string
             type: object
+        TemplatesPushRequest:
+            properties:
+                inbound_token:
+                    description: Channel integration token (alternative to the X-Inbound-Token header).
+                    type: string
+                templates:
+                    description: The FULL WhatsApp template mirror; it replaces the channel's whatsapp_templates wholesale.
+                    items:
+                        $ref: '#/components/schemas/WhatsAppTemplate'
+                    type: array
+            required:
+                - templates
+            type: object
         Tenant:
             properties:
                 created_at:
@@ -5646,40 +5653,6 @@ paths:
             summary: Channel open/closed status
             tags:
                 - businesshours
-    /v1/channels/{id}/refresh-templates:
-        post:
-            operationId: postChannelsByIdRefreshTemplates
-            parameters:
-                - description: channel id
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Channel'
-                    description: Updated channel
-                "400":
-                    $ref: '#/components/responses/Error400'
-                "401":
-                    $ref: '#/components/responses/Error401'
-                "403":
-                    $ref: '#/components/responses/Error403'
-                "404":
-                    $ref: '#/components/responses/Error404'
-                "429":
-                    $ref: '#/components/responses/Error429'
-                "500":
-                    $ref: '#/components/responses/Error500'
-                "502":
-                    $ref: '#/components/responses/Error502'
-            summary: Refresh the channel's WhatsApp template mirror from its gateway (channel.manage). The chat GETs {origin(outbound_url)}/channels/{type}/templates, signed with the outbound secret (Signature = HMAC-SHA256(secret, "<timestamp>.") over an empty body, plus the Timestamp header — same scheme as outbound delivery). On success it REPLACES whatsapp_templates and returns the updated channel; on a gateway failure the existing templates are kept and an error is returned.
-            tags:
-                - channels
     /v1/channels/{id}/rotate-inbound-token:
         post:
             operationId: postChannelsByIdRotateInboundToken
@@ -8530,6 +8503,46 @@ paths:
                     $ref: '#/components/responses/Error500'
             security: []
             summary: Ingest an inbound message (channel-authenticated; JSON or Chatwoot multipart)
+            tags:
+                - channels
+    /v1/inbound/channel/{channel}/templates:
+        put:
+            operationId: putInboundChannelByChannelTemplates
+            parameters:
+                - description: channel type
+                  in: path
+                  name: channel
+                  required: true
+                  schema:
+                    type: string
+                - description: Channel integration token (preferred over the inbound_token body field).
+                  in: header
+                  name: X-Inbound-Token
+                  required: false
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TemplatesPushRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: true
+                                type: object
+                    description: Result {ok, count}
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            security: []
+            summary: Push the channel's WhatsApp template mirror (channel-authenticated). The gateway PUTs the full {templates:[...]} list; the chat validates it and REPLACES the channel's whatsapp_templates wholesale (it is a render-only mirror), then alerts the tenant's agents in-app. Tenant/channel come only from the inbound token.
             tags:
                 - channels
     /v1/mcp/servers:
