@@ -4,6 +4,7 @@ package deals
 
 import (
 	"context"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -186,6 +187,214 @@ func toEntity(m *models.Deal) *entity.Deal {
 		ExpectedCloseDate: m.ExpectedCloseDate, StageChangedAt: m.StageChangedAt,
 		ClosedAt: m.ClosedAt, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
+}
+
+// ── sales metrics aggregations ───────────────────────────────────────────────
+
+// salesBase builds the shared match for sales metrics: tenant + optional pipeline +
+// visibility ($or assigned-to-me / my sectors when not all-scope).
+func salesBase(tenantID string, f contracts.SalesFilter, vis contracts.Visibility) bson.M {
+	m := bson.M{"tenant_id": tenantID}
+	if f.PipelineID != "" {
+		m["pipeline_id"] = f.PipelineID
+	}
+	if !vis.All {
+		m["$or"] = bson.A{
+			bson.M{"assigned_to": vis.UserID},
+			bson.M{"sector_id": bson.M{"$in": nonEmpty(vis.SectorIDs)}},
+		}
+	}
+	return m
+}
+
+// closedPeriod adds a closed_at range to a match (bounds optional).
+func closedPeriod(m bson.M, f contracts.SalesFilter) bson.M {
+	if f.From.IsZero() && f.To.IsZero() {
+		return m
+	}
+	rng := bson.M{}
+	if !f.From.IsZero() {
+		rng["$gte"] = f.From
+	}
+	if !f.To.IsZero() {
+		rng["$lte"] = f.To
+	}
+	m["closed_at"] = rng
+	return m
+}
+
+// groupCountValue groups by groupBy, summing the count and the value.
+func (r *Repository) groupCountValue(ctx context.Context, match bson.M, groupBy string) (map[string]contracts.CountValue, error) {
+	pipe := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$group", Value: bson.M{"_id": groupBy, "count": bson.M{"$sum": 1}, "value": bson.M{"$sum": "$value"}}}},
+	}
+	c, err := r.coll.Aggregate(ctx, pipe)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = c.Close(ctx) }()
+	out := map[string]contracts.CountValue{}
+	for c.Next(ctx) {
+		var row struct {
+			ID    string  `bson:"_id"`
+			Count int     `bson:"count"`
+			Value float64 `bson:"value"`
+		}
+		if err := c.Decode(&row); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out[row.ID] = contracts.CountValue{Count: row.Count, Value: row.Value}
+	}
+	return out, mongodb.MapError(c.Err())
+}
+
+func (r *Repository) OpenByStage(ctx context.Context, f contracts.SalesFilter, vis contracts.Visibility) ([]contracts.FunnelStage, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	match := salesBase(tenantID, f, vis)
+	match["status"] = string(entity.StatusOpen)
+	byStage, err := r.groupCountValue(ctx, match, "$stage_id")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contracts.FunnelStage, 0, len(byStage))
+	for id, cv := range byStage {
+		out = append(out, contracts.FunnelStage{StageID: id, Count: cv.Count, Value: cv.Value})
+	}
+	return out, nil
+}
+
+func (r *Repository) ClosedTotals(ctx context.Context, status string, f contracts.SalesFilter, vis contracts.Visibility) (contracts.CountValue, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return contracts.CountValue{}, err
+	}
+	match := salesBase(tenantID, f, vis)
+	match["status"] = status
+	closedPeriod(match, f)
+	byStatus, err := r.groupCountValue(ctx, match, "$status")
+	if err != nil {
+		return contracts.CountValue{}, err
+	}
+	return byStatus[status], nil
+}
+
+func (r *Repository) OpenByAgent(ctx context.Context, f contracts.SalesFilter, vis contracts.Visibility) (map[string]contracts.CountValue, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	match := salesBase(tenantID, f, vis)
+	match["status"] = string(entity.StatusOpen)
+	return r.groupCountValue(ctx, match, "$assigned_to")
+}
+
+func (r *Repository) ClosedByAgent(ctx context.Context, status string, f contracts.SalesFilter, vis contracts.Visibility) (map[string]contracts.CountValue, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	match := salesBase(tenantID, f, vis)
+	match["status"] = status
+	closedPeriod(match, f)
+	return r.groupCountValue(ctx, match, "$assigned_to")
+}
+
+func (r *Repository) AvgCloseSeconds(ctx context.Context, f contracts.SalesFilter, vis contracts.Visibility) (float64, int, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	match := salesBase(tenantID, f, vis)
+	match["status"] = string(entity.StatusWon)
+	closedPeriod(match, f)
+	pipe := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   nil,
+			"avgMs": bson.M{"$avg": bson.M{"$subtract": bson.A{"$closed_at", "$created_at"}}},
+			"count": bson.M{"$sum": 1},
+		}}},
+	}
+	c, err := r.coll.Aggregate(ctx, pipe)
+	if err != nil {
+		return 0, 0, mongodb.MapError(err)
+	}
+	defer func() { _ = c.Close(ctx) }()
+	if c.Next(ctx) {
+		var row struct {
+			AvgMs float64 `bson:"avgMs"`
+			Count int     `bson:"count"`
+		}
+		if err := c.Decode(&row); err != nil {
+			return 0, 0, mongodb.MapError(err)
+		}
+		return row.AvgMs / 1000.0, row.Count, mongodb.MapError(c.Err())
+	}
+	return 0, 0, mongodb.MapError(c.Err())
+}
+
+func (r *Repository) StageDwell(ctx context.Context, now time.Time, f contracts.SalesFilter, vis contracts.Visibility) ([]contracts.StageDwell, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	match := salesBase(tenantID, f, vis)
+	match["status"] = string(entity.StatusOpen)
+	pipe := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   "$stage_id",
+			"avgMs": bson.M{"$avg": bson.M{"$subtract": bson.A{now, "$stage_changed_at"}}},
+			"count": bson.M{"$sum": 1},
+		}}},
+	}
+	c, err := r.coll.Aggregate(ctx, pipe)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = c.Close(ctx) }()
+	var out []contracts.StageDwell
+	for c.Next(ctx) {
+		var row struct {
+			ID    string  `bson:"_id"`
+			AvgMs float64 `bson:"avgMs"`
+			Count int     `bson:"count"`
+		}
+		if err := c.Decode(&row); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, contracts.StageDwell{StageID: row.ID, OpenCount: row.Count, AvgSeconds: row.AvgMs / 1000.0})
+	}
+	return out, mongodb.MapError(c.Err())
+}
+
+func (r *Repository) StalledOpen(ctx context.Context, before time.Time, limit int, f contracts.SalesFilter, vis contracts.Visibility) ([]*entity.Deal, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	match := salesBase(tenantID, f, vis)
+	match["status"] = string(entity.StatusOpen)
+	match["stage_changed_at"] = bson.M{"$lt": before}
+	opts := options.Find().SetSort(bson.D{{Key: "stage_changed_at", Value: 1}}).SetLimit(int64(limit))
+	c, err := r.coll.Find(ctx, match, opts)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = c.Close(ctx) }()
+	var out []*entity.Deal
+	for c.Next(ctx) {
+		var m models.Deal
+		if err := c.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, toEntity(&m))
+	}
+	return out, mongodb.MapError(c.Err())
 }
 
 func nonEmpty(ids []string) []string {

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/authz"
@@ -17,6 +18,18 @@ type fakeRepo struct {
 	gotFilter  contracts.ListFilter
 	gotVis     contracts.Visibility
 	stageCount int
+
+	// sales-metrics canned returns + capture (used by metrics_service_test.go).
+	openByStage   []contracts.FunnelStage
+	closedTotals  map[string]contracts.CountValue            // status → totals
+	openByAgent   map[string]contracts.CountValue            // agent → totals
+	closedByAgent map[string]map[string]contracts.CountValue // status → agent → totals
+	avgClose      float64
+	avgWonCount   int
+	stageDwell    []contracts.StageDwell
+	stalled       []*entity.Deal
+	gotSalesVis   contracts.Visibility
+	gotSalesF     contracts.SalesFilter
 }
 
 func newRepo() *fakeRepo { return &fakeRepo{byID: map[string]*entity.Deal{}} }
@@ -60,6 +73,35 @@ func (r *fakeRepo) List(_ context.Context, f contracts.ListFilter, vis contracts
 }
 func (r *fakeRepo) CountByStage(context.Context, string, string) (int, error) {
 	return r.stageCount, nil
+}
+
+func (r *fakeRepo) OpenByStage(_ context.Context, f contracts.SalesFilter, vis contracts.Visibility) ([]contracts.FunnelStage, error) {
+	r.gotSalesVis, r.gotSalesF = vis, f
+	return r.openByStage, nil
+}
+func (r *fakeRepo) ClosedTotals(_ context.Context, status string, f contracts.SalesFilter, vis contracts.Visibility) (contracts.CountValue, error) {
+	r.gotSalesVis, r.gotSalesF = vis, f
+	return r.closedTotals[status], nil
+}
+func (r *fakeRepo) OpenByAgent(_ context.Context, f contracts.SalesFilter, vis contracts.Visibility) (map[string]contracts.CountValue, error) {
+	r.gotSalesVis, r.gotSalesF = vis, f
+	return r.openByAgent, nil
+}
+func (r *fakeRepo) ClosedByAgent(_ context.Context, status string, f contracts.SalesFilter, vis contracts.Visibility) (map[string]contracts.CountValue, error) {
+	r.gotSalesVis, r.gotSalesF = vis, f
+	return r.closedByAgent[status], nil
+}
+func (r *fakeRepo) AvgCloseSeconds(_ context.Context, f contracts.SalesFilter, vis contracts.Visibility) (float64, int, error) {
+	r.gotSalesVis, r.gotSalesF = vis, f
+	return r.avgClose, r.avgWonCount, nil
+}
+func (r *fakeRepo) StageDwell(_ context.Context, _ time.Time, f contracts.SalesFilter, vis contracts.Visibility) ([]contracts.StageDwell, error) {
+	r.gotSalesVis, r.gotSalesF = vis, f
+	return r.stageDwell, nil
+}
+func (r *fakeRepo) StalledOpen(_ context.Context, _ time.Time, _ int, f contracts.SalesFilter, vis contracts.Visibility) ([]*entity.Deal, error) {
+	r.gotSalesVis, r.gotSalesF = vis, f
+	return r.stalled, nil
 }
 
 func samplePipeline() *pipelineentity.Pipeline {

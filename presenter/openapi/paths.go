@@ -488,8 +488,19 @@ func registerInsights(p *paths) {
 		responses: M{"200": jsonResp("Report", ref("ReportSLA"))}}))
 	p.add("GET", "/v1/reports/csat", op(opConfig{tag: "reports", summary: "CSAT summary", params: q(),
 		responses: M{"200": jsonResp("Report", ref("ReportCSAT"))}}))
+
+	// CRM sales-funnel metrics (report.view). period from/to + optional pipeline_id;
+	// names (stage, agent) resolved in batch; respect the actor's deal visibility.
+	salesParams := []M{queryParam("pipeline_id", "Filter by pipeline (default: tenant default)"), queryParam("from", "Period start (RFC3339)"), queryParam("to", "Period end (RFC3339)")}
+	p.add("GET", "/v1/reports/sales/funnel", op(opConfig{tag: "reports", summary: "Sales funnel: open deals per stage + period won/lost totals + conversion rate",
+		params: salesParams, responses: M{"200": jsonResp("Funnel", ref("SalesFunnelReport"))}}))
+	p.add("GET", "/v1/reports/sales/agents", op(opConfig{tag: "reports", summary: "Seller ranking (won/lost/open + conversion), ordered by won value",
+		params: salesParams, responses: M{"200": jsonResp("Agents", ref("SalesAgentsReport"))}}))
+	p.add("GET", "/v1/reports/sales/cycle", op(opConfig{tag: "reports", summary: "Cycle time: avg close + per-stage dwell (approx) + stalled open deals",
+		params: append(append([]M{}, salesParams...), queryParam("stalled_days", "Stalled threshold in days (default 14)")), responses: M{"200": jsonResp("Cycle", ref("SalesCycleReport"))}}))
+
 	p.add("POST", "/v1/reports/export", op(opConfig{tag: "reports", summary: "Export a report (real file + signed URL)",
-		params: q(queryParam("report", "Report name"), queryParam("format", "json|csv")), responses: M{"200": jsonResp("Export", ref("ReportExportResult"))}}))
+		params: q(queryParam("report", "overview|conversations|agents|sectors|copilot|automation|sla|csat|sales_funnel|sales_agents|sales_cycle"), queryParam("format", "json|csv")), responses: M{"200": jsonResp("Export", ref("ReportExportResult"))}}))
 	p.add("GET", "/v1/reports/downloads/{token}", op(opConfig{tag: "reports", summary: "Download an exported report (signed token)",
 		public: true, params: []M{pathParam("token", "signed download token")},
 		responses: M{"200": M{"description": "The report file", "content": M{"text/csv": M{"schema": M{"type": "string", "format": "binary"}}, "application/json": M{"schema": freeObject()}}}}}))

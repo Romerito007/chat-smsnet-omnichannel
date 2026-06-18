@@ -27,6 +27,13 @@ func registerReportRoutes(r chi.Router, c *container.Container) {
 		p.Get("/reports/automation", ctl.Automation)
 		p.Get("/reports/sla", ctl.SLA)
 		p.Get("/reports/csat", ctl.CSAT)
+
+		// Sales-funnel metrics (CRM) — same report.view gate, backed by the deals
+		// aggregations and respecting the actor's deal visibility.
+		sales := factories.SalesReportController(c)
+		p.Get("/reports/sales/funnel", sales.Funnel)
+		p.Get("/reports/sales/agents", sales.Agents)
+		p.Get("/reports/sales/cycle", sales.Cycle)
 	})
 
 	// Report export is a stronger capability than viewing.

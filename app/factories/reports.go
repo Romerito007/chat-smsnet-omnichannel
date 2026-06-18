@@ -1,7 +1,12 @@
 package factories
 
 import (
+	"context"
+	"time"
+
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
+	dcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/deals/contracts"
+	dealservice "github.com/romerito007/chat-smsnet-omnichannel/domain/deals/service"
 	rcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/reports/contracts"
 	reportservice "github.com/romerito007/chat-smsnet-omnichannel/domain/reports/service"
 	reportrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/reports"
@@ -29,7 +34,22 @@ func ReportService(c *container.Container) *reportservice.Service {
 	svc.SetAuditor(AuditService(c))
 	svc.SetFileStore(ReportFileStore(c), c.Config.Reports.DownloadTTL)
 	svc.SetDirectories(UserService(c), SectorService(c), ConversationToolsCloseReasonService(c))
+	// CRM sales-funnel reports are exportable through /reports/export too.
+	svc.SetSalesReporter(salesReporter{metrics: SalesMetricsService(c)})
 	return svc
+}
+
+// salesReporter adapts the deals SalesMetrics service to the reports export port.
+type salesReporter struct{ metrics *dealservice.SalesMetrics }
+
+func (a salesReporter) Funnel(ctx context.Context, from, to time.Time) (any, error) {
+	return a.metrics.Funnel(ctx, dcontracts.SalesFilter{From: from, To: to})
+}
+func (a salesReporter) Agents(ctx context.Context, from, to time.Time) (any, error) {
+	return a.metrics.Agents(ctx, dcontracts.SalesFilter{From: from, To: to})
+}
+func (a salesReporter) Cycle(ctx context.Context, from, to time.Time) (any, error) {
+	return a.metrics.Cycle(ctx, dcontracts.SalesFilter{From: from, To: to}, 0)
 }
 
 // ReportController builds the reports controller. Name/label enrichment lives in the

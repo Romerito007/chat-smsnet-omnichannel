@@ -60,9 +60,27 @@ func (s *Service) reportPayload(ctx context.Context, report string, f contracts.
 		return s.SLA(ctx, f)
 	case "csat":
 		return s.CSAT(ctx, f)
+	case "sales_funnel", "sales_agents", "sales_cycle":
+		return s.salesPayload(ctx, report, f)
 	default:
 		return nil, apperror.Validation("unknown report").
-			WithDetails(map[string]any{"report": "overview|conversations|agents|sectors|copilot|automation|sla|csat"})
+			WithDetails(map[string]any{"report": "overview|conversations|agents|sectors|copilot|automation|sla|csat|sales_funnel|sales_agents|sales_cycle"})
+	}
+}
+
+// salesPayload runs a CRM sales-funnel report for the export. The sales reporter is
+// optional; without it these reports are unavailable.
+func (s *Service) salesPayload(ctx context.Context, report string, f contracts.Filter) (any, error) {
+	if s.sales == nil {
+		return nil, apperror.Validation("sales reports are not configured")
+	}
+	switch report {
+	case "sales_funnel":
+		return s.sales.Funnel(ctx, f.From, f.To)
+	case "sales_agents":
+		return s.sales.Agents(ctx, f.From, f.To)
+	default:
+		return s.sales.Cycle(ctx, f.From, f.To)
 	}
 }
 

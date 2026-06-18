@@ -136,6 +136,16 @@ type ExportResult struct {
 	Bytes       int       `json:"bytes"`
 }
 
+// SalesReporter produces the CRM sales-funnel reports (funnel/agents/cycle) for the
+// export pipeline, so they share the /reports/export download flow. Implemented over
+// the deals SalesMetrics service; results are already name-enriched. Returns `any`
+// to keep the reports domain decoupled from the deals types.
+type SalesReporter interface {
+	Funnel(ctx context.Context, from, to time.Time) (any, error)
+	Agents(ctx context.Context, from, to time.Time) (any, error)
+	Cycle(ctx context.Context, from, to time.Time) (any, error)
+}
+
 // FileStore persists export artifacts and mints temporary, signed download URLs.
 // Implemented by infra/storage (reused across domains).
 type FileStore interface {

@@ -30,6 +30,16 @@ type Service struct {
 	agents  AgentDirectory
 	sectors NameDirectory
 	reasons NameDirectory
+	sales   contracts.SalesReporter
+}
+
+// SetSalesReporter wires the CRM sales-funnel reporter so the sales_funnel /
+// sales_agents / sales_cycle reports are exportable through /reports/export.
+// Optional: without it those report names are rejected.
+func (s *Service) SetSalesReporter(sr contracts.SalesReporter) {
+	if sr != nil {
+		s.sales = sr
+	}
 }
 
 // AgentDirectory resolves agent ids to display cards (name + signed avatar URL) so

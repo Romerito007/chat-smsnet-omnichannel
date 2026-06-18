@@ -1046,6 +1046,43 @@ func schemas() M {
 		"ReportCSAT":         object(M{"sent": integer(), "responded": integer(), "expired": integer(), "avg_score": number(), "response_rate": number(), "by_score": arr(ref("Bucket"))}),
 		"ReportExportResult": object(M{"report": str(), "format": enum("json", "csv"), "filename": str(), "download_url": str(), "expires_at": dateTime(), "bytes": integer()}),
 
+		// ── CRM sales-funnel metrics ─────────────────────────────────────────────
+		"FunnelStage": object(M{
+			"stage_id":   str(),
+			"stage_name": describedStr("Read-only, derived: resolved in batch from the pipeline; empty when unresolved."),
+			"count":      integer(), "value": number(),
+		}),
+		"SalesFunnelReport": object(M{
+			"stages":     arr(ref("FunnelStage")),
+			"open_value": number(),
+			"won_count":  integer(), "won_value": number(),
+			"lost_count": integer(), "lost_value": number(),
+			"conversion_rate": describedStr("won / (won + lost) over the period; 0 when no deal closed."),
+		}),
+		"SalesAgent": object(M{
+			"agent_id":         str(),
+			"agent_name":       describedStr("Read-only, derived: the seller's name, resolved in batch; empty when unresolved."),
+			"agent_avatar_url": describedStr("Read-only, derived: the seller's signed avatar URL, resolved in batch; empty when unresolved."),
+			"won_count":        integer(), "won_value": number(),
+			"lost_count": integer(), "lost_value": number(),
+			"open_value": number(), "conversion_rate": number(),
+		}),
+		"SalesAgentsReport": object(M{"agents": arr(ref("SalesAgent"))}),
+		"StageDwell": object(M{
+			"stage_id": str(), "stage_name": str(), "open_count": integer(),
+			"avg_seconds": describedStr("Average current dwell (now - stage_changed_at) of OPEN deals in the stage — an approximation of time-in-stage (only the last transition is stored)."),
+		}),
+		"StalledDeal": object(M{
+			"id": str(), "title": str(), "stage_id": str(), "stage_name": str(),
+			"assigned_to": str(), "assigned_to_name": str(), "value": number(), "days_in_stage": integer(),
+		}),
+		"SalesCycleReport": object(M{
+			"avg_close_seconds": describedStr("Mean (closed_at - created_at) over deals WON in the period."),
+			"won_count":         integer(),
+			"by_stage":          arr(ref("StageDwell")),
+			"stalled":           describedArr(ref("StalledDeal"), "Open deals not moved for more than the stalled threshold (default 14 days)."),
+		}),
+
 		// ── privacy / audit ────────────────────────────────────────────────────
 		"PrivacyExport": object(M{
 			"id": str(), "contact_id": str(), "status": str(), "download_url": str(),

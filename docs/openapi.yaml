@@ -1919,6 +1919,18 @@ components:
             required:
                 - valor
             type: object
+        FunnelStage:
+            properties:
+                count:
+                    type: integer
+                stage_id:
+                    type: string
+                stage_name:
+                    description: 'Read-only, derived: resolved in batch from the pipeline; empty when unresolved.'
+                    type: string
+                value:
+                    type: number
+            type: object
         Group:
             properties:
                 activated:
@@ -3479,6 +3491,73 @@ components:
                     format: date-time
                     type: string
             type: object
+        SalesAgent:
+            properties:
+                agent_avatar_url:
+                    description: 'Read-only, derived: the seller''s signed avatar URL, resolved in batch; empty when unresolved.'
+                    type: string
+                agent_id:
+                    type: string
+                agent_name:
+                    description: 'Read-only, derived: the seller''s name, resolved in batch; empty when unresolved.'
+                    type: string
+                conversion_rate:
+                    type: number
+                lost_count:
+                    type: integer
+                lost_value:
+                    type: number
+                open_value:
+                    type: number
+                won_count:
+                    type: integer
+                won_value:
+                    type: number
+            type: object
+        SalesAgentsReport:
+            properties:
+                agents:
+                    items:
+                        $ref: '#/components/schemas/SalesAgent'
+                    type: array
+            type: object
+        SalesCycleReport:
+            properties:
+                avg_close_seconds:
+                    description: Mean (closed_at - created_at) over deals WON in the period.
+                    type: string
+                by_stage:
+                    items:
+                        $ref: '#/components/schemas/StageDwell'
+                    type: array
+                stalled:
+                    description: Open deals not moved for more than the stalled threshold (default 14 days).
+                    items:
+                        $ref: '#/components/schemas/StalledDeal'
+                    type: array
+                won_count:
+                    type: integer
+            type: object
+        SalesFunnelReport:
+            properties:
+                conversion_rate:
+                    description: won / (won + lost) over the period; 0 when no deal closed.
+                    type: string
+                lost_count:
+                    type: integer
+                lost_value:
+                    type: number
+                open_value:
+                    type: number
+                stages:
+                    items:
+                        $ref: '#/components/schemas/FunnelStage'
+                    type: array
+                won_count:
+                    type: integer
+                won_value:
+                    type: number
+            type: object
         SaveCopilotConfigRequest:
             properties:
                 api_key:
@@ -3582,6 +3661,18 @@ components:
                 - email
                 - password
             type: object
+        StageDwell:
+            properties:
+                avg_seconds:
+                    description: Average current dwell (now - stage_changed_at) of OPEN deals in the stage — an approximation of time-in-stage (only the last transition is stored).
+                    type: string
+                open_count:
+                    type: integer
+                stage_id:
+                    type: string
+                stage_name:
+                    type: string
+            type: object
         StageRequest:
             properties:
                 color:
@@ -3596,6 +3687,25 @@ components:
                     type: integer
             required:
                 - name
+            type: object
+        StalledDeal:
+            properties:
+                assigned_to:
+                    type: string
+                assigned_to_name:
+                    type: string
+                days_in_stage:
+                    type: integer
+                id:
+                    type: string
+                stage_id:
+                    type: string
+                stage_name:
+                    type: string
+                title:
+                    type: string
+                value:
+                    type: number
             type: object
         SubmitCSATRequest:
             properties:
@@ -10838,7 +10948,7 @@ paths:
                   required: false
                   schema:
                     type: string
-                - description: Report name
+                - description: overview|conversations|agents|sectors|copilot|automation|sla|csat|sales_funnel|sales_agents|sales_cycle
                   in: query
                   name: report
                   required: false
@@ -10904,6 +11014,138 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Headline metrics
+            tags:
+                - reports
+    /v1/reports/sales/agents:
+        get:
+            operationId: getReportsSalesAgents
+            parameters:
+                - description: 'Filter by pipeline (default: tenant default)'
+                  in: query
+                  name: pipeline_id
+                  required: false
+                  schema:
+                    type: string
+                - description: Period start (RFC3339)
+                  in: query
+                  name: from
+                  required: false
+                  schema:
+                    type: string
+                - description: Period end (RFC3339)
+                  in: query
+                  name: to
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SalesAgentsReport'
+                    description: Agents
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Seller ranking (won/lost/open + conversion), ordered by won value
+            tags:
+                - reports
+    /v1/reports/sales/cycle:
+        get:
+            operationId: getReportsSalesCycle
+            parameters:
+                - description: 'Filter by pipeline (default: tenant default)'
+                  in: query
+                  name: pipeline_id
+                  required: false
+                  schema:
+                    type: string
+                - description: Period start (RFC3339)
+                  in: query
+                  name: from
+                  required: false
+                  schema:
+                    type: string
+                - description: Period end (RFC3339)
+                  in: query
+                  name: to
+                  required: false
+                  schema:
+                    type: string
+                - description: Stalled threshold in days (default 14)
+                  in: query
+                  name: stalled_days
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SalesCycleReport'
+                    description: Cycle
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Cycle time: avg close + per-stage dwell (approx) + stalled open deals'
+            tags:
+                - reports
+    /v1/reports/sales/funnel:
+        get:
+            operationId: getReportsSalesFunnel
+            parameters:
+                - description: 'Filter by pipeline (default: tenant default)'
+                  in: query
+                  name: pipeline_id
+                  required: false
+                  schema:
+                    type: string
+                - description: Period start (RFC3339)
+                  in: query
+                  name: from
+                  required: false
+                  schema:
+                    type: string
+                - description: Period end (RFC3339)
+                  in: query
+                  name: to
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SalesFunnelReport'
+                    description: Funnel
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Sales funnel: open deals per stage + period won/lost totals + conversion rate'
             tags:
                 - reports
     /v1/reports/sectors:

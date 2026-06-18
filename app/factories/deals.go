@@ -11,7 +11,22 @@ import (
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	dealrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/deals"
 	dealctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/deals"
+	salesctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/salesreports"
 )
+
+// SalesMetricsService builds the sales-funnel metrics service (deals aggregations),
+// wired with the pipeline lookup (stage names) and the agent directory (seller
+// names + avatars).
+func SalesMetricsService(c *container.Container) *dealservice.SalesMetrics {
+	svc := dealservice.NewSalesMetrics(dealrepo.New(c.Mongo.DB), PipelineService(c), clock)
+	svc.SetAgentDirectory(UserService(c))
+	return svc
+}
+
+// SalesReportController builds the sales-funnel reports controller.
+func SalesReportController(c *container.Container) *salesctl.Controller {
+	return salesctl.NewController(SalesMetricsService(c))
+}
 
 // DealService builds the sales-deal service, wired to the pipelines (for stage
 // terminal lookup + default), a conversation lookup (CreateFromConversation) and a
