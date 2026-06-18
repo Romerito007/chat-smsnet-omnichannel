@@ -127,11 +127,14 @@ func (r *fakeUserRepo) ListBySector(context.Context, string) ([]*iamentity.User,
 	return nil, nil
 }
 
-type captured struct{ topic, event string }
+type captured struct {
+	topic, event string
+	data         any
+}
 type fakePublisher struct{ events []captured }
 
-func (p *fakePublisher) Publish(_ context.Context, topic, event string, _ any) error {
-	p.events = append(p.events, captured{topic, event})
+func (p *fakePublisher) Publish(_ context.Context, topic, event string, data any) error {
+	p.events = append(p.events, captured{topic, event, data})
 	return nil
 }
 
@@ -192,11 +195,19 @@ func TestSend_CreatesInAppAndRealtime(t *testing.T) {
 	if len(fx.notif.items) != 1 {
 		t.Fatalf("expected 1 in-app notification, got %d", len(fx.notif.items))
 	}
-	// realtime notification.created to the recipient's user topic.
+	// realtime notification.created to the recipient's user topic, carrying the link
+	// (the front extracts e.g. the channel id from it).
 	found := false
 	for _, e := range fx.pub.events {
 		if e.event == contracts.RealtimeNotificationCreated && strings.Contains(e.topic, "u1") {
 			found = true
+			if p, ok := e.data.(realtimePayload); ok {
+				if p.Link != "/conversations/c1" {
+					t.Errorf("realtime payload must carry the link, got %q", p.Link)
+				}
+			} else {
+				t.Errorf("realtime payload type = %T, want realtimePayload", e.data)
+			}
 		}
 	}
 	if !found {

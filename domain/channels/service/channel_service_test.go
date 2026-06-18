@@ -395,6 +395,10 @@ func TestReplaceTemplates_ReplacesPersistsAndNotifies(t *testing.T) {
 		if n.TenantID != "t1" {
 			t.Errorf("notification tenant = %q", n.TenantID)
 		}
+		// The link carries the channel id so the front knows WHICH channel updated.
+		if n.Link != "/channels/c1" {
+			t.Errorf("notification link = %q, want /channels/c1", n.Link)
+		}
 	}
 }
 

@@ -351,6 +351,9 @@ func (s *ConnectionService) notifyTemplatesUpdated(ctx context.Context, tenantID
 	if name == "" {
 		name = string(conn.Type)
 	}
+	// The link carries the channel id so the front knows WHICH channel updated (each
+	// WhatsApp number is its own channel); it reloads it via GET /v1/channels/{id}.
+	link := "/channels/" + conn.ID
 	for _, uid := range userIDs {
 		s.notifier.Notify(ctx, shared.NotifyInput{
 			TenantID: tenantID,
@@ -360,6 +363,7 @@ func (s *ConnectionService) notifyTemplatesUpdated(ctx context.Context, tenantID
 			Type:  "channel.templates_updated",
 			Title: "Modelos de WhatsApp atualizados",
 			Body:  "Os modelos do canal " + name + " foram atualizados.",
+			Link:  link,
 		})
 	}
 }
