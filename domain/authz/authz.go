@@ -38,6 +38,7 @@ func DefaultRoles() []DefaultRoleDefinition {
 				IntegrationRead, IntegrationConfigure,
 				ChannelManage, WebhookManage,
 				PipelineView, PipelineManage,
+				DealView, DealManage,
 				CustomAttributeManage,
 				ReportView, ReportExport, AuditView,
 			},

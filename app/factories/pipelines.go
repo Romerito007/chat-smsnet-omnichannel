@@ -16,7 +16,11 @@ func PipelineService(c *container.Container) *pipelineservice.Service {
 	return svc
 }
 
-// PipelineController builds the pipeline management controller.
+// PipelineController builds the pipeline management controller. Its pipeline service
+// gets the deal checker wired so deleting a stage that still holds deals is refused.
+// (DealService uses a plain PipelineService, so there is no wiring cycle.)
 func PipelineController(c *container.Container) *pipelinectl.Controller {
-	return pipelinectl.NewController(PipelineService(c))
+	svc := PipelineService(c)
+	svc.SetDealChecker(DealService(c))
+	return pipelinectl.NewController(svc)
 }

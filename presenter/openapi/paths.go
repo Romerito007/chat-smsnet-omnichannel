@@ -265,6 +265,38 @@ func registerPipelines(p *paths) {
 		params:  stagep, responses: M{"200": jsonResp("Updated pipeline", ref("Pipeline")), "404": respRef("Error404"), "409": respRef("Error409")}}))
 }
 
+// registerDeals mounts the sales-deal (Kanban card) endpoints.
+func registerDeals(p *paths) {
+	idp := []M{pathParam("id", "deal id")}
+	p.add("GET", "/v1/deals", op(opConfig{tag: "deals", summary: "List deals — the Kanban feed (deal.view, own sector/assigned)",
+		params: append(paginationParams(),
+			queryParam("pipeline_id", "Filter by pipeline"),
+			queryParam("stage_id", "Filter by stage"),
+			queryParam("assigned_to", "Filter by seller (agent id)"),
+			queryParam("contact_id", "Filter by contact"),
+			queryParam("status", "Filter by status (open|won|lost)"),
+			queryParam("q", "Free-text over the title")),
+		responses: M{"200": jsonResp("Deal page", pageOf(ref("Deal")))}}))
+	p.add("POST", "/v1/deals", op(opConfig{tag: "deals", summary: "Create a deal (deal.manage). Pipeline/stage default to the tenant default pipeline + first stage.",
+		reqBody: body(ref("CreateDealRequest")), responses: M{"201": jsonResp("Created", ref("Deal")), "400": respRef("Error400")}}))
+	p.add("POST", "/v1/deals/from-conversation", op(opConfig{tag: "deals",
+		summary: "Create a deal from a conversation (deal.manage): pre-links the conversation + its contact, placed in the default pipeline / first stage.",
+		reqBody: body(ref("CreateFromConversationRequest")), responses: M{"201": jsonResp("Created", ref("Deal")), "400": respRef("Error400")}}))
+	p.add("GET", "/v1/deals/{id}", op(opConfig{tag: "deals", summary: "Get a deal with its linked conversations (deal.view)",
+		params: idp, responses: M{"200": jsonResp("Deal", ref("Deal")), "404": respRef("Error404")}}))
+	p.add("PATCH", "/v1/deals/{id}", op(opConfig{tag: "deals", summary: "Edit a deal: title/value/seller/date (deal.manage)",
+		params: idp, reqBody: body(ref("UpdateDealRequest")), responses: M{"200": jsonResp("Updated", ref("Deal")), "404": respRef("Error404")}}))
+	p.add("PATCH", "/v1/deals/{id}/stage", op(opConfig{tag: "deals",
+		summary: "Move a deal to another stage (deal.manage) — the drag-and-drop. Entering a won/lost stage closes the deal; leaving it reopens.",
+		params:  idp, reqBody: body(ref("MoveStageRequest")), responses: M{"200": jsonResp("Updated", ref("Deal")), "400": respRef("Error400"), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/deals/{id}/conversations", op(opConfig{tag: "deals", summary: "Link a conversation to a deal (deal.manage, idempotent)",
+		params: idp, reqBody: body(ref("LinkConversationRequest")), responses: M{"200": jsonResp("Updated", ref("Deal")), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/deals/{id}/lost", op(opConfig{tag: "deals", summary: "Mark a deal lost with a reason (deal.manage). Moves it to the pipeline's lost stage when one exists.",
+		params: idp, reqBody: body(ref("MarkLostRequest")), responses: M{"200": jsonResp("Updated", ref("Deal")), "404": respRef("Error404")}}))
+	p.add("DELETE", "/v1/deals/{id}", op(opConfig{tag: "deals", summary: "Delete a deal (deal.manage)",
+		params: idp, responses: M{"204": emptyResp("Deleted"), "404": respRef("Error404")}}))
+}
+
 func registerIntegrations(p *paths) {
 	// automation rules (Chatwoot-style trigger/conditions/actions engine)
 	p.add("GET", "/v1/automation-rules", op(opConfig{tag: "automationrules", summary: "List automation rules",

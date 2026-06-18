@@ -47,6 +47,11 @@ const (
 	PipelineView   Permission = "pipeline.view"
 	PipelineManage Permission = "pipeline.manage"
 
+	// DealView lets a seller read the opportunities in their sector/assigned;
+	// DealManage lets them create/edit/move deals.
+	DealView   Permission = "deal.view"
+	DealManage Permission = "deal.manage"
+
 	ReportView   Permission = "report.view"
 	ReportExport Permission = "report.export"
 
@@ -70,6 +75,7 @@ func AllPermissions() []Permission {
 		ChannelManage, WebhookManage,
 		GroupView, GroupManage,
 		PipelineView, PipelineManage,
+		DealView, DealManage,
 		ReportView, ReportExport,
 		AuditView, PrivacyManage,
 		CustomAttributeManage,

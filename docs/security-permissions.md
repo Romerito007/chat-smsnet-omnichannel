@@ -30,7 +30,7 @@ RBAC (iam + authz) e **isolamento por tenant** em todas as camadas.
 ### Modelo
 - **Permission** no formato **`<recurso>.<ação>`** (ponto, não `:`) — capacidade
   fina. A **fonte da verdade** é `domain/authz/permission.go` (`AllPermissions()`):
-  **26 permissões**, listadas abaixo. Não invente chaves; o que não estiver nessa
+  **32 permissões**, listadas abaixo. Não invente chaves; o que não estiver nessa
   lista não é emitido pelo backend.
 - **Role** — bundle de permissões, por tenant.
 - **User** — possui papéis; papéis resolvem o conjunto efetivo de permissões.
@@ -45,14 +45,14 @@ Definidos em `domain/authz/authz.go` (`DefaultRoles()`). São **três** — não
 
 | Papel | Permissões | Escopo de setor |
 |---|---|---|
-| `owner` | **todas as 26** (`AllPermissions()`) | `ScopeAll` |
+| `owner` | **todas as 32** (`AllPermissions()`) | `ScopeAll` |
 | `admin` | 23 — tudo **menos** `contact.view_financial`, `integration.execute_action`, `privacy.manage` | `ScopeAll` |
 | `agent` | 8 — `conversation.read/assign/close`, `message.send/internal_note`, `contact.read/write`, `copilot.use` | `ScopeOwn` |
 
 > Papéis são **customizáveis** por tenant; o seed é apenas o ponto de partida
 > idempotente.
 
-### Catálogo de permissões (as 30 reais)
+### Catálogo de permissões (as 32 reais)
 ```
 conversation.read   conversation.assign   conversation.transfer   conversation.close
 message.send        message.internal_note message.delete
@@ -64,6 +64,7 @@ integration.read    integration.configure integration.execute_action
 channel.manage      webhook.manage
 group.view          group.manage
 pipeline.view       pipeline.manage
+deal.view           deal.manage
 report.view         report.export
 audit.view          privacy.manage
 ```

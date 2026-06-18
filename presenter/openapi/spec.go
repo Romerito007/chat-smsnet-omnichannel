@@ -364,6 +364,7 @@ func Build() M {
 	registerChannels(p)
 	registerGroups(p)
 	registerPipelines(p)
+	registerDeals(p)
 	registerIntegrations(p)
 	registerCopilotMCP(p)
 	registerProductivity(p)
@@ -407,6 +408,7 @@ func tags() []any {
 		{"channels", "Channel connections and inbound ingestion."},
 		{"groups", "WhatsApp groups registry: gateway sync and the attend filter."},
 		{"pipelines", "Sales pipelines: the tenant-configurable Kanban funnel and its stages."},
+		{"deals", "Sales deals: the opportunities (Kanban cards) moving across a pipeline."},
 		{"automationrules", "Trigger/condition/action rules (Chatwoot-style)."},
 		{"providerhub", "smsnet-integrations config and on-demand external queries."},
 		{"webhooks", "Outbound webhook subscriptions and deliveries."},

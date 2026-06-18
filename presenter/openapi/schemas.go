@@ -671,6 +671,48 @@ func schemas() M {
 			"stage_ids": describedArr(str(), "Every stage id, in the new order (position = new order)."),
 		}, "stage_ids"),
 
+		// ── sales deals (Kanban cards) ───────────────────────────────────────────
+		"Deal": object(M{
+			"id": str(), "tenant_id": str(),
+			"pipeline_id":   str(),
+			"pipeline_name": describedStr("Read-only, derived: resolved in batch so the Kanban renders the name instead of a raw id; empty when unresolved."),
+			"stage_id":      str(),
+			"stage_name":    describedStr("Read-only, derived: resolved in batch from the pipeline; empty when unresolved."),
+			"contact_id":    str(),
+			"contact_name":  describedStr("Read-only, derived: resolved in batch; empty when unresolved."),
+			"title":         str(), "value": number(), "currency": str(),
+			"assigned_to":            str(),
+			"assigned_to_name":       describedStr("Read-only, derived: the seller's name, resolved in batch; empty when unresolved."),
+			"assigned_to_avatar_url": describedStr("Read-only, derived: the seller's signed avatar URL, resolved in batch; empty when unresolved."),
+			"sector_id":              str(),
+			"conversation_ids":       arr(str()),
+			"source":                 str(),
+			"status":                 enum("open", "won", "lost"),
+			"lost_reason":            str(),
+			"expected_close_date":    dateTime(),
+			"stage_changed_at":       dateTime(),
+			"closed_at":              dateTime(),
+			"created_at":             dateTime(), "updated_at": dateTime(),
+		}),
+		"CreateDealRequest": object(M{
+			"title": str(), "value": number(), "currency": str(),
+			"pipeline_id": describedStr("Defaults to the tenant default pipeline."),
+			"stage_id":    describedStr("Defaults to the pipeline's first stage."),
+			"contact_id":  str(), "assigned_to": str(), "sector_id": str(), "source": str(),
+			"expected_close_date": dateTime(),
+		}, "title"),
+		"CreateFromConversationRequest": object(M{
+			"conversation_id": str(), "title": str(), "value": number(), "currency": str(),
+		}, "conversation_id"),
+		"UpdateDealRequest": object(M{
+			"title": str(), "value": number(), "currency": str(), "assigned_to": str(),
+			"sector_id": str(), "source": str(), "expected_close_date": dateTime(),
+			"clear_expected_close_date": boolean(),
+		}),
+		"MoveStageRequest":        object(M{"stage_id": str()}, "stage_id"),
+		"LinkConversationRequest": object(M{"conversation_id": str()}, "conversation_id"),
+		"MarkLostRequest":         object(M{"reason": str()}),
+
 		// ── webhooks ───────────────────────────────────────────────────────────
 		"Webhook": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),

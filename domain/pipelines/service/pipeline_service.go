@@ -98,6 +98,25 @@ func (s *Service) List(ctx context.Context) ([]*entity.Pipeline, error) {
 	return ps, nil
 }
 
+// Default returns the tenant's default pipeline (or the first one when none is
+// flagged). Used by the deals flow to place a new opportunity. NotFound when the
+// tenant has no pipeline configured yet.
+func (s *Service) Default(ctx context.Context) (*entity.Pipeline, error) {
+	ps, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range ps {
+		if p.IsDefault {
+			return p, nil
+		}
+	}
+	if len(ps) > 0 {
+		return ps[0], nil
+	}
+	return nil, apperror.NotFound("no pipeline configured for this tenant")
+}
+
 // Get returns a pipeline by id (tenant-scoped), stages sorted.
 func (s *Service) Get(ctx context.Context, id string) (*entity.Pipeline, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
