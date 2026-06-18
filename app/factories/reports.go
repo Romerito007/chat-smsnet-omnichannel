@@ -21,18 +21,19 @@ func ReportFileStore(c *container.Container) rcontracts.FileStore {
 }
 
 // ReportService builds the Mongo-aggregation report service with real file export.
+// It is wired with the agent (IAM), sector and close-reason directories so every
+// report — both the GET reads AND the file export — resolves raw ids to display
+// names/labels (agent name+avatar, sector name, closed_by_reason label) in batch.
 func ReportService(c *container.Container) *reportservice.Service {
 	svc := reportservice.NewService(reportrepo.New(c.Mongo.DB), clock)
 	svc.SetAuditor(AuditService(c))
 	svc.SetFileStore(ReportFileStore(c), c.Config.Reports.DownloadTTL)
+	svc.SetDirectories(UserService(c), SectorService(c), ConversationToolsCloseReasonService(c))
 	return svc
 }
 
-// ReportController builds the reports controller, wired with the agent (IAM),
-// sector and close-reason directories so per-agent/per-sector rows and the
-// conversations by_sector/closed_by_reason buckets resolve display names instead
-// of returning raw ids.
+// ReportController builds the reports controller. Name/label enrichment lives in the
+// report service (shared by reads and export), so the controller just queries + writes.
 func ReportController(c *container.Container) *reportctl.Controller {
-	return reportctl.NewController(ReportService(c), ReportFileStore(c)).
-		SetDirectories(UserService(c), SectorService(c), ConversationToolsCloseReasonService(c))
+	return reportctl.NewController(ReportService(c), ReportFileStore(c))
 }

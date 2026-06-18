@@ -27,6 +27,33 @@ type Service struct {
 	auditor shared.Auditor
 	files   contracts.FileStore
 	urlTTL  time.Duration
+	agents  AgentDirectory
+	sectors NameDirectory
+	reasons NameDirectory
+}
+
+// AgentDirectory resolves agent ids to display cards (name + signed avatar URL) so
+// the per-agent rows render the agent instead of a raw id. Satisfied by the IAM
+// user service (AgentCards). Optional.
+type AgentDirectory interface {
+	AgentCards(ctx context.Context, userIDs []string) (map[string]shared.DisplayCard, error)
+}
+
+// NameDirectory resolves ids to display names (sector, close reason). Satisfied by
+// the sector and close-reason services (Names). Optional.
+type NameDirectory interface {
+	Names(ctx context.Context, ids []string) (map[string]string, error)
+}
+
+// SetDirectories wires the agent, sector and close-reason directories used to
+// resolve raw ids to display names/labels on every report — for BOTH the GET reads
+// and the file export, so they stay consistent. Optional: when unset, rows/buckets
+// carry only the raw id.
+func (s *Service) SetDirectories(agents AgentDirectory, sectors, reasons NameDirectory) *Service {
+	s.agents = agents
+	s.sectors = sectors
+	s.reasons = reasons
+	return s
 }
 
 // NewService builds the service.
@@ -183,6 +210,10 @@ func (s *Service) Conversations(ctx context.Context, f contracts.Filter) (contra
 	if out.ClosedByReason, err = s.repo.ClosedByReason(ctx, f); err != nil {
 		return out, err
 	}
+	// Label the id-keyed buckets (by_sector, closed_by_reason) so reads and exports
+	// render names; by_status/messages_by_channel keys are already human-readable.
+	s.labelBuckets(ctx, out.BySector, s.sectors)
+	s.labelBuckets(ctx, out.ClosedByReason, s.reasons)
 	return out, nil
 }
 
@@ -196,7 +227,9 @@ func (s *Service) Agents(ctx context.Context, f contracts.Filter) (contracts.Age
 	if err != nil {
 		return contracts.AgentsReport{}, err
 	}
-	return contracts.AgentsReport{Agents: agents}, nil
+	rep := contracts.AgentsReport{Agents: agents}
+	s.enrichAgents(ctx, rep.Agents)
+	return rep, nil
 }
 
 // Sectors returns the per-sector breakdown.
@@ -209,7 +242,80 @@ func (s *Service) Sectors(ctx context.Context, f contracts.Filter) (contracts.Se
 	if err != nil {
 		return contracts.SectorsReport{}, err
 	}
-	return contracts.SectorsReport{Sectors: sectors}, nil
+	rep := contracts.SectorsReport{Sectors: sectors}
+	s.enrichSectors(ctx, rep.Sectors)
+	return rep, nil
+}
+
+// enrichAgents fills each agent row's display name + avatar from the agent
+// directory, in ONE batch call. Best-effort: a nil directory or a lookup error
+// leaves the rows with their raw ids.
+func (s *Service) enrichAgents(ctx context.Context, agents []contracts.AgentStat) {
+	if s.agents == nil || len(agents) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(agents))
+	for _, a := range agents {
+		if a.AgentID != "" {
+			ids = append(ids, a.AgentID)
+		}
+	}
+	cards, err := s.agents.AgentCards(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range agents {
+		if card, ok := cards[agents[i].AgentID]; ok {
+			agents[i].Name = card.Name
+			agents[i].AvatarURL = card.AvatarURL
+		}
+	}
+}
+
+// enrichSectors fills each sector row's display name, in ONE batch call. Best-effort.
+func (s *Service) enrichSectors(ctx context.Context, sectors []contracts.SectorStat) {
+	if s.sectors == nil || len(sectors) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(sectors))
+	for _, sec := range sectors {
+		if sec.SectorID != "" {
+			ids = append(ids, sec.SectorID)
+		}
+	}
+	names, err := s.sectors.Names(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range sectors {
+		if name, ok := names[sectors[i].SectorID]; ok {
+			sectors[i].Name = name
+		}
+	}
+}
+
+// labelBuckets fills each bucket's Label from the resolved name of its key (an id),
+// in ONE batch call. Best-effort: a nil directory or a lookup error leaves the
+// buckets with only their raw key.
+func (s *Service) labelBuckets(ctx context.Context, buckets []contracts.Bucket, dir NameDirectory) {
+	if dir == nil || len(buckets) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(buckets))
+	for _, b := range buckets {
+		if b.Key != "" {
+			ids = append(ids, b.Key)
+		}
+	}
+	names, err := dir.Names(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range buckets {
+		if name, ok := names[buckets[i].Key]; ok {
+			buckets[i].Label = name
+		}
+	}
 }
 
 // Copilot summarizes AI copilot usage.

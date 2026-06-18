@@ -4,7 +4,6 @@
 package reports
 
 import (
-	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -12,54 +11,20 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	rcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/reports/contracts"
-	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 	"github.com/romerito007/chat-smsnet-omnichannel/presenter/middleware"
 )
 
-// AgentDirectory resolves agent ids to display cards (name + signed avatar URL)
-// so the per-agent report renders the agent instead of a raw id. Satisfied by
-// the IAM user service (AgentCards). Optional.
-type AgentDirectory interface {
-	AgentCards(ctx context.Context, userIDs []string) (map[string]shared.DisplayCard, error)
-}
-
-// SectorDirectory resolves sector ids to display names so the per-sector report
-// renders the sector name instead of a raw id. Satisfied by the sector service
-// (Names). Optional.
-type SectorDirectory interface {
-	Names(ctx context.Context, ids []string) (map[string]string, error)
-}
-
-// CloseReasonDirectory resolves close-reason ids to names so the conversations
-// report's closed_by_reason buckets carry a label, not a raw id. Satisfied by the
-// close-reason service (Names). Optional.
-type CloseReasonDirectory interface {
-	Names(ctx context.Context, ids []string) (map[string]string, error)
-}
-
-// Controller serves the report endpoints.
+// Controller serves the report endpoints. Resolving raw ids to display names/labels
+// lives in the reports service (so the GET reads and the file export are consistent);
+// the controller just runs the query and writes the result.
 type Controller struct {
-	svc     rcontracts.ReportService
-	files   rcontracts.FileStore
-	agents  AgentDirectory
-	sectors SectorDirectory
-	reasons CloseReasonDirectory
+	svc   rcontracts.ReportService
+	files rcontracts.FileStore
 }
 
 // NewController builds the controller.
 func NewController(svc rcontracts.ReportService, files rcontracts.FileStore) *Controller {
 	return &Controller{svc: svc, files: files}
-}
-
-// SetDirectories wires the agent, sector and close-reason directories used to enrich
-// the reports with display names (so the dashboard never shows raw ids): per-agent
-// (name+avatar), per-sector and the conversations report's by_sector/closed_by_reason
-// bucket labels. Optional: when unset, rows/buckets carry only the raw id.
-func (c *Controller) SetDirectories(agents AgentDirectory, sectors SectorDirectory, reasons CloseReasonDirectory) *Controller {
-	c.agents = agents
-	c.sectors = sectors
-	c.reasons = reasons
-	return c
 }
 
 // filter parses the common report filter from the query string.
@@ -92,111 +57,25 @@ func (c *Controller) Overview(w http.ResponseWriter, r *http.Request) {
 }
 
 // Conversations handles GET /v1/reports/conversations. The by_sector and
-// closed_by_reason buckets are keyed by raw ids; each gets a resolved label so the
-// dashboard renders names. (by_status/messages_by_channel keys are already
-// human-readable.)
+// closed_by_reason buckets carry a resolved label (filled by the service) so the
+// dashboard renders names instead of raw ids.
 func (c *Controller) Conversations(w http.ResponseWriter, r *http.Request) {
 	res, err := c.svc.Conversations(r.Context(), filter(r))
-	if err == nil {
-		c.labelBuckets(r.Context(), res.BySector, c.sectors)
-		c.labelBuckets(r.Context(), res.ClosedByReason, c.reasons)
-	}
 	write(w, r, res, err)
 }
 
-// nameResolver resolves a set of ids to display names in one batch call.
-type nameResolver interface {
-	Names(ctx context.Context, ids []string) (map[string]string, error)
-}
-
-// labelBuckets fills each bucket's Label from the resolved name of its key (an id),
-// in ONE batch call. Best-effort: a nil directory or a lookup error leaves the
-// buckets with only their raw key.
-func (c *Controller) labelBuckets(ctx context.Context, buckets []rcontracts.Bucket, dir nameResolver) {
-	if dir == nil || len(buckets) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(buckets))
-	for _, b := range buckets {
-		if b.Key != "" {
-			ids = append(ids, b.Key)
-		}
-	}
-	names, err := dir.Names(ctx, ids)
-	if err != nil {
-		return
-	}
-	for i := range buckets {
-		if name, ok := names[buckets[i].Key]; ok {
-			buckets[i].Label = name
-		}
-	}
-}
-
-// Agents handles GET /v1/reports/agents. The raw agent ids are enriched with the
-// resolved name + avatar so the dashboard never renders a bare id.
+// Agents handles GET /v1/reports/agents. Each agent row carries the resolved
+// name + avatar (filled by the service).
 func (c *Controller) Agents(w http.ResponseWriter, r *http.Request) {
 	res, err := c.svc.Agents(r.Context(), filter(r))
-	if err == nil {
-		c.enrichAgents(r.Context(), res.Agents)
-	}
 	write(w, r, res, err)
 }
 
-// enrichAgents fills the display name/avatar of each agent row, best-effort: a
-// directory error leaves the rows with their raw ids rather than failing.
-func (c *Controller) enrichAgents(ctx context.Context, agents []rcontracts.AgentStat) {
-	if c.agents == nil || len(agents) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(agents))
-	for _, a := range agents {
-		if a.AgentID != "" {
-			ids = append(ids, a.AgentID)
-		}
-	}
-	cards, err := c.agents.AgentCards(ctx, ids)
-	if err != nil {
-		return
-	}
-	for i := range agents {
-		if card, ok := cards[agents[i].AgentID]; ok {
-			agents[i].Name = card.Name
-			agents[i].AvatarURL = card.AvatarURL
-		}
-	}
-}
-
-// Sectors handles GET /v1/reports/sectors. The raw sector ids are enriched with
-// the resolved sector name so the dashboard never renders a bare id.
+// Sectors handles GET /v1/reports/sectors. Each sector row carries the resolved
+// name (filled by the service).
 func (c *Controller) Sectors(w http.ResponseWriter, r *http.Request) {
 	res, err := c.svc.Sectors(r.Context(), filter(r))
-	if err == nil {
-		c.enrichSectors(r.Context(), res.Sectors)
-	}
 	write(w, r, res, err)
-}
-
-// enrichSectors fills the display name of each sector row, best-effort.
-func (c *Controller) enrichSectors(ctx context.Context, sectors []rcontracts.SectorStat) {
-	if c.sectors == nil || len(sectors) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(sectors))
-	for _, s := range sectors {
-		if s.SectorID != "" {
-			ids = append(ids, s.SectorID)
-		}
-	}
-	names, err := c.sectors.Names(ctx, ids)
-	if err != nil {
-		return
-	}
-	for i := range sectors {
-		if name, ok := names[sectors[i].SectorID]; ok {
-			sectors[i].Name = name
-		}
-	}
 }
 
 // Copilot handles GET /v1/reports/copilot.
