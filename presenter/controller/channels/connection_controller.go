@@ -112,6 +112,20 @@ func (c *ConnectionController) RotateOutboundSecret(w http.ResponseWriter, r *ht
 	middleware.WriteJSON(w, http.StatusOK, dto.NewRotatedOutboundSecretResponse(conn))
 }
 
+// RefreshTemplates handles POST /v1/channels/{id}/refresh-templates. It fetches the
+// channel's current WhatsApp templates from its gateway (signed with the outbound
+// secret) and replaces the stored render-only mirror, returning the updated channel
+// so the front can re-render the selector. On a gateway failure the existing
+// templates are kept and an error is returned.
+func (c *ConnectionController) RefreshTemplates(w http.ResponseWriter, r *http.Request) {
+	conn, err := c.connections.RefreshTemplates(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewConnectionResponse(conn))
+}
+
 // Test handles POST /v1/channels/{id}/test.
 func (c *ConnectionController) Test(w http.ResponseWriter, r *http.Request) {
 	result, _, err := c.connections.Test(r.Context(), chi.URLParam(r, "id"))

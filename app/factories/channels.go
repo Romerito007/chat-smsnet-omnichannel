@@ -42,6 +42,8 @@ func ConnectionService(c *container.Container) *channelservice.ConnectionService
 		clock,
 	)
 	svc.SetHealthChecker(infrachannels.NewHealthChecker())
+	// On-demand WhatsApp template refresh: pull the mirror from the channel's gateway.
+	svc.SetTemplateFetcher(infrachannels.NewTemplateFetcher())
 	svc.SetAuditor(AuditService(c))
 	// A channel with an outbound URL produces a managed webhook (full pipeline)
 	// instead of a separate outbound rail.

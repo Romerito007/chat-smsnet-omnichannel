@@ -42,6 +42,12 @@ components:
                     schema:
                         $ref: '#/components/schemas/Error'
             description: Internal error (internal_error).
+        Error502:
+            content:
+                application/json:
+                    schema:
+                        $ref: '#/components/schemas/Error'
+            description: Upstream integration failure (integration_unavailable).
     schemas:
         AcceptInviteRequest:
             properties:
@@ -5640,6 +5646,40 @@ paths:
             summary: Channel open/closed status
             tags:
                 - businesshours
+    /v1/channels/{id}/refresh-templates:
+        post:
+            operationId: postChannelsByIdRefreshTemplates
+            parameters:
+                - description: channel id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Channel'
+                    description: Updated channel
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+                "502":
+                    $ref: '#/components/responses/Error502'
+            summary: Refresh the channel's WhatsApp template mirror from its gateway (channel.manage). The chat GETs {origin(outbound_url)}/channels/{type}/templates, signed with the outbound secret (Signature = HMAC-SHA256(secret, "<timestamp>.") over an empty body, plus the Timestamp header — same scheme as outbound delivery). On success it REPLACES whatsapp_templates and returns the updated channel; on a gateway failure the existing templates are kept and an error is returned.
+            tags:
+                - channels
     /v1/channels/{id}/rotate-inbound-token:
         post:
             operationId: postChannelsByIdRotateInboundToken

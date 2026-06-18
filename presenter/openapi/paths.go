@@ -185,6 +185,10 @@ func registerChannels(p *paths) {
 		summary:   "Rotate the channel outbound HMAC secret (revokes the prior one; returned once). The integrator must switch to the new secret; the channel's managed webhook is re-synced to sign with it.",
 		params:    idp,
 		responses: M{"200": jsonResp("Rotated", ref("RotatedOutboundSecret")), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/channels/{id}/refresh-templates", op(opConfig{tag: "channels",
+		summary:   "Refresh the channel's WhatsApp template mirror from its gateway (channel.manage). The chat GETs {origin(outbound_url)}/channels/{type}/templates, signed with the outbound secret (Signature = HMAC-SHA256(secret, \"<timestamp>.\") over an empty body, plus the Timestamp header — same scheme as outbound delivery). On success it REPLACES whatsapp_templates and returns the updated channel; on a gateway failure the existing templates are kept and an error is returned.",
+		params:    idp,
+		responses: M{"200": jsonResp("Updated channel", ref("Channel")), "404": respRef("Error404"), "502": respRef("Error502")}}))
 
 	// Public inbound endpoints authenticate with the channel integration token via
 	// the X-Inbound-Token header (preferred) or an inbound_token body field — never

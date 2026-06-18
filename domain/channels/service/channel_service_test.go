@@ -343,3 +343,104 @@ func TestRotateOutboundSecret_NewSecretRevealedAndManagedWebhookResynced(t *test
 		t.Errorf("managed webhook not re-synced with the new secret: %+v", wm)
 	}
 }
+
+// fakeTemplateFetcher stands in for the gateway template fetch.
+type fakeTemplateFetcher struct {
+	templates []chentity.WhatsAppTemplate
+	err       error
+	calls     int
+}
+
+func (f *fakeTemplateFetcher) FetchTemplates(_ context.Context, _ *chentity.ChannelConnection) ([]chentity.WhatsAppTemplate, error) {
+	f.calls++
+	return f.templates, f.err
+}
+
+func TestRefreshTemplates_ReplacesAndPersists(t *testing.T) {
+	svc, repo, _ := newConnService()
+	fetcher := &fakeTemplateFetcher{templates: []chentity.WhatsAppTemplate{
+		{ID: "t1", Name: "Boas-vindas", Body: chentity.WhatsAppTemplateBody{Text: "Olá {{nome}}",
+			Variables: []chentity.WhatsAppTemplateVariable{{Key: "nome"}}}},
+	}}
+	svc.SetTemplateFetcher(fetcher)
+	ctx := tenantCtx()
+
+	repo.put(&chentity.ChannelConnection{
+		ID: "c1", TenantID: "t1", Type: chentity.TypeWhatsApp, BaseURL: "https://gw.example.com/webhook",
+		WhatsAppTemplates: []chentity.WhatsAppTemplate{{ID: "old", Name: "Antigo"}},
+	})
+
+	conn, err := svc.RefreshTemplates(ctx, "c1")
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if fetcher.calls != 1 {
+		t.Fatalf("fetcher must be called once, got %d", fetcher.calls)
+	}
+	if len(conn.WhatsAppTemplates) != 1 || conn.WhatsAppTemplates[0].ID != "t1" {
+		t.Fatalf("templates must be replaced by the fetched mirror: %+v", conn.WhatsAppTemplates)
+	}
+	// Persisted, not just returned.
+	stored, _ := repo.FindByID(ctx, "c1")
+	if len(stored.WhatsAppTemplates) != 1 || stored.WhatsAppTemplates[0].ID != "t1" {
+		t.Errorf("refresh must persist the new mirror, got %+v", stored.WhatsAppTemplates)
+	}
+}
+
+func TestRefreshTemplates_GatewayFailureKeepsExisting(t *testing.T) {
+	svc, repo, _ := newConnService()
+	svc.SetTemplateFetcher(&fakeTemplateFetcher{err: context.DeadlineExceeded})
+	ctx := tenantCtx()
+
+	repo.put(&chentity.ChannelConnection{
+		ID: "c1", TenantID: "t1", Type: chentity.TypeWhatsApp, BaseURL: "https://gw.example.com/webhook",
+		WhatsAppTemplates: []chentity.WhatsAppTemplate{{ID: "keep", Name: "Mantido"}},
+	})
+
+	if _, err := svc.RefreshTemplates(ctx, "c1"); apperror.From(err).Code != apperror.CodeIntegrationUnavailable {
+		t.Fatalf("a gateway failure must be an integration error, got %v", err)
+	}
+	// Existing templates must NOT be wiped.
+	stored, _ := repo.FindByID(ctx, "c1")
+	if len(stored.WhatsAppTemplates) != 1 || stored.WhatsAppTemplates[0].ID != "keep" {
+		t.Errorf("a failed refresh must keep the existing templates, got %+v", stored.WhatsAppTemplates)
+	}
+}
+
+func TestRefreshTemplates_RejectsInvalidPayloadWithoutOverwrite(t *testing.T) {
+	svc, repo, _ := newConnService()
+	// A template missing its id is invalid (validateTemplates).
+	svc.SetTemplateFetcher(&fakeTemplateFetcher{templates: []chentity.WhatsAppTemplate{{Name: "no id"}}})
+	ctx := tenantCtx()
+
+	repo.put(&chentity.ChannelConnection{
+		ID: "c1", TenantID: "t1", Type: chentity.TypeWhatsApp, BaseURL: "https://gw.example.com/webhook",
+		WhatsAppTemplates: []chentity.WhatsAppTemplate{{ID: "keep"}},
+	})
+	if _, err := svc.RefreshTemplates(ctx, "c1"); apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("invalid payload must be a validation error, got %v", err)
+	}
+	stored, _ := repo.FindByID(ctx, "c1")
+	if len(stored.WhatsAppTemplates) != 1 || stored.WhatsAppTemplates[0].ID != "keep" {
+		t.Errorf("an invalid payload must not overwrite the existing templates")
+	}
+}
+
+func TestRefreshTemplates_NoBaseURL(t *testing.T) {
+	svc, repo, _ := newConnService()
+	svc.SetTemplateFetcher(&fakeTemplateFetcher{})
+	ctx := tenantCtx()
+	repo.put(&chentity.ChannelConnection{ID: "c1", TenantID: "t1", Type: chentity.TypeWhatsApp})
+	if _, err := svc.RefreshTemplates(ctx, "c1"); apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("a channel with no outbound_url must be a validation error, got %v", err)
+	}
+}
+
+func TestRefreshTemplates_NoFetcherConfigured(t *testing.T) {
+	svc, repo, _ := newConnService()
+	ctx := tenantCtx()
+	repo.put(&chentity.ChannelConnection{ID: "c1", TenantID: "t1", Type: chentity.TypeWhatsApp, BaseURL: "https://gw/x"})
+	if _, err := svc.RefreshTemplates(ctx, "c1"); apperror.From(err).Code != apperror.CodeIntegrationUnavailable {
+		t.Fatalf("no fetcher wired must be an integration error, got %v", err)
+	}
+}

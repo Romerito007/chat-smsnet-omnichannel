@@ -22,12 +22,22 @@ import (
 
 // ConnectionService manages channel connections and authenticates inbound calls.
 type ConnectionService struct {
-	repo     repository.ConnectionRepository
-	registry contracts.AdapterRegistry
-	clock    shared.Clock
-	health   contracts.ConnectionHealthChecker
-	auditor  shared.Auditor
-	webhooks shared.ChannelWebhookManager
+	repo      repository.ConnectionRepository
+	registry  contracts.AdapterRegistry
+	clock     shared.Clock
+	health    contracts.ConnectionHealthChecker
+	auditor   shared.Auditor
+	webhooks  shared.ChannelWebhookManager
+	templates contracts.TemplateFetcher
+}
+
+// SetTemplateFetcher wires the fetcher that pulls a channel's WhatsApp templates
+// from its gateway for the on-demand refresh. Optional: without it, RefreshTemplates
+// returns an integration error.
+func (s *ConnectionService) SetTemplateFetcher(f contracts.TemplateFetcher) {
+	if f != nil {
+		s.templates = f
+	}
 }
 
 // NewConnectionService builds the service.
@@ -224,6 +234,52 @@ func (s *ConnectionService) RotateOutboundSecret(ctx context.Context, id string)
 		ResourceType: "channel",
 		ResourceID:   conn.ID,
 		Data:         map[string]any{"type": string(conn.Type)},
+	})
+	return conn, nil
+}
+
+// RefreshTemplates fetches the channel's current WhatsApp templates from its gateway
+// (signed with the outbound secret, same HMAC scheme as outbound delivery) and
+// REPLACES the stored render-only mirror with the result. The mirror is replaced
+// wholesale only on a successful, valid fetch: any gateway failure (timeout, 5xx,
+// transport) or an invalid payload returns an error and leaves the existing
+// templates untouched. Requires channel.manage. Audited as channel.templates_refreshed.
+func (s *ConnectionService) RefreshTemplates(ctx context.Context, id string) (*entity.ChannelConnection, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if s.templates == nil {
+		return nil, apperror.Integration("template refresh is not configured")
+	}
+	if strings.TrimSpace(conn.BaseURL) == "" {
+		return nil, apperror.Validation("the channel has no outbound_url to fetch templates from")
+	}
+
+	fetched, err := s.templates.FetchTemplates(ctx, conn)
+	if err != nil {
+		// Gateway unreachable / non-2xx / decode error: keep the existing mirror.
+		return nil, apperror.Integration("could not fetch templates from the channel gateway").Wrap(err)
+	}
+	if err := validateTemplates(fetched); err != nil {
+		return nil, err // invalid payload: do not overwrite the existing mirror
+	}
+
+	conn.WhatsAppTemplates = fetched
+	conn.UpdatedAt = s.clock.Now()
+	if err := s.repo.Update(ctx, conn); err != nil {
+		return nil, err
+	}
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		TenantID:     tenantID,
+		Action:       "channel.templates_refreshed",
+		ResourceType: "channel",
+		ResourceID:   conn.ID,
+		Data:         map[string]any{"count": len(fetched)},
 	})
 	return conn, nil
 }

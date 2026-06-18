@@ -239,6 +239,7 @@ func errorResponses() M {
 		"Error409": mk("Conflict (conflict)."),
 		"Error429": mk("Rate limited (rate_limited)."),
 		"Error500": mk("Internal error (internal_error)."),
+		"Error502": mk("Upstream integration failure (integration_unavailable)."),
 	}
 }
 

@@ -30,6 +30,7 @@ func registerChannelRoutes(r chi.Router, c *container.Container) {
 			ch.Post("/{id}/test", ctl.Test)
 			ch.Post("/{id}/rotate-inbound-token", ctl.RotateInboundToken)
 			ch.Post("/{id}/rotate-outbound-secret", ctl.RotateOutboundSecret)
+			ch.Post("/{id}/refresh-templates", ctl.RefreshTemplates)
 		})
 	})
 
