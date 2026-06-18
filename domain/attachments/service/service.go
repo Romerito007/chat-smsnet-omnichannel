@@ -154,7 +154,7 @@ func (s *Service) SignedAvatarURLs(ctx context.Context, ids []string) (map[strin
 			continue
 		}
 		token := s.signMediaToken(att.StorageKey, att.ContentType, att.Filename, exp)
-		out[att.ID] = strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token
+		out[att.ID] = s.channelMediaURL(token, att.ContentType)
 	}
 	return out, nil
 }
@@ -162,6 +162,11 @@ func (s *Service) SignedAvatarURLs(ctx context.Context, ids []string) (map[strin
 // DownloadSigned resolves a signed channel-media token (no JWT, no tenant): it
 // verifies the signature + expiry and serves the object from storage.
 func (s *Service) DownloadSigned(token string) (contracts.DownloadResult, error) {
+	// The URL may carry a cosmetic extension (e.g. "<token>.ogg") that external
+	// integrations rely on; it is not part of the signed material, so strip it back
+	// off before verifying. Only a known extension suffix is removed (the token
+	// contains a '.' of its own, so never cut at the last dot).
+	token = stripMediaExtension(token)
 	key, contentType, filename, err := s.verifyMediaToken(token)
 	if err != nil {
 		return contracts.DownloadResult{}, err
@@ -648,7 +653,74 @@ func (s *Service) contentTypeAllowed(ct string) bool {
 func (s *Service) mediaURL(storageKey, contentType, filename string) string {
 	exp := s.clock.Now().Add(s.cfg.MediaURLTTL).UnixMilli()
 	token := s.signMediaToken(storageKey, contentType, filename, exp)
-	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token
+	return s.channelMediaURL(token, contentType)
+}
+
+// channelMediaURL builds the public GET /v1/channel-media/{token} URL and appends a
+// cosmetic file extension derived from the content type (e.g. .ogg), so external
+// integrations that infer the file type from the URL suffix work — notably WhatsApp
+// audio, which rejects an extension-less audio URL. The extension is NOT part of the
+// signed material; DownloadSigned strips it back off before verifying the token.
+func (s *Service) channelMediaURL(token, contentType string) string {
+	return strings.TrimRight(s.cfg.DownloadBaseURL, "/") + "/v1/channel-media/" + token + mediaExtension(contentType)
+}
+
+// mediaExtension maps a content type to the file extension (with leading dot) to
+// append to a channel-media URL. The type is normalized first: the part before any
+// ";" parameter (e.g. "audio/ogg; codecs=opus" → "audio/ogg"), trimmed, lowercased.
+// An unknown type returns "" so the URL keeps its current (extension-less) shape.
+func mediaExtension(contentType string) string {
+	ct := contentType
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	switch strings.ToLower(strings.TrimSpace(ct)) {
+	case "audio/ogg":
+		return ".ogg"
+	case "audio/mpeg":
+		return ".mp3"
+	case "audio/mp4", "audio/m4a", "audio/x-m4a":
+		return ".m4a"
+	case "audio/aac":
+		return ".aac"
+	case "audio/amr":
+		return ".amr"
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "video/mp4":
+		return ".mp4"
+	case "application/pdf":
+		return ".pdf"
+	default:
+		return ""
+	}
+}
+
+// knownMediaExtensions is the allowlist of cosmetic suffixes channelMediaURL may
+// append. The signed token itself contains a '.', so we strip ONLY a known extension
+// suffix — never "cut at the last dot", which would corrupt the token.
+var knownMediaExtensions = []string{
+	".ogg", ".mp3", ".m4a", ".aac", ".amr", ".wav",
+	".jpg", ".png", ".webp", ".mp4", ".pdf",
+}
+
+// stripMediaExtension removes a trailing known media extension from a token so that
+// "<token>.ogg" verifies exactly like "<token>". The token alphabet is base64url
+// (A–Z a–z 0–9 - _) plus one '.' separating payload and HMAC, and the HMAC is hex,
+// so a token can never legitimately end in one of these extensions.
+func stripMediaExtension(token string) string {
+	for _, ext := range knownMediaExtensions {
+		if strings.HasSuffix(token, ext) {
+			return token[:len(token)-len(ext)]
+		}
+	}
+	return token
 }
 
 // authorizeAttachment enforces access to an already-loaded attachment. Avatar

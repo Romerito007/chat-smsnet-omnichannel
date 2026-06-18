@@ -560,3 +560,87 @@ func TestStoreInbound_ReturnsSignedRenderableURL(t *testing.T) {
 func (r *fakeMsgRepo) FindByExternalMessageID(context.Context, string, string) (*conventity.Message, error) {
 	return nil, apperror.NotFound("nf")
 }
+
+// mediaExtension maps content types to the URL suffix integrations infer the type
+// from, normalizing the type (params after ";" stripped, trimmed, lowercased).
+func TestMediaExtension(t *testing.T) {
+	cases := map[string]string{
+		"audio/ogg":                ".ogg",
+		"audio/ogg; codecs=opus":   ".ogg", // normalize away the codecs parameter
+		"audio/mpeg":               ".mp3",
+		"audio/mp4":                ".m4a",
+		"audio/m4a":                ".m4a",
+		"audio/aac":                ".aac",
+		"audio/amr":                ".amr",
+		"audio/wav":                ".wav",
+		"image/jpeg":               ".jpg",
+		"image/png":                ".png",
+		"image/webp":               ".webp",
+		"video/mp4":                ".mp4",
+		"application/pdf":          ".pdf",
+		"  AUDIO/OGG ":             ".ogg", // trim + lowercase
+		"application/octet-stream": "",     // unknown → no extension
+		"":                         "",
+	}
+	for ct, want := range cases {
+		if got := mediaExtension(ct); got != want {
+			t.Errorf("mediaExtension(%q) = %q, want %q", ct, got, want)
+		}
+	}
+}
+
+// The generated media URL ends with the extension derived from the content type
+// (one per family), and an unknown type appends nothing.
+func TestMediaURL_AppendsExtension(t *testing.T) {
+	svc := newSvc(newRepo(), &fakeConvRepo{}, &fakeMsgRepo{}, &fakeStorage{provider: "s3"},
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t", MediaURLTTL: time.Minute})
+
+	for ct, suffix := range map[string]string{
+		"audio/ogg; codecs=opus": ".ogg",
+		"image/jpeg":             ".jpg",
+		"video/mp4":              ".mp4",
+		"application/pdf":        ".pdf",
+	} {
+		url := svc.mediaURL("k", ct, "f")
+		if !strings.HasPrefix(url, "http://api/v1/channel-media/") {
+			t.Errorf("url prefix wrong for %q: %q", ct, url)
+		}
+		if !strings.HasSuffix(url, suffix) {
+			t.Errorf("url for %q must end with %q: %q", ct, suffix, url)
+		}
+	}
+
+	// Unknown content type → no cosmetic extension (current behavior preserved).
+	url := svc.mediaURL("k", "application/zip", "f")
+	for _, ext := range knownMediaExtensions {
+		if strings.HasSuffix(url, ext) {
+			t.Errorf("unknown content type must not append an extension: %q", url)
+		}
+	}
+}
+
+// DownloadSigned accepts the token both WITH and WITHOUT the cosmetic extension and
+// resolves the same object — the extension is not part of the signed material.
+func TestDownloadSigned_TokenWithAndWithoutExtension(t *testing.T) {
+	svc := newSvc(newRepo(), &fakeConvRepo{}, &fakeMsgRepo{}, &fakeStorage{provider: "local"},
+		Config{DownloadBaseURL: "http://api", SigningSecret: "s3cr3t", MediaURLTTL: time.Minute})
+
+	url := svc.mediaURL("audios/t1/a.ogg", "audio/ogg", "a.ogg")
+	tokenWithExt := url[strings.LastIndex(url, "/")+1:]
+	if !strings.HasSuffix(tokenWithExt, ".ogg") {
+		t.Fatalf("expected the URL to carry the .ogg extension: %q", tokenWithExt)
+	}
+	tokenNoExt := strings.TrimSuffix(tokenWithExt, ".ogg")
+
+	withExt, err := svc.DownloadSigned(tokenWithExt)
+	if err != nil {
+		t.Fatalf("download with extension: %v", err)
+	}
+	noExt, err := svc.DownloadSigned(tokenNoExt)
+	if err != nil {
+		t.Fatalf("download without extension: %v", err)
+	}
+	if withExt.ContentType != noExt.ContentType || withExt.ContentType != "audio/ogg" {
+		t.Errorf("both forms must resolve the same object: %q vs %q", withExt.ContentType, noExt.ContentType)
+	}
+}

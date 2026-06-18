@@ -462,6 +462,6 @@ func registerPrivacyAttachments(p *paths) {
 	// the outbound ChannelOutboundMessage points here). Token is the only credential.
 	p.add("GET", "/v1/channel-media/{token}", op(opConfig{tag: "channels",
 		summary: "Download outbound media via a signed token (integration rail; no JWT)",
-		public:  true, params: []M{pathParam("token", "signed, expiring media token")},
+		public:  true, params: []M{pathParam("token", "Signed, expiring media token. It may carry a cosmetic file extension derived from the content type (e.g. \"<token>.ogg\") so external integrations can infer the type from the URL; the extension is stripped server-side and \"<token>.ogg\" verifies exactly like \"<token>\".")},
 		responses: M{"200": M{"description": "The file"}, "302": emptyResp("Redirect to storage")}}))
 }

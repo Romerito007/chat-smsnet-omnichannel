@@ -5418,7 +5418,7 @@ paths:
         get:
             operationId: getChannelMediaByToken
             parameters:
-                - description: signed, expiring media token
+                - description: Signed, expiring media token. It may carry a cosmetic file extension derived from the content type (e.g. "<token>.ogg") so external integrations can infer the type from the URL; the extension is stripped server-side and "<token>.ogg" verifies exactly like "<token>".
                   in: path
                   name: token
                   required: true
