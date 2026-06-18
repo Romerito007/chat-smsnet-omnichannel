@@ -639,6 +639,38 @@ func schemas() M {
 			"activated": boolean(),
 		}),
 
+		// ── sales pipelines (Kanban funnel) ──────────────────────────────────────
+		"PipelineStage": object(M{
+			"id":      str(),
+			"name":    str(),
+			"order":   describedStr("Column position in the Kanban (ascending)."),
+			"is_won":  withDesc(boolean(), "Closed-won terminal stage (at most one per pipeline)."),
+			"is_lost": withDesc(boolean(), "Closed-lost terminal stage (at most one per pipeline)."),
+			"color":   str(),
+		}, "id", "name"),
+		"Pipeline": object(M{
+			"id": str(), "tenant_id": str(), "name": str(),
+			"is_default": withDesc(boolean(), "The tenant default funnel (used by the Kanban when none is selected); only one per tenant."),
+			"stages":     describedArr(ref("PipelineStage"), "Stages ordered by order."),
+			"created_at": dateTime(), "updated_at": dateTime(),
+		}),
+		"StageRequest": object(M{
+			"name": str(), "order": integer(), "is_won": boolean(), "is_lost": boolean(), "color": str(),
+		}, "name"),
+		"CreatePipelineRequest": object(M{
+			"name":   str(),
+			"stages": arr(ref("StageRequest")),
+		}, "name"),
+		"UpdatePipelineRequest": object(M{
+			"name":       str(),
+			"is_default": withDesc(boolean(), "Set true to make this the tenant default (unsets the others)."),
+		}),
+		"AddStageRequest":    object(M{"name": str(), "order": integer(), "is_won": boolean(), "is_lost": boolean(), "color": str()}, "name"),
+		"UpdateStageRequest": object(M{"name": str(), "order": integer(), "is_won": boolean(), "is_lost": boolean(), "color": str()}),
+		"ReorderStagesRequest": object(M{
+			"stage_ids": describedArr(str(), "Every stage id, in the new order (position = new order)."),
+		}, "stage_ids"),
+
 		// ── webhooks ───────────────────────────────────────────────────────────
 		"Webhook": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),

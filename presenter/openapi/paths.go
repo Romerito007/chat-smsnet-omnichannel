@@ -239,6 +239,32 @@ func registerGroups(p *paths) {
 		responses: M{"202": jsonResp("Accepted", freeObject()), "409": respRef("Error409")}}))
 }
 
+// registerPipelines mounts the sales-pipeline (Kanban funnel) management endpoints.
+func registerPipelines(p *paths) {
+	idp := []M{pathParam("id", "pipeline id")}
+	stagep := []M{pathParam("id", "pipeline id"), pathParam("stageId", "stage id")}
+	p.add("GET", "/v1/pipelines", op(opConfig{tag: "pipelines", summary: "List the tenant's sales pipelines (pipeline.view)",
+		responses: M{"200": jsonResp("Pipelines", dataArr(ref("Pipeline")))}}))
+	p.add("POST", "/v1/pipelines", op(opConfig{tag: "pipelines", summary: "Create a pipeline (pipeline.manage). The tenant's first pipeline becomes the default.",
+		reqBody: body(ref("CreatePipelineRequest")), responses: M{"201": jsonResp("Created", ref("Pipeline")), "400": respRef("Error400")}}))
+	p.add("GET", "/v1/pipelines/{id}", op(opConfig{tag: "pipelines", summary: "Get a pipeline (pipeline.view)",
+		params: idp, responses: M{"200": jsonResp("Pipeline", ref("Pipeline")), "404": respRef("Error404")}}))
+	p.add("PATCH", "/v1/pipelines/{id}", op(opConfig{tag: "pipelines", summary: "Rename a pipeline / set it as the tenant default (pipeline.manage)",
+		params: idp, reqBody: body(ref("UpdatePipelineRequest")), responses: M{"200": jsonResp("Updated", ref("Pipeline")), "404": respRef("Error404")}}))
+	p.add("DELETE", "/v1/pipelines/{id}", op(opConfig{tag: "pipelines", summary: "Delete a pipeline (pipeline.manage)",
+		params: idp, responses: M{"204": emptyResp("Deleted"), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/pipelines/{id}/stages", op(opConfig{tag: "pipelines", summary: "Add a stage to a pipeline (pipeline.manage)",
+		params: idp, reqBody: body(ref("AddStageRequest")), responses: M{"201": jsonResp("Updated pipeline", ref("Pipeline")), "400": respRef("Error400")}}))
+	p.add("POST", "/v1/pipelines/{id}/stages/reorder", op(opConfig{tag: "pipelines",
+		summary: "Reorder a pipeline's stages (pipeline.manage). Body lists every stage id once; the position sets the new order.",
+		params:  idp, reqBody: body(ref("ReorderStagesRequest")), responses: M{"200": jsonResp("Updated pipeline", ref("Pipeline")), "400": respRef("Error400")}}))
+	p.add("PATCH", "/v1/pipelines/{id}/stages/{stageId}", op(opConfig{tag: "pipelines", summary: "Edit a stage (pipeline.manage)",
+		params: stagep, reqBody: body(ref("UpdateStageRequest")), responses: M{"200": jsonResp("Updated pipeline", ref("Pipeline")), "404": respRef("Error404")}}))
+	p.add("DELETE", "/v1/pipelines/{id}/stages/{stageId}", op(opConfig{tag: "pipelines",
+		summary: "Delete a stage (pipeline.manage). Refused (409) once the stage holds deals (deals block).",
+		params:  stagep, responses: M{"200": jsonResp("Updated pipeline", ref("Pipeline")), "404": respRef("Error404"), "409": respRef("Error409")}}))
+}
+
 func registerIntegrations(p *paths) {
 	// automation rules (Chatwoot-style trigger/conditions/actions engine)
 	p.add("GET", "/v1/automation-rules", op(opConfig{tag: "automationrules", summary: "List automation rules",

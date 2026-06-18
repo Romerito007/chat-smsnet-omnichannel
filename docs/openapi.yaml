@@ -56,6 +56,21 @@ components:
                 - name
                 - password
             type: object
+        AddStageRequest:
+            properties:
+                color:
+                    type: string
+                is_lost:
+                    type: boolean
+                is_won:
+                    type: boolean
+                name:
+                    type: string
+                order:
+                    type: integer
+            required:
+                - name
+            type: object
         AgentStat:
             properties:
                 agent_id:
@@ -1449,6 +1464,17 @@ components:
                 - base_url
                 - kind
             type: object
+        CreatePipelineRequest:
+            properties:
+                name:
+                    type: string
+                stages:
+                    items:
+                        $ref: '#/components/schemas/StageRequest'
+                    type: array
+            required:
+                - name
+            type: object
         CreateQueueRequest:
             properties:
                 enabled:
@@ -2745,6 +2771,50 @@ components:
             required:
                 - has_more
             type: object
+        Pipeline:
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                is_default:
+                    description: The tenant default funnel (used by the Kanban when none is selected); only one per tenant.
+                    type: boolean
+                name:
+                    type: string
+                stages:
+                    description: Stages ordered by order.
+                    items:
+                        $ref: '#/components/schemas/PipelineStage'
+                    type: array
+                tenant_id:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+            type: object
+        PipelineStage:
+            properties:
+                color:
+                    type: string
+                id:
+                    type: string
+                is_lost:
+                    description: Closed-lost terminal stage (at most one per pipeline).
+                    type: boolean
+                is_won:
+                    description: Closed-won terminal stage (at most one per pipeline).
+                    type: boolean
+                name:
+                    type: string
+                order:
+                    description: Column position in the Kanban (ascending).
+                    type: string
+            required:
+                - id
+                - name
+            type: object
         Plano:
             properties:
                 descricao:
@@ -2928,6 +2998,16 @@ components:
                     type: string
             required:
                 - refresh_token
+            type: object
+        ReorderStagesRequest:
+            properties:
+                stage_ids:
+                    description: Every stage id, in the new order (position = new order).
+                    items:
+                        type: string
+                    type: array
+            required:
+                - stage_ids
             type: object
         ReportAgents:
             properties:
@@ -3375,6 +3455,21 @@ components:
                 - email
                 - password
             type: object
+        StageRequest:
+            properties:
+                color:
+                    type: string
+                is_lost:
+                    type: boolean
+                is_won:
+                    type: boolean
+                name:
+                    type: string
+                order:
+                    type: integer
+            required:
+                - name
+            type: object
         SubmitCSATRequest:
             properties:
                 comment:
@@ -3820,6 +3915,14 @@ components:
                 name:
                     type: string
             type: object
+        UpdatePipelineRequest:
+            properties:
+                is_default:
+                    description: Set true to make this the tenant default (unsets the others).
+                    type: boolean
+                name:
+                    type: string
+            type: object
         UpdatePreferencesRequest:
             properties:
                 email_by_type:
@@ -3952,6 +4055,19 @@ components:
                     type: boolean
                 name:
                     type: string
+            type: object
+        UpdateStageRequest:
+            properties:
+                color:
+                    type: string
+                is_lost:
+                    type: boolean
+                is_won:
+                    type: boolean
+                name:
+                    type: string
+                order:
+                    type: integer
             type: object
         UpdateSurveyRequest:
             properties:
@@ -9020,6 +9136,313 @@ paths:
             summary: Mark all notifications read
             tags:
                 - notifications
+    /v1/pipelines:
+        get:
+            operationId: getPipelines
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/Pipeline'
+                                        type: array
+                                type: object
+                    description: Pipelines
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List the tenant's sales pipelines (pipeline.view)
+            tags:
+                - pipelines
+        post:
+            operationId: postPipelines
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreatePipelineRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: Created
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Create a pipeline (pipeline.manage). The tenant's first pipeline becomes the default.
+            tags:
+                - pipelines
+    /v1/pipelines/{id}:
+        delete:
+            operationId: deletePipelinesById
+            parameters:
+                - description: pipeline id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: Deleted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Delete a pipeline (pipeline.manage)
+            tags:
+                - pipelines
+        get:
+            operationId: getPipelinesById
+            parameters:
+                - description: pipeline id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: Pipeline
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get a pipeline (pipeline.view)
+            tags:
+                - pipelines
+        patch:
+            operationId: patchPipelinesById
+            parameters:
+                - description: pipeline id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdatePipelineRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Rename a pipeline / set it as the tenant default (pipeline.manage)
+            tags:
+                - pipelines
+    /v1/pipelines/{id}/stages:
+        post:
+            operationId: postPipelinesByIdStages
+            parameters:
+                - description: pipeline id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AddStageRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: Updated pipeline
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Add a stage to a pipeline (pipeline.manage)
+            tags:
+                - pipelines
+    /v1/pipelines/{id}/stages/{stageId}:
+        delete:
+            operationId: deletePipelinesByIdStagesByStageId
+            parameters:
+                - description: pipeline id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: stage id
+                  in: path
+                  name: stageId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: Updated pipeline
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Delete a stage (pipeline.manage). Refused (409) once the stage holds deals (deals block).
+            tags:
+                - pipelines
+        patch:
+            operationId: patchPipelinesByIdStagesByStageId
+            parameters:
+                - description: pipeline id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: stage id
+                  in: path
+                  name: stageId
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateStageRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: Updated pipeline
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Edit a stage (pipeline.manage)
+            tags:
+                - pipelines
+    /v1/pipelines/{id}/stages/reorder:
+        post:
+            operationId: postPipelinesByIdStagesReorder
+            parameters:
+                - description: pipeline id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ReorderStagesRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: Updated pipeline
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Reorder a pipeline's stages (pipeline.manage). Body lists every stage id once; the position sets the new order.
+            tags:
+                - pipelines
     /v1/platform/tenants:
         post:
             operationId: postPlatformTenants
@@ -11538,6 +11961,8 @@ tags:
       name: channels
     - description: 'WhatsApp groups registry: gateway sync and the attend filter.'
       name: groups
+    - description: 'Sales pipelines: the tenant-configurable Kanban funnel and its stages.'
+      name: pipelines
     - description: Trigger/condition/action rules (Chatwoot-style).
       name: automationrules
     - description: smsnet-integrations config and on-demand external queries.

@@ -52,7 +52,7 @@ Definidos em `domain/authz/authz.go` (`DefaultRoles()`). São **três** — não
 > Papéis são **customizáveis** por tenant; o seed é apenas o ponto de partida
 > idempotente.
 
-### Catálogo de permissões (as 28 reais)
+### Catálogo de permissões (as 30 reais)
 ```
 conversation.read   conversation.assign   conversation.transfer   conversation.close
 message.send        message.internal_note message.delete
@@ -63,6 +63,7 @@ copilot.use         copilot.configure
 integration.read    integration.configure integration.execute_action
 channel.manage      webhook.manage
 group.view          group.manage
+pipeline.view       pipeline.manage
 report.view         report.export
 audit.view          privacy.manage
 ```
@@ -88,6 +89,7 @@ audit.view          privacy.manage
 | Faturas no Customer-360 | `contact.view_financial` |
 | Canais (`/channels`) | `channel.manage` |
 | **Grupos de WhatsApp** (`/groups`) | ler/buscar=`group.view`, marcar atendimento + sync=`group.manage` |
+| **Pipelines de vendas** (`/pipelines`) | ler=`pipeline.view`, configurar funil+estágios=`pipeline.manage` |
 | Webhooks (`/webhooks`) | `webhook.manage` |
 | Regras de automação (`/automation-rules/*`) | `automation.manage` |
 | Copilot usar / configurar (`/copilot/*`) | `copilot.use` / `copilot.configure` |

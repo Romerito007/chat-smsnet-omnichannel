@@ -26,6 +26,7 @@ import (
 	csatentity "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/entity"
 	iamentity "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/entity"
 	mcpentity "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/entity"
+	pipelineentity "github.com/romerito007/chat-smsnet-omnichannel/domain/pipelines/entity"
 	privacyentity "github.com/romerito007/chat-smsnet-omnichannel/domain/privacy/entity"
 	phentity "github.com/romerito007/chat-smsnet-omnichannel/domain/providerhub/entity"
 	queueentity "github.com/romerito007/chat-smsnet-omnichannel/domain/queues/entity"
@@ -43,6 +44,7 @@ import (
 	csatrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/csat"
 	iamrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/iam"
 	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/mcp"
+	pipelinerepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/pipelines"
 	privacyrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/privacy"
 	phrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/providerhub"
 	queuerepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/queues"
@@ -246,6 +248,7 @@ func (d *demoSeeder) run() error {
 		// (d.sectorIDs is populated here); otherwise the lookup returns "" and
 		// agents end up with sector_ids: [""], which breaks sector assignment.
 		{"sectors_queues", d.seedSectorsQueues},
+		{"pipeline", d.seedPipeline},
 		{"team", d.seedTeam},
 		{"sla", d.seedSLAPolicy},
 		{"privacy", d.seedPrivacy},
@@ -301,6 +304,35 @@ func (d *demoSeeder) seedSectorsQueues() error {
 		d.mark("queues", queue.ID)
 		d.queueIDs[q.sector] = append(d.queueIDs[q.sector], queue.ID)
 	}
+	return nil
+}
+
+// ── 4.2b sales pipeline (default Kanban funnel) ────────────────────────────────
+
+// seedPipeline creates the tenant's default sales funnel with typical ISP stages,
+// including the terminal won/lost columns used later by the conversion metrics.
+func (d *demoSeeder) seedPipeline() error {
+	repo := pipelinerepo.New(d.db)
+	p := &pipelineentity.Pipeline{
+		ID:        shared.NewID(),
+		TenantID:  d.tenantID,
+		Name:      "Vendas",
+		IsDefault: true,
+		Stages: []pipelineentity.Stage{
+			{ID: shared.NewID(), Name: "Novo lead", Order: 0},
+			{ID: shared.NewID(), Name: "Em contato", Order: 1},
+			{ID: shared.NewID(), Name: "Proposta", Order: 2},
+			{ID: shared.NewID(), Name: "Negociação", Order: 3},
+			{ID: shared.NewID(), Name: "Fechado/ganho", Order: 4, IsWon: true},
+			{ID: shared.NewID(), Name: "Perdido", Order: 5, IsLost: true},
+		},
+		CreatedAt: d.now,
+		UpdatedAt: d.now,
+	}
+	if err := repo.Create(d.ctx, p); err != nil {
+		return err
+	}
+	d.mark("pipelines", p.ID)
 	return nil
 }
 

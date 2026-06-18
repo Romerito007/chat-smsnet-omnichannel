@@ -42,6 +42,11 @@ const (
 	GroupView   Permission = "group.view"
 	GroupManage Permission = "group.manage"
 
+	// PipelineView lets a sales user read the funnels; PipelineManage lets an
+	// admin configure the pipelines and their stages.
+	PipelineView   Permission = "pipeline.view"
+	PipelineManage Permission = "pipeline.manage"
+
 	ReportView   Permission = "report.view"
 	ReportExport Permission = "report.export"
 
@@ -64,6 +69,7 @@ func AllPermissions() []Permission {
 		IntegrationRead, IntegrationConfigure, IntegrationExecuteAction,
 		ChannelManage, WebhookManage,
 		GroupView, GroupManage,
+		PipelineView, PipelineManage,
 		ReportView, ReportExport,
 		AuditView, PrivacyManage,
 		CustomAttributeManage,
