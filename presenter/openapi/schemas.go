@@ -733,6 +733,18 @@ func schemas() M {
 		"LinkConversationRequest": object(M{"conversation_id": str()}, "conversation_id"),
 		"MarkLostRequest":         object(M{"reason": str()}),
 
+		// ── deal timeline (feed of business events + comments) ───────────────────
+		"DealTimelineEvent": object(M{
+			"id": str(), "deal_id": str(),
+			"kind":             enum("deal_created", "stage_changed", "value_changed", "assigned_changed", "priority_changed", "comment", "task_created", "task_completed", "product_added", "product_removed", "won", "lost"),
+			"actor_id":         describedStr("Who caused the event: a user id, or \"system\"/\"automation\" for non-human actors."),
+			"actor_name":       describedStr("Read-only, derived: the actor's display name (batch-resolved; empty for system/automation or when unresolved)."),
+			"actor_avatar_url": describedStr("Read-only, derived: the actor's avatar URL."),
+			"data":             withDesc(freeObject(), "Kind-specific fields, with names resolved (never raw ids): e.g. stage_changed → {from_stage_id, to_stage_id, from_stage_name, to_stage_name}; value_changed → {from, to}; assigned_changed → {from, to, from_name, to_name}; comment → {text}."),
+			"created_at":       dateTime(),
+		}),
+		"DealCommentRequest": object(M{"text": describedStr("The comment text (plain).")}, "text"),
+
 		// ── webhooks ───────────────────────────────────────────────────────────
 		"Webhook": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),

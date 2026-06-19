@@ -295,6 +295,16 @@ func registerDeals(p *paths) {
 		params: idp, reqBody: body(ref("MarkLostRequest")), responses: M{"200": jsonResp("Updated", ref("Deal")), "404": respRef("Error404")}}))
 	p.add("DELETE", "/v1/deals/{id}", op(opConfig{tag: "deals", summary: "Delete a deal (deal.manage)",
 		params: idp, responses: M{"204": emptyResp("Deleted"), "404": respRef("Error404")}}))
+
+	// deal timeline (chronological feed of business events + manual comments)
+	p.add("GET", "/v1/deals/{id}/timeline", op(opConfig{tag: "deals",
+		summary: "Get a deal's timeline — the chronological feed of automatic events + manual comments (deal.view, deal visibility). Most recent first, keyset-paginated. Empty when the tenant's timeline module is disabled (crmsettings.timeline_enabled).",
+		params:  append(paginationParams(), idp...),
+		responses: M{"200": jsonResp("Timeline page", pageOf(ref("DealTimelineEvent"))), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/deals/{id}/timeline/comments", op(opConfig{tag: "deals",
+		summary: "Add a manual comment to a deal's timeline (deal.manage). 409 when the timeline module is disabled for the tenant.",
+		params:  idp, reqBody: body(ref("DealCommentRequest")),
+		responses: M{"201": jsonResp("Created", ref("DealTimelineEvent")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
 }
 
 // registerCRMSettings mounts the per-tenant CRM settings (optional-module toggles).

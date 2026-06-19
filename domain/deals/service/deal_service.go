@@ -27,6 +27,7 @@ type Service struct {
 	notifier      shared.Notifier
 	audience      contracts.DealAudience
 	publisher     shared.EventPublisher
+	timeline      contracts.TimelineWriter
 	clock         shared.Clock
 }
 
@@ -86,6 +87,15 @@ func (s *Service) SetAudience(a contracts.DealAudience) {
 	}
 }
 
+// SetTimeline wires the deal-timeline writer so every relevant action records a
+// user-facing event (create/stage move/won/lost/value & assignee edits). Optional:
+// when unset, no timeline event is written. Best-effort and never blocks the action.
+func (s *Service) SetTimeline(w contracts.TimelineWriter) {
+	if w != nil {
+		s.timeline = w
+	}
+}
+
 // Create stores a new opportunity. Pipeline/stage default to the tenant's default
 // pipeline and its first stage. The status follows the target stage (won/lost when
 // terminal).
@@ -130,6 +140,8 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateDeal) (*entity
 	}
 	s.audit(ctx, "deal.created", d.ID)
 	s.publishDeal(ctx, d, contracts.RealtimeDealCreated, "", "")
+	s.recordTimeline(ctx, d.ID, contracts.TimelineDealCreated, dealActor(ctx),
+		map[string]any{"title": d.Title, "value": d.Value, "stage_id": d.StageID})
 	return d, nil
 }
 
@@ -199,6 +211,7 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateDea
 	if err != nil {
 		return nil, err
 	}
+	oldValue, oldAssigned := d.Value, d.AssignedTo
 	if cmd.Title != nil {
 		if strings.TrimSpace(*cmd.Title) == "" {
 			return nil, apperror.Validation("title is required")
@@ -234,6 +247,15 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateDea
 	}
 	s.audit(ctx, "deal.updated", d.ID)
 	s.publishDeal(ctx, d, contracts.RealtimeDealUpdated, "", "")
+	actor := dealActor(ctx)
+	if cmd.Value != nil && d.Value != oldValue {
+		s.recordTimeline(ctx, d.ID, contracts.TimelineValueChanged, actor,
+			map[string]any{"from": oldValue, "to": d.Value})
+	}
+	if cmd.AssignedTo != nil && d.AssignedTo != oldAssigned {
+		s.recordTimeline(ctx, d.ID, contracts.TimelineAssignedChanged, actor,
+			map[string]any{"from": oldAssigned, "to": d.AssignedTo})
+	}
 	return d, nil
 }
 
@@ -256,7 +278,7 @@ func (s *Service) MoveStage(ctx context.Context, dealID, stageID string) (*entit
 	if stage == nil {
 		return nil, apperror.Validation("the stage does not belong to the deal's pipeline")
 	}
-	fromStageID := d.StageID
+	fromStageID, fromStatus := d.StageID, d.Status
 	applyStage(d, stage, s.clock.Now())
 	d.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, d); err != nil {
@@ -264,6 +286,7 @@ func (s *Service) MoveStage(ctx context.Context, dealID, stageID string) (*entit
 	}
 	s.auditMove(ctx, d.ID, "user")
 	s.publishDeal(ctx, d, contracts.RealtimeDealStageChanged, fromStageID, "user")
+	s.recordStageMove(ctx, d, fromStageID, fromStatus, dealActor(ctx))
 	return d, nil
 }
 
@@ -310,7 +333,7 @@ func (s *Service) AutomationMoveDealStage(ctx context.Context, conversationID, p
 		if stage == nil {
 			return apperror.Validation("the stage does not belong to the deal's pipeline")
 		}
-		fromStageID := d.StageID
+		fromStageID, fromStatus := d.StageID, d.Status
 		now := s.clock.Now()
 		applyStage(d, stage, now)
 		d.UpdatedAt = now
@@ -319,6 +342,7 @@ func (s *Service) AutomationMoveDealStage(ctx context.Context, conversationID, p
 		}
 		s.auditMove(ctx, d.ID, "automation")
 		s.publishDeal(ctx, d, contracts.RealtimeDealStageChanged, fromStageID, "automation")
+		s.recordStageMove(ctx, d, fromStageID, fromStatus, "automation")
 		s.notifyMoved(ctx, d, stage.Name)
 	}
 	return nil
@@ -413,7 +437,7 @@ func (s *Service) MarkLost(ctx context.Context, dealID, reason string) (*entity.
 		return nil, err
 	}
 	now := s.clock.Now()
-	fromStageID := d.StageID
+	fromStageID, fromStatus := d.StageID, d.Status
 	if lost := lostStage(pl); lost != nil {
 		applyStage(d, lost, now)
 	} else {
@@ -427,6 +451,7 @@ func (s *Service) MarkLost(ctx context.Context, dealID, reason string) (*entity.
 	}
 	s.audit(ctx, "deal.marked_lost", d.ID)
 	s.publishDeal(ctx, d, contracts.RealtimeDealStageChanged, fromStageID, "user")
+	s.recordStageMove(ctx, d, fromStageID, fromStatus, dealActor(ctx))
 	return d, nil
 }
 
@@ -540,6 +565,38 @@ func (s *Service) publishDeal(ctx context.Context, d *entity.Deal, event, fromSt
 		events = append(events, shared.PublishEvent{Topic: topic, Event: event, Data: payload})
 	}
 	shared.PublishAll(ctx, s.publisher, events...)
+}
+
+// recordTimeline appends an automatic event to the deal's timeline (best-effort).
+func (s *Service) recordTimeline(ctx context.Context, dealID, kind, actor string, data map[string]any) {
+	if s.timeline == nil {
+		return
+	}
+	s.timeline.Record(ctx, contracts.TimelineEvent{DealID: dealID, Kind: kind, ActorID: actor, Data: data})
+}
+
+// recordStageMove writes the timeline events for a stage move: stage_changed when the
+// stage actually changed, plus won/lost when the deal TRANSITIONED into that terminal
+// status (not on a repeat).
+func (s *Service) recordStageMove(ctx context.Context, d *entity.Deal, fromStageID string, fromStatus entity.Status, actor string) {
+	if fromStageID != d.StageID {
+		s.recordTimeline(ctx, d.ID, contracts.TimelineStageChanged, actor,
+			map[string]any{"from_stage_id": fromStageID, "to_stage_id": d.StageID})
+	}
+	switch {
+	case d.Status == entity.StatusWon && fromStatus != entity.StatusWon:
+		s.recordTimeline(ctx, d.ID, contracts.TimelineWon, actor, map[string]any{"stage_id": d.StageID})
+	case d.Status == entity.StatusLost && fromStatus != entity.StatusLost:
+		s.recordTimeline(ctx, d.ID, contracts.TimelineLost, actor, map[string]any{"stage_id": d.StageID})
+	}
+}
+
+// dealActor is the user who caused a deal action, or "system" when none is on ctx.
+func dealActor(ctx context.Context) string {
+	if ac, ok := authz.FromContext(ctx); ok && ac.UserID != "" {
+		return ac.UserID
+	}
+	return "system"
 }
 
 // applyStage moves a deal into a stage and reconciles its status + closed_at:

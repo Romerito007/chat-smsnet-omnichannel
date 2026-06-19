@@ -14,6 +14,7 @@ import (
 // assigned); creating/editing/moving requires deal.manage.
 func registerDealRoutes(r chi.Router, c *container.Container) {
 	ctl := factories.DealController(c)
+	timeline := factories.DealTimelineController(c)
 
 	r.Group(func(p chi.Router) {
 		p.Use(middleware.AuthContext(c.Tokens))
@@ -28,5 +29,9 @@ func registerDealRoutes(r chi.Router, c *container.Container) {
 		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/conversations", ctl.LinkConversation)
 		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/lost", ctl.MarkLost)
 		p.With(middleware.RequirePermission(authz.DealManage)).Delete("/deals/{id}", ctl.Delete)
+
+		// Deal timeline: read the feed (deal.view) and add a manual comment (deal.manage).
+		p.With(middleware.RequirePermission(authz.DealView)).Get("/deals/{id}/timeline", timeline.Feed)
+		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/timeline/comments", timeline.Comment)
 	})
 }

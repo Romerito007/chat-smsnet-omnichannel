@@ -44,6 +44,8 @@ func DealService(c *container.Container) *dealservice.Service {
 	svc.SetAudience(dealAudience{users: UserService(c)})
 	// Emit realtime deal events so an open Kanban reacts live (no F5).
 	svc.SetPublisher(c.Events)
+	// Record user-facing timeline events on every relevant action (best-effort).
+	svc.SetTimeline(dealTimelineWriter{tl: DealTimelineService(c)})
 	return svc
 }
 

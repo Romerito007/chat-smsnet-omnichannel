@@ -244,6 +244,36 @@ func movedBys(entries []shared.AuditEntry) []string {
 	return out
 }
 
+type fakeTimeline struct{ events []contracts.TimelineEvent }
+
+func (f *fakeTimeline) Record(_ context.Context, ev contracts.TimelineEvent) {
+	f.events = append(f.events, ev)
+}
+func (f *fakeTimeline) kinds() []string {
+	out := make([]string, 0, len(f.events))
+	for _, e := range f.events {
+		out = append(out, e.Kind)
+	}
+	return out
+}
+func (f *fakeTimeline) last(kind string) (contracts.TimelineEvent, bool) {
+	for i := len(f.events) - 1; i >= 0; i-- {
+		if f.events[i].Kind == kind {
+			return f.events[i], true
+		}
+	}
+	return contracts.TimelineEvent{}, false
+}
+
+func hasKind(kinds []string, k string) bool {
+	for _, x := range kinds {
+		if x == k {
+			return true
+		}
+	}
+	return false
+}
+
 func tenantCtx() context.Context { return shared.WithTenant(context.Background(), "t1") }
 func authCtx(scope authz.SectorScope, sectors []string, user string) context.Context {
 	return authz.WithAuthContext(tenantCtx(), authz.NewAuthContext("t1", user, authz.AllPermissions(), sectors, scope))
@@ -601,6 +631,62 @@ func TestMoveStage_Idempotent_NoChangeStillPublishes(t *testing.T) {
 	}
 	if len(pub.byEvent(contracts.RealtimeDealStageChanged)) == 0 {
 		t.Errorf("a manual move must emit deal.stage_changed")
+	}
+}
+
+func TestTimeline_AutomaticEventsRecorded(t *testing.T) {
+	svc, _ := newSvc()
+	tl := &fakeTimeline{}
+	svc.SetTimeline(tl)
+	ctx := tenantCtx()
+
+	// Create → deal_created.
+	d, err := svc.Create(ctx, contracts.CreateDeal{Title: "Acme", Value: 100})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if !hasKind(tl.kinds(), "deal_created") {
+		t.Errorf("create must record deal_created, got %v", tl.kinds())
+	}
+
+	// Move to a won stage → stage_changed + won.
+	if _, err := svc.MoveStage(ctx, d.ID, "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	sc, ok := tl.last("stage_changed")
+	if !ok || sc.Data["from_stage_id"] != "s1" || sc.Data["to_stage_id"] != "sw" {
+		t.Errorf("move must record stage_changed s1→sw, got %+v", sc.Data)
+	}
+	if !hasKind(tl.kinds(), "won") {
+		t.Errorf("moving into a won stage must record won, got %v", tl.kinds())
+	}
+
+	// Edit value + assignee → value_changed + assigned_changed.
+	if _, err := svc.Update(ctx, d.ID, contracts.UpdateDeal{Value: ptr(250.0), AssignedTo: ptr("u2")}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	vc, ok := tl.last("value_changed")
+	if !ok || vc.Data["from"] != 100.0 || vc.Data["to"] != 250.0 {
+		t.Errorf("edit must record value_changed 100→250, got %+v", vc.Data)
+	}
+	ac, ok := tl.last("assigned_changed")
+	if !ok || ac.Data["to"] != "u2" {
+		t.Errorf("edit must record assigned_changed →u2, got %+v", ac.Data)
+	}
+}
+
+func TestTimeline_AutomationMoveRecordsAsAutomation(t *testing.T) {
+	svc, repo := newSvc()
+	tl := &fakeTimeline{}
+	svc.SetTimeline(tl)
+	seedDeal(repo, &entity.Deal{ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen, ConversationIDs: []string{"cv1"}})
+
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	sc, ok := tl.last("stage_changed")
+	if !ok || sc.ActorID != "automation" {
+		t.Errorf("automation move must tag the actor as automation, got %+v", sc)
 	}
 }
 

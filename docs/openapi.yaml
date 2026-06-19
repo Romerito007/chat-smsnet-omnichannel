@@ -1835,6 +1835,52 @@ components:
                 value:
                     type: number
             type: object
+        DealCommentRequest:
+            properties:
+                text:
+                    description: The comment text (plain).
+                    type: string
+            required:
+                - text
+            type: object
+        DealTimelineEvent:
+            properties:
+                actor_avatar_url:
+                    description: 'Read-only, derived: the actor''s avatar URL.'
+                    type: string
+                actor_id:
+                    description: 'Who caused the event: a user id, or "system"/"automation" for non-human actors.'
+                    type: string
+                actor_name:
+                    description: 'Read-only, derived: the actor''s display name (batch-resolved; empty for system/automation or when unresolved).'
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                data:
+                    additionalProperties: true
+                    description: 'Kind-specific fields, with names resolved (never raw ids): e.g. stage_changed → {from_stage_id, to_stage_id, from_stage_name, to_stage_name}; value_changed → {from, to}; assigned_changed → {from, to, from_name, to_name}; comment → {text}.'
+                    type: object
+                deal_id:
+                    type: string
+                id:
+                    type: string
+                kind:
+                    enum:
+                        - deal_created
+                        - stage_changed
+                        - value_changed
+                        - assigned_changed
+                        - priority_changed
+                        - comment
+                        - task_created
+                        - task_completed
+                        - product_added
+                        - product_removed
+                        - won
+                        - lost
+                    type: string
+            type: object
         DecideRequest:
             properties:
                 approve:
@@ -8867,6 +8913,99 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Move a deal to another stage (deal.manage) — the drag-and-drop. Entering a won/lost stage closes the deal; leaving it reopens.
+            tags:
+                - deals
+    /v1/deals/{id}/timeline:
+        get:
+            operationId: getDealsByIdTimeline
+            parameters:
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/DealTimelineEvent'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Timeline page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get a deal's timeline — the chronological feed of automatic events + manual comments (deal.view, deal visibility). Most recent first, keyset-paginated. Empty when the tenant's timeline module is disabled (crmsettings.timeline_enabled).
+            tags:
+                - deals
+    /v1/deals/{id}/timeline/comments:
+        post:
+            operationId: postDealsByIdTimelineComments
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DealCommentRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DealTimelineEvent'
+                    description: Created
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Add a manual comment to a deal's timeline (deal.manage). 409 when the timeline module is disabled for the tenant.
             tags:
                 - deals
     /v1/deals/from-conversation:

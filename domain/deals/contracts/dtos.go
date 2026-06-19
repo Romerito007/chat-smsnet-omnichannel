@@ -97,3 +97,30 @@ type ContactChecker interface {
 type DealAudience interface {
 	SectorAgents(ctx context.Context, sectorID string) ([]string, error)
 }
+
+// Timeline event kinds the deals service writes (the others — comment, task_*,
+// product_* — are written by the timeline/tasks/products blocks).
+const (
+	TimelineDealCreated     = "deal_created"
+	TimelineStageChanged    = "stage_changed"
+	TimelineValueChanged    = "value_changed"
+	TimelineAssignedChanged = "assigned_changed"
+	TimelineWon             = "won"
+	TimelineLost            = "lost"
+)
+
+// TimelineEvent is one automatic event the deals service records on a deal's
+// timeline. Data carries the kind-specific fields (ids only; names resolved at read).
+type TimelineEvent struct {
+	DealID  string
+	Kind    string
+	ActorID string
+	Data    map[string]any
+}
+
+// TimelineWriter appends an automatic event to a deal's timeline. Implemented by the
+// dealtimeline service (via a factory adapter). Best-effort and fire-and-forget — a
+// timeline failure must never break the deal action that produced it. Optional.
+type TimelineWriter interface {
+	Record(ctx context.Context, ev TimelineEvent)
+}
