@@ -127,6 +127,8 @@ func registerConversations(p *paths) {
 		params: idp, responses: M{"204": emptyResp("OK")}}))
 	p.add("POST", "/v1/conversations/{id}/typing/stop", op(opConfig{tag: "conversations", summary: "Signal typing stop",
 		params: idp, responses: M{"204": emptyResp("OK")}}))
+	p.add("GET", "/v1/conversations/unread-counts", op(opConfig{tag: "conversations", summary: "Per-tab unread badge counts (mine/sector/queue) in one request",
+		responses: M{"200": jsonResp("Unread counts", ref("UnreadCounts"))}}))
 	p.add("POST", "/v1/conversations/{id}/read", op(opConfig{tag: "conversations", summary: "Mark conversation read",
 		params: idp, responses: M{"204": emptyResp("OK")}}))
 	p.add("POST", "/v1/conversations/{id}/unread", op(opConfig{tag: "conversations", summary: "Mark conversation unread (re-light the dot; no-op when it already has unread)",

@@ -56,6 +56,17 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, resp)
 }
 
+// UnreadCounts handles GET /v1/conversations/unread-counts: the per-tab unread
+// badge counts (mine / sector / queue) for the actor, in a single request.
+func (c *Controller) UnreadCounts(w http.ResponseWriter, r *http.Request) {
+	counts, err := c.svc.UnreadCounts(r.Context())
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewUnreadCountsResponse(counts))
+}
+
 // Create handles POST /v1/conversations.
 func (c *Controller) Create(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateConversationRequest

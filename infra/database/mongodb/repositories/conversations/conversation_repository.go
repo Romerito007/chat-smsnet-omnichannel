@@ -277,6 +277,47 @@ func (r *ConversationRepository) List(ctx context.Context, filter contracts.List
 	return out, mongodb.MapError(c.Err())
 }
 
+// UnreadCounts counts, per inbox tab, the conversations with unread messages
+// (unread_count > 0), tenant-scoped and respecting the actor's visibility. Each
+// bucket mirrors the filter of its tab's list so the badge always matches the list:
+//
+//   - mine:   assigned to the actor.
+//   - sector: in the actor's sectors; an all-scope actor (admin) counts every sector.
+//   - queue:  unassigned ("fila"); a sector-scoped actor only sees their sectors' queue.
+//
+// Three small indexed counts in one handler keep the front to a single request.
+func (r *ConversationRepository) UnreadCounts(ctx context.Context, vis contracts.Visibility) (contracts.UnreadCounts, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return contracts.UnreadCounts{}, err
+	}
+	// Unassigned documents carry no assigned_to field (omitempty), so match both a
+	// missing field and an explicit empty/null value.
+	unassigned := bson.M{"$in": bson.A{nil, ""}}
+
+	mine := bson.M{"tenant_id": tenantID, "unread_count": bson.M{"$gt": 0}, "assigned_to": vis.UserID}
+	sector := bson.M{"tenant_id": tenantID, "unread_count": bson.M{"$gt": 0}}
+	queue := bson.M{"tenant_id": tenantID, "unread_count": bson.M{"$gt": 0}, "assigned_to": unassigned}
+	if !vis.All {
+		// Sector-scoped: only this actor's sectors count for both sector and queue.
+		sector["sector_id"] = bson.M{"$in": nonEmpty(vis.SectorIDs)}
+		queue["sector_id"] = bson.M{"$in": nonEmpty(vis.SectorIDs)}
+	}
+
+	var out contracts.UnreadCounts
+	for _, b := range []struct {
+		filter bson.M
+		dst    *int
+	}{{mine, &out.Mine}, {sector, &out.Sector}, {queue, &out.Queue}} {
+		n, err := r.coll.CountDocuments(ctx, b.filter)
+		if err != nil {
+			return contracts.UnreadCounts{}, mongodb.MapError(err)
+		}
+		*b.dst = int(n)
+	}
+	return out, nil
+}
+
 // nonEmpty guarantees a non-nil slice so $in never matches everything by accident.
 func nonEmpty(ids []string) []string {
 	if ids == nil {

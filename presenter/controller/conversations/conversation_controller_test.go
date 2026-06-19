@@ -68,6 +68,10 @@ func (r *fakeConvRepo) FindOpenByContact(context.Context, string) (*entity.Conve
 func (r *fakeConvRepo) FindLastByContact(context.Context, string) (*entity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeConvRepo) UnreadCounts(context.Context, convcontracts.Visibility) (convcontracts.UnreadCounts, error) {
+	return convcontracts.UnreadCounts{}, nil
+}
+
 func (r *fakeConvRepo) List(ctx context.Context, _ convcontracts.ListFilter, _ convcontracts.Visibility, _ shared.PageRequest) ([]*entity.Conversation, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	var out []*entity.Conversation

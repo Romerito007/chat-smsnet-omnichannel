@@ -111,6 +111,34 @@ func (r *fakeConvRepo) ListInactiveOpen(ctx context.Context, idleBefore time.Tim
 	}
 	return out, nil
 }
+func (r *fakeConvRepo) UnreadCounts(ctx context.Context, vis contracts.Visibility) (contracts.UnreadCounts, error) {
+	tenant, _ := shared.TenantFrom(ctx)
+	inSectors := func(sectorID string) bool {
+		for _, s := range vis.SectorIDs {
+			if s == sectorID && s != "" {
+				return true
+			}
+		}
+		return false
+	}
+	var out contracts.UnreadCounts
+	for _, c := range r.items {
+		if c.TenantID != tenant || c.UnreadCount <= 0 {
+			continue
+		}
+		if c.AssignedTo == vis.UserID {
+			out.Mine++
+		}
+		if vis.All || inSectors(c.SectorID) {
+			out.Sector++
+		}
+		if c.AssignedTo == "" && (vis.All || inSectors(c.SectorID)) {
+			out.Queue++
+		}
+	}
+	return out, nil
+}
+
 func (r *fakeConvRepo) List(ctx context.Context, f contracts.ListFilter, vis contracts.Visibility, _ shared.PageRequest) ([]*entity.Conversation, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	var out []*entity.Conversation
@@ -367,6 +395,36 @@ func TestMarkRead_ResetsUnreadAndPublishesUpdate(t *testing.T) {
 	}
 	if !sawRead {
 		t.Error("expected a message.read receipt publish")
+	}
+}
+
+func TestUnreadCounts_PerTabScoping(t *testing.T) {
+	svc, cr, _, _, _ := newService(map[string]string{"s1": "t1", "s2": "t1"})
+	// unread, mine (assigned to u1), in my sector s1
+	cr.items["a"] = &entity.Conversation{ID: "a", TenantID: "t1", SectorID: "s1", AssignedTo: "u1", UnreadCount: 2}
+	// unread, unassigned (queue), in my sector s1
+	cr.items["b"] = &entity.Conversation{ID: "b", TenantID: "t1", SectorID: "s1", UnreadCount: 1}
+	// unread, unassigned, in OTHER sector s2 (not mine)
+	cr.items["c"] = &entity.Conversation{ID: "c", TenantID: "t1", SectorID: "s2", UnreadCount: 1}
+	// read (unread_count 0) — never counted
+	cr.items["d"] = &entity.Conversation{ID: "d", TenantID: "t1", SectorID: "s1", AssignedTo: "u1", UnreadCount: 0}
+
+	// Sector-scoped actor u1 on s1: mine=a, sector=a+b (s1 only), queue=b (s1 unassigned).
+	got, err := svc.UnreadCounts(actorCtx("t1", "u1", authz.ScopeOwn, []string{"s1"}))
+	if err != nil {
+		t.Fatalf("unread counts (scoped): %v", err)
+	}
+	if got != (contracts.UnreadCounts{Mine: 1, Sector: 2, Queue: 1}) {
+		t.Errorf("scoped counts = %+v, want {Mine:1 Sector:2 Queue:1}", got)
+	}
+
+	// All-scope actor: sector counts every sector (a+b+c), queue every unassigned (b+c), mine none (admin not assignee).
+	gotAll, err := svc.UnreadCounts(adminCtx())
+	if err != nil {
+		t.Fatalf("unread counts (all): %v", err)
+	}
+	if gotAll != (contracts.UnreadCounts{Mine: 0, Sector: 3, Queue: 2}) {
+		t.Errorf("all-scope counts = %+v, want {Mine:0 Sector:3 Queue:2}", gotAll)
 	}
 }
 

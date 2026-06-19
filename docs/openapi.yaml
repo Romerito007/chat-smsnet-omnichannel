@@ -4128,6 +4128,23 @@ components:
                 sector_id:
                     type: string
             type: object
+        UnreadCounts:
+            description: Per-tab unread badge counts. Each count uses the same filter as that tab's list, so the badge always matches the list; buckets are independent scopes and may overlap.
+            properties:
+                mine:
+                    description: Conversations with unread messages assigned to the actor.
+                    type: integer
+                queue:
+                    description: Unassigned conversations with unread messages, within the actor's visible sectors (any for an all-scope actor).
+                    type: integer
+                sector:
+                    description: Conversations with unread messages in the actor's sectors (every sector for an all-scope actor).
+                    type: integer
+            required:
+                - mine
+                - sector
+                - queue
+            type: object
         UpdateAutomationRuleRequest:
             properties:
                 actions:
@@ -8058,6 +8075,29 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Mark conversation unread (re-light the dot; no-op when it already has unread)
+            tags:
+                - conversations
+    /v1/conversations/unread-counts:
+        get:
+            operationId: getConversationsUnreadCounts
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnreadCounts'
+                    description: Unread counts
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Per-tab unread badge counts (mine/sector/queue) in one request
             tags:
                 - conversations
     /v1/copilot/ask:

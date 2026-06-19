@@ -87,6 +87,10 @@ func (r *fakeConvRepo) FindOpenByContactChannelID(ctx context.Context, contactID
 func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
+func (r *fakeConvRepo) UnreadCounts(context.Context, convcontracts.Visibility) (convcontracts.UnreadCounts, error) {
+	return convcontracts.UnreadCounts{}, nil
+}
+
 func (r *fakeConvRepo) List(ctx context.Context, f convcontracts.ListFilter, _ convcontracts.Visibility, _ shared.PageRequest) ([]*conventity.Conversation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

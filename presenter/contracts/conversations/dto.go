@@ -178,6 +178,21 @@ type ConversationResponse struct {
 	WhatsAppWindow *entity.WhatsAppWindow `json:"whatsapp_window,omitempty"`
 }
 
+// UnreadCountsResponse is the body of GET /v1/conversations/unread-counts: the
+// number of conversations with unread messages per inbox tab, for the tab badges.
+// Each count uses the same filter as that tab's list, so badge and list match.
+// Buckets are independent scopes and may overlap.
+type UnreadCountsResponse struct {
+	Mine   int `json:"mine"`
+	Sector int `json:"sector"`
+	Queue  int `json:"queue"`
+}
+
+// NewUnreadCountsResponse maps the domain counts to the response DTO.
+func NewUnreadCountsResponse(c contracts.UnreadCounts) UnreadCountsResponse {
+	return UnreadCountsResponse{Mine: c.Mine, Sector: c.Sector, Queue: c.Queue}
+}
+
 // LastMessage is a light preview of a conversation's most recent message, used on
 // list items so the inbox can render a snippet without a per-row fetch.
 type LastMessage struct {

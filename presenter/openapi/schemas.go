@@ -135,6 +135,11 @@ func schemas() M {
 		"LastMessage": object(M{
 			"preview": str(), "sender_type": str(), "message_type": str(), "created_at": dateTime(),
 		}),
+		"UnreadCounts": withDesc(object(M{
+			"mine":   describedInt("Conversations with unread messages assigned to the actor."),
+			"sector": describedInt("Conversations with unread messages in the actor's sectors (every sector for an all-scope actor)."),
+			"queue":  describedInt("Unassigned conversations with unread messages, within the actor's visible sectors (any for an all-scope actor)."),
+		}, "mine", "sector", "queue"), "Per-tab unread badge counts. Each count uses the same filter as that tab's list, so the badge always matches the list; buckets are independent scopes and may overlap."),
 		"WhatsAppWindow": withDesc(object(M{
 			"open":       describedBool("True when the customer messaged in the last 24h (free-form text/media is deliverable). False otherwise — only a template can be sent."),
 			"expires_at": describedStr("When the 24h window closes = last inbound customer message + 24h (ISO 8601). Absent when the customer has never messaged."),

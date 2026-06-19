@@ -362,6 +362,20 @@ func (s *Service) List(ctx context.Context, filter contracts.ListFilter, page sh
 	return s.conversations.List(ctx, filter, vis, page.Normalize())
 }
 
+// UnreadCounts returns the per-tab unread badge counts (mine / sector / queue)
+// for the actor, in a single call. Buckets are scoped to the actor's visibility,
+// each mirroring its tab's list filter so the badge always matches the list.
+func (s *Service) UnreadCounts(ctx context.Context) (contracts.UnreadCounts, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return contracts.UnreadCounts{}, err
+	}
+	vis, err := s.visibility(ctx)
+	if err != nil {
+		return contracts.UnreadCounts{}, err
+	}
+	return s.conversations.UnreadCounts(ctx, vis)
+}
+
 // refreshLastMessageSnapshot recomputes the conversation's denormalized
 // last-message snapshot after an edit/delete that may have touched the latest
 // message. No-op when the affected message is not the one the snapshot mirrors. On

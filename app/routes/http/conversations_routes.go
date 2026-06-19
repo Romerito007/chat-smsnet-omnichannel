@@ -21,6 +21,8 @@ func registerConversationRoutes(r chi.Router, c *container.Container) {
 		p.Route("/conversations", func(cv chi.Router) {
 			// Read.
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/", ctl.List)
+			// Static segment registered before /{id} so it is not captured as an id.
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/unread-counts", ctl.UnreadCounts)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}", ctl.Get)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}/messages", ctl.ListMessages)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Get("/{id}/events", ctl.ListEvents)

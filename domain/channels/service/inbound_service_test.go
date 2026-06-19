@@ -147,6 +147,10 @@ func (r *fakeConvRepo) FindLastByContact(_ context.Context, contactID string) (*
 func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
+func (r *fakeConvRepo) UnreadCounts(context.Context, convcontracts.Visibility) (convcontracts.UnreadCounts, error) {
+	return convcontracts.UnreadCounts{}, nil
+}
+
 func (r *fakeConvRepo) List(context.Context, convcontracts.ListFilter, convcontracts.Visibility, shared.PageRequest) ([]*conventity.Conversation, error) {
 	return nil, nil
 }

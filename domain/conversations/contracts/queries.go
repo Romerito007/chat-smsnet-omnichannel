@@ -20,3 +20,18 @@ type Visibility struct {
 	SectorIDs []string
 	UserID    string
 }
+
+// UnreadCounts is the number of conversations with unread messages
+// (unread_count > 0) per inbox tab, for the badge on each tab. Each bucket uses
+// the same filter its tab's list uses, so the badge always matches the list:
+//   - Mine: assigned to the actor.
+//   - Sector: in the actor's sectors (or every sector when the actor has all-scope).
+//   - Queue: unassigned ("fila"), within the actor's visible sectors (or any when all-scope).
+//
+// Buckets are independent scopes and may overlap (a conversation assigned to me in
+// my sector counts in both Mine and Sector), mirroring the per-tab lists.
+type UnreadCounts struct {
+	Mine   int
+	Sector int
+	Queue  int
+}
