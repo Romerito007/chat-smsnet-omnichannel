@@ -997,6 +997,30 @@ func (s *Service) MarkRead(ctx context.Context, conversationID string) error {
 		contracts.ReadPayload{ConversationID: conv.ID, UserID: ac.UserID, ReadAt: now})
 }
 
+// MarkUnread re-surfaces a previously-read conversation by lighting a single
+// unread "dot" (unread_count=1), Gmail-style. It acts ONLY when the conversation
+// has no unread (unread_count==0): one that already carries real unread messages
+// is left untouched — the inverse of read must never lower a true count to 1. On a
+// change it stamps updated_at and publishes conversation.updated so the inbox
+// re-shows the badge. last_read_at is deliberately left as-is: nothing recomputes
+// unread_count from it, so the "1" persists until the next inbound (++ ) or read.
+func (s *Service) MarkUnread(ctx context.Context, conversationID string) error {
+	conv, _, err := s.loadVisible(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	if conv.UnreadCount != 0 {
+		return nil // already unread (real count) — no-op, never reduce it to 1
+	}
+	conv.UnreadCount = 1
+	conv.UpdatedAt = s.clock.Now()
+	if err := s.conversations.Update(ctx, conv); err != nil {
+		return err
+	}
+	s.publishConversation(ctx, conv)
+	return nil
+}
+
 // EditMessage edits a message's text (soft edit). It sets edited_at and keeps the
 // message in place — only agent-authored messages can be edited, and only by the
 // author or someone holding message.delete (the elevated "manage messages"

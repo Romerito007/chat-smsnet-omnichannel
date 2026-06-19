@@ -8034,6 +8034,32 @@ paths:
             summary: Signal typing stop
             tags:
                 - conversations
+    /v1/conversations/{id}/unread:
+        post:
+            operationId: postConversationsByIdUnread
+            parameters:
+                - description: conversation id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: OK
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Mark conversation unread (re-light the dot; no-op when it already has unread)
+            tags:
+                - conversations
     /v1/copilot/ask:
         post:
             operationId: postCopilotAsk

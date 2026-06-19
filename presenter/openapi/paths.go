@@ -129,6 +129,8 @@ func registerConversations(p *paths) {
 		params: idp, responses: M{"204": emptyResp("OK")}}))
 	p.add("POST", "/v1/conversations/{id}/read", op(opConfig{tag: "conversations", summary: "Mark conversation read",
 		params: idp, responses: M{"204": emptyResp("OK")}}))
+	p.add("POST", "/v1/conversations/{id}/unread", op(opConfig{tag: "conversations", summary: "Mark conversation unread (re-light the dot; no-op when it already has unread)",
+		params: idp, responses: M{"204": emptyResp("OK")}}))
 
 	// routing
 	p.add("POST", "/v1/conversations/{id}/assign", op(opConfig{tag: "routing", summary: "Assign to an agent",

@@ -212,6 +212,17 @@ func (c *Controller) Read(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Unread handles POST /v1/conversations/{id}/unread: re-lights the unread dot
+// (unread_count=1) when the conversation is currently read; a no-op when it
+// already has unread messages.
+func (c *Controller) Unread(w http.ResponseWriter, r *http.Request) {
+	if err := c.svc.MarkUnread(r.Context(), chi.URLParam(r, "id")); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ListMessages handles GET /v1/conversations/{id}/messages.
 func (c *Controller) ListMessages(w http.ResponseWriter, r *http.Request) {
 	page := middleware.PageFromRequest(r)

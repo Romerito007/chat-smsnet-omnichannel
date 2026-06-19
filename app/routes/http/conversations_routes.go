@@ -45,6 +45,7 @@ func registerConversationRoutes(r chi.Router, c *container.Container) {
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/{id}/typing/start", ctl.TypingStart)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/{id}/typing/stop", ctl.TypingStop)
 			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/{id}/read", ctl.Read)
+			cv.With(middleware.RequirePermission(authz.ConversationRead)).Post("/{id}/unread", ctl.Unread)
 		})
 	})
 }

@@ -370,6 +370,44 @@ func TestMarkRead_ResetsUnreadAndPublishesUpdate(t *testing.T) {
 	}
 }
 
+func TestMarkUnread_LightsDotWhenReadAndPublishes(t *testing.T) {
+	svc, cr, _, _, pub := newService(map[string]string{"s1": "t1"})
+	cr.items["conv1"] = &entity.Conversation{ID: "conv1", TenantID: "t1", SectorID: "s1", UnreadCount: 0}
+
+	if err := svc.MarkUnread(adminCtx(), "conv1"); err != nil {
+		t.Fatalf("mark unread: %v", err)
+	}
+	if got := cr.items["conv1"].UnreadCount; got != 1 {
+		t.Errorf("unread_count = %d, want 1", got)
+	}
+	var sawUpdated bool
+	for _, e := range pub.events {
+		if e.event == contracts.RealtimeConversationUpdated {
+			sawUpdated = true
+		}
+	}
+	if !sawUpdated {
+		t.Error("expected a conversation.updated publish reflecting the re-lit badge")
+	}
+}
+
+func TestMarkUnread_NoopWhenAlreadyUnread(t *testing.T) {
+	svc, cr, _, _, pub := newService(map[string]string{"s1": "t1"})
+	cr.items["conv1"] = &entity.Conversation{ID: "conv1", TenantID: "t1", SectorID: "s1", UnreadCount: 3}
+
+	if err := svc.MarkUnread(adminCtx(), "conv1"); err != nil {
+		t.Fatalf("mark unread: %v", err)
+	}
+	if got := cr.items["conv1"].UnreadCount; got != 3 {
+		t.Errorf("unread_count = %d, want 3 (a real count must never be lowered to 1)", got)
+	}
+	for _, e := range pub.events {
+		if e.event == contracts.RealtimeConversationUpdated {
+			t.Error("no-op must not publish conversation.updated")
+		}
+	}
+}
+
 func TestListEvents_ReturnsTimeline(t *testing.T) {
 	svc, cr, _, er, _ := newService(map[string]string{"s1": "t1"})
 	cr.items["conv1"] = &entity.Conversation{ID: "conv1", TenantID: "t1", SectorID: "s1"}
