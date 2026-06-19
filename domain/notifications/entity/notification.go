@@ -22,13 +22,16 @@ const (
 	// the deal's sector team — that an automated mover (automation rule or copilot)
 	// advanced a CRM card.
 	TypeDealStageMovedByAutomation Type = "deal.stage_moved_by_automation"
+	// TypeDealTaskAssigned alerts an agent that a CRM follow-up task was assigned to
+	// them.
+	TypeDealTaskAssigned Type = "deal.task_assigned"
 )
 
 // AllTypes is the closed set of notification types.
 var AllTypes = []Type{
 	TypeAssignedToYou, TypeTransferredToYou, TypeMention,
 	TypeSLAAtRisk, TypeSLABreached, TypeChannelError, TypeChannelTemplatesUpdated,
-	TypeDealStageMovedByAutomation,
+	TypeDealStageMovedByAutomation, TypeDealTaskAssigned,
 }
 
 // IsValidType reports whether t is a known type.

@@ -298,8 +298,8 @@ func registerDeals(p *paths) {
 
 	// deal timeline (chronological feed of business events + manual comments)
 	p.add("GET", "/v1/deals/{id}/timeline", op(opConfig{tag: "deals",
-		summary: "Get a deal's timeline — the chronological feed of automatic events + manual comments (deal.view, deal visibility). Most recent first, keyset-paginated. Empty when the tenant's timeline module is disabled (crmsettings.timeline_enabled).",
-		params:  append(paginationParams(), idp...),
+		summary:   "Get a deal's timeline — the chronological feed of automatic events + manual comments (deal.view, deal visibility). Most recent first, keyset-paginated. Empty when the tenant's timeline module is disabled (crmsettings.timeline_enabled).",
+		params:    append(paginationParams(), idp...),
 		responses: M{"200": jsonResp("Timeline page", pageOf(ref("DealTimelineEvent"))), "404": respRef("Error404")}}))
 	p.add("POST", "/v1/deals/{id}/timeline/comments", op(opConfig{tag: "deals",
 		summary: "Add a manual comment to a deal's timeline (deal.manage). 409 when the timeline module is disabled for the tenant.",
@@ -315,6 +315,38 @@ func registerCRMSettings(p *paths) {
 	p.add("PATCH", "/v1/crm/settings", op(opConfig{tag: "crm",
 		summary: "Toggle the tenant's optional CRM modules — tasks, products, timeline (crm.manage). PATCH semantics: omitted fields stay unchanged.",
 		reqBody: body(ref("UpdateCRMSettingsRequest")), responses: M{"200": jsonResp("Updated", ref("CRMSettings"))}}))
+}
+
+// registerDealTasks mounts the deal-task (seller follow-up) endpoints. All respect
+// the tenant's tasks toggle (empty/409 when disabled).
+func registerDealTasks(p *paths) {
+	idp := []M{pathParam("id", "deal id")}
+	taskp := []M{pathParam("id", "deal id"), pathParam("taskId", "task id")}
+	p.add("GET", "/v1/deals/{id}/tasks", op(opConfig{tag: "deals",
+		summary: "List a deal's tasks (deal.view, deal visibility). Empty when the tasks module is disabled (crmsettings.tasks_enabled).",
+		params:  append(paginationParams(), idp...),
+		responses: M{"200": jsonResp("Task page", pageOf(ref("DealTask"))), "404": respRef("Error404")}}))
+	p.add("POST", "/v1/deals/{id}/tasks", op(opConfig{tag: "deals",
+		summary: "Create a task on a deal (deal.manage). Records task_created on the timeline and notifies the assignee. 409 when the tasks module is disabled.",
+		params:  idp, reqBody: body(ref("CreateDealTaskRequest")),
+		responses: M{"201": jsonResp("Created", ref("DealTask")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
+	p.add("PATCH", "/v1/deals/{id}/tasks/{taskId}", op(opConfig{tag: "deals",
+		summary: "Edit a task: title/description/due_date/assignee (deal.manage). Status changes go through complete.",
+		params:  taskp, reqBody: body(ref("UpdateDealTaskRequest")),
+		responses: M{"200": jsonResp("Updated", ref("DealTask")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
+	p.add("POST", "/v1/deals/{id}/tasks/{taskId}/complete", op(opConfig{tag: "deals",
+		summary: "Mark a task done (deal.manage, idempotent). Records task_completed on the timeline.",
+		params:  taskp, responses: M{"200": jsonResp("Completed", ref("DealTask")), "404": respRef("Error404"), "409": respRef("Error409")}}))
+	p.add("DELETE", "/v1/deals/{id}/tasks/{taskId}", op(opConfig{tag: "deals",
+		summary: "Delete a task (deal.manage).",
+		params:  taskp, responses: M{"204": emptyResp("Deleted"), "404": respRef("Error404"), "409": respRef("Error409")}}))
+	p.add("GET", "/v1/crm/tasks", op(opConfig{tag: "crm",
+		summary: "Consolidated seller task board across deals (\"my tasks\", deal.view). A non-all-scope agent sees only its OWN tasks; an all-scope user filters freely. Empty when the tasks module is disabled.",
+		params: append(paginationParams(),
+			queryParam("assigned_to", "Filter by responsible agent (ignored for non-all-scope agents, who only see their own)."),
+			queryParam("status", "Filter by status (pending|done)."),
+			queryParam("due_before", "Only tasks due at/before this RFC3339 instant (coming due).")),
+		responses: M{"200": jsonResp("Task page", pageOf(ref("DealTask")))}}))
 }
 
 func registerIntegrations(p *paths) {

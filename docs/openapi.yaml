@@ -1411,6 +1411,22 @@ components:
             required:
                 - title
             type: object
+        CreateDealTaskRequest:
+            properties:
+                assigned_to:
+                    description: Optional responsible agent id; validated to be an agent of the tenant.
+                    type: string
+                description:
+                    type: string
+                due_date:
+                    description: Optional deadline (RFC3339).
+                    format: date-time
+                    type: string
+                title:
+                    type: string
+            required:
+                - title
+            type: object
         CreateFromConversationRequest:
             properties:
                 conversation_id:
@@ -1842,6 +1858,51 @@ components:
                     type: string
             required:
                 - text
+            type: object
+        DealTask:
+            properties:
+                assigned_to:
+                    description: The responsible agent's user id (optional).
+                    type: string
+                assigned_to_avatar_url:
+                    description: 'Read-only, derived: the assignee''s avatar URL.'
+                    type: string
+                assigned_to_name:
+                    description: 'Read-only, derived: the assignee''s display name (batch-resolved).'
+                    type: string
+                completed_at:
+                    description: When the task was completed (set on complete).
+                    format: date-time
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                created_by:
+                    description: The user who created the task.
+                    type: string
+                created_by_name:
+                    description: 'Read-only, derived: the creator''s display name.'
+                    type: string
+                deal_id:
+                    type: string
+                description:
+                    type: string
+                due_date:
+                    description: Optional deadline (RFC3339).
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                status:
+                    enum:
+                        - pending
+                        - done
+                    type: string
+                title:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
             type: object
         DealTimelineEvent:
             properties:
@@ -4163,6 +4224,23 @@ components:
                     type: string
                 value:
                     type: number
+            type: object
+        UpdateDealTaskRequest:
+            properties:
+                assigned_to:
+                    description: Reassign (validated as an agent). Status changes go through the complete endpoint.
+                    type: string
+                clear_due_date:
+                    description: Set true to remove the due date.
+                    type: boolean
+                description:
+                    type: string
+                due_date:
+                    description: Set a new deadline (RFC3339).
+                    format: date-time
+                    type: string
+                title:
+                    type: string
             type: object
         UpdateGroupAttendRequest:
             properties:
@@ -8164,6 +8242,69 @@ paths:
             summary: 'Toggle the tenant''s optional CRM modules — tasks, products, timeline (crm.manage). PATCH semantics: omitted fields stay unchanged.'
             tags:
                 - crm
+    /v1/crm/tasks:
+        get:
+            operationId: getCrmTasks
+            parameters:
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by responsible agent (ignored for non-all-scope agents, who only see their own).
+                  in: query
+                  name: assigned_to
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by status (pending|done).
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    type: string
+                - description: Only tasks due at/before this RFC3339 instant (coming due).
+                  in: query
+                  name: due_before
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/DealTask'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Task page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Consolidated seller task board across deals ("my tasks", deal.view). A non-all-scope agent sees only its OWN tasks; an all-scope user filters freely. Empty when the tasks module is disabled.
+            tags:
+                - crm
     /v1/csat/responses:
         get:
             operationId: getCsatResponses
@@ -8913,6 +9054,219 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Move a deal to another stage (deal.manage) — the drag-and-drop. Entering a won/lost stage closes the deal; leaving it reopens.
+            tags:
+                - deals
+    /v1/deals/{id}/tasks:
+        get:
+            operationId: getDealsByIdTasks
+            parameters:
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/DealTask'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Task page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List a deal's tasks (deal.view, deal visibility). Empty when the tasks module is disabled (crmsettings.tasks_enabled).
+            tags:
+                - deals
+        post:
+            operationId: postDealsByIdTasks
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateDealTaskRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DealTask'
+                    description: Created
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Create a task on a deal (deal.manage). Records task_created on the timeline and notifies the assignee. 409 when the tasks module is disabled.
+            tags:
+                - deals
+    /v1/deals/{id}/tasks/{taskId}:
+        delete:
+            operationId: deleteDealsByIdTasksByTaskId
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: task id
+                  in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: Deleted
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Delete a task (deal.manage).
+            tags:
+                - deals
+        patch:
+            operationId: patchDealsByIdTasksByTaskId
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: task id
+                  in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateDealTaskRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DealTask'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Edit a task: title/description/due_date/assignee (deal.manage). Status changes go through complete.'
+            tags:
+                - deals
+    /v1/deals/{id}/tasks/{taskId}/complete:
+        post:
+            operationId: postDealsByIdTasksByTaskIdComplete
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: task id
+                  in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DealTask'
+                    description: Completed
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Mark a task done (deal.manage, idempotent). Records task_completed on the timeline.
             tags:
                 - deals
     /v1/deals/{id}/timeline:

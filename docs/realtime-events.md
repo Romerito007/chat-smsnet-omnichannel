@@ -234,7 +234,8 @@ Reconciliação canônica via `GET /v1/deals` ao (re)conectar.
 
 `type` inclui, entre outros: `conversation.assigned_to_you`,
 `conversation.transferred_to_you`, `mention.internal_note`,
-`channel.connection_error`, `deal.stage_moved_by_automation`.
+`channel.connection_error`, `deal.stage_moved_by_automation`,
+`deal.task_assigned`.
 
 **`deal.stage_moved_by_automation`** — emitido quando um movimentador automático
 (regra de automação ou copiloto) avança um card do CRM. Audiência: o **dono**

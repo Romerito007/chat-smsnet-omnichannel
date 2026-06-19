@@ -745,6 +745,33 @@ func schemas() M {
 		}),
 		"DealCommentRequest": object(M{"text": describedStr("The comment text (plain).")}, "text"),
 
+		// ── deal tasks (seller follow-ups) ───────────────────────────────────────
+		"DealTask": object(M{
+			"id": str(), "deal_id": str(), "title": str(),
+			"description":            str(),
+			"due_date":               withDesc(dateTime(), "Optional deadline (RFC3339)."),
+			"assigned_to":            describedStr("The responsible agent's user id (optional)."),
+			"assigned_to_name":       describedStr("Read-only, derived: the assignee's display name (batch-resolved)."),
+			"assigned_to_avatar_url": describedStr("Read-only, derived: the assignee's avatar URL."),
+			"status":                 enum("pending", "done"),
+			"completed_at":           withDesc(dateTime(), "When the task was completed (set on complete)."),
+			"created_by":             describedStr("The user who created the task."),
+			"created_by_name":        describedStr("Read-only, derived: the creator's display name."),
+			"created_at":             dateTime(), "updated_at": dateTime(),
+		}),
+		"CreateDealTaskRequest": object(M{
+			"title":       str(),
+			"description": str(),
+			"due_date":    withDesc(dateTime(), "Optional deadline (RFC3339)."),
+			"assigned_to": describedStr("Optional responsible agent id; validated to be an agent of the tenant."),
+		}, "title"),
+		"UpdateDealTaskRequest": object(M{
+			"title": str(), "description": str(),
+			"due_date":       withDesc(dateTime(), "Set a new deadline (RFC3339)."),
+			"clear_due_date": withDesc(boolean(), "Set true to remove the due date."),
+			"assigned_to":    describedStr("Reassign (validated as an agent). Status changes go through the complete endpoint."),
+		}),
+
 		// ── webhooks ───────────────────────────────────────────────────────────
 		"Webhook": object(M{
 			"id": str(), "tenant_id": str(), "name": str(), "url": str(),
