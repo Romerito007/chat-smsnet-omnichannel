@@ -3201,6 +3201,16 @@ components:
             type: object
         Presence:
             properties:
+                auto_offline:
+                    description: The agent's auto-offline-on-last-disconnect toggle.
+                    type: boolean
+                availability:
+                    description: The agent's raw DURABLE manual availability.
+                    enum:
+                        - online
+                        - away
+                        - offline
+                    type: string
                 avatar_url:
                     description: 'Read-only, derived: the agent''s short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar.'
                     type: string
@@ -3215,6 +3225,7 @@ components:
                     description: 'Read-only, derived: the agent''s display name, resolved in batch so the dashboard renders the agent instead of a raw user id. Empty when unresolved.'
                     type: string
                 status:
+                    description: 'The EFFECTIVE status (precedence applied): manual offline/away wins; otherwise online when a socket is live, else offline-or-online per auto_offline.'
                     type: string
                 tenant_id:
                     type: string
@@ -3888,11 +3899,26 @@ components:
                 text:
                     type: string
             type: object
+        SetAutoOfflineRequest:
+            properties:
+                auto_offline:
+                    type: boolean
+                user_id:
+                    description: 'Optional: another agent''s id (requires user.manage); empty = self.'
+                    type: string
+            required:
+                - auto_offline
+            type: object
         SetStatusRequest:
             properties:
                 status:
+                    enum:
+                        - online
+                        - away
+                        - offline
                     type: string
                 user_id:
+                    description: 'Optional: another agent''s id (requires user.manage); empty = self.'
                     type: string
             required:
                 - status
@@ -4745,6 +4771,9 @@ components:
             type: object
         User:
             properties:
+                auto_offline:
+                    description: Whether the agent goes effective-offline when their last socket drops while online (defaults to true). Read-only here — set via PATCH /v1/agents/presence/auto-offline.
+                    type: boolean
                 avatar_attachment_id:
                     type: string
                 avatar_url:
@@ -4808,6 +4837,13 @@ components:
                                 - system
                             type: string
                     type: object
+                presence_availability:
+                    description: Durable manual availability (defaults to online). Read-only here — set via POST /v1/agents/presence/status.
+                    enum:
+                        - online
+                        - away
+                        - offline
+                    type: string
                 role_ids:
                     items:
                         type: string
@@ -5266,6 +5302,35 @@ paths:
             summary: List agent presence
             tags:
                 - presence
+    /v1/agents/presence/auto-offline:
+        patch:
+            operationId: patchAgentsPresenceAutoOffline
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SetAutoOfflineRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Presence'
+                    description: Presence
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Toggle the auto-offline behaviour: when on, the agent goes effective-offline once their last socket drops while availability is online; when off, they stay online. Durable per agent (self or user.manage).'
+            tags:
+                - presence
     /v1/agents/presence/status:
         post:
             operationId: postAgentsPresenceStatus
@@ -5292,7 +5357,7 @@ paths:
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Set own (or an agent's) status
+            summary: Set own (or an agent's) DURABLE manual availability (online|away|offline). It sticks to the account across logout/reconnect/tab/machine; only the agent (or a user.manage holder) changes it. Returns the recomputed effective status.
             tags:
                 - presence
     /v1/attachments/{id}:

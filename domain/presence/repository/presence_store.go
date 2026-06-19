@@ -12,12 +12,19 @@ import (
 // PresenceStore persists agent presence in Redis, scoped by the tenant on the
 // context.
 type PresenceStore interface {
-	// Save upserts the presence record and arms its liveness TTL.
+	// Save upserts the cached EFFECTIVE-status record (no TTL — driven by events and
+	// the connection liveness, not by this key expiring).
 	Save(ctx context.Context, p *entity.AgentPresence) error
-	// Touch renews the liveness TTL of an existing record without changing its
-	// stored status. A missing record is a no-op (it is never resurrected), so a
-	// connecting socket is not promoted to online and a vanished agent stays gone.
-	Touch(ctx context.Context, userID string) error
+	// Connect records a live socket (clientID) for the user and reports whether it is
+	// the user's FIRST live socket (no-socket → has-socket transition).
+	Connect(ctx context.Context, userID, clientID string) (becameLive bool, err error)
+	// Heartbeat renews a socket's liveness without changing status.
+	Heartbeat(ctx context.Context, userID, clientID string) error
+	// Disconnect drops a socket and reports whether the user now has NO live socket
+	// (the LAST one closed). Idempotent.
+	Disconnect(ctx context.Context, userID, clientID string) (lastGone bool, err error)
+	// HasLiveSocket reports whether the user currently has any non-stale live socket.
+	HasLiveSocket(ctx context.Context, userID string) (bool, error)
 	// Remove deletes the presence record and drops the agent from the tenant
 	// roster (on graceful disconnect or TTL expiry). Idempotent.
 	Remove(ctx context.Context, userID string) error

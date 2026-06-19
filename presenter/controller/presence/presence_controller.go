@@ -85,3 +85,19 @@ func (c *Controller) SetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	middleware.WriteJSON(w, http.StatusOK, dto.NewPresenceResponse(p))
 }
+
+// SetAutoOffline handles PATCH /v1/agents/presence/auto-offline: toggle the agent's
+// auto-offline-on-last-disconnect behaviour (durable).
+func (c *Controller) SetAutoOffline(w http.ResponseWriter, r *http.Request) {
+	var req dto.SetAutoOfflineRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	p, err := c.presence.SetAutoOffline(r.Context(), req.UserID, req.AutoOffline)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	middleware.WriteJSON(w, http.StatusOK, dto.NewPresenceResponse(p))
+}

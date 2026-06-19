@@ -68,6 +68,12 @@ type UserResponse struct {
 	SectorIDs          []string `json:"sector_ids"`
 	MaxConcurrentChats int      `json:"max_concurrent_chats"`
 	AvatarAttachmentID string   `json:"avatar_attachment_id,omitempty"`
+	// PresenceAvailability is the agent's durable manual availability
+	// (online|away|offline; defaults to online); AutoOffline toggles going offline
+	// when the last socket drops while online (defaults to true). Read-only here —
+	// changed via the presence endpoints.
+	PresenceAvailability string `json:"presence_availability"`
+	AutoOffline          bool   `json:"auto_offline"`
 	// AvatarURL is a short-lived signed URL the browser loads directly (no JWT).
 	// Read-only/derived; present only when the avatar exists and is ready.
 	AvatarURL string `json:"avatar_url,omitempty"`
@@ -82,18 +88,20 @@ type UserResponse struct {
 // NewUserResponse maps a user entity to its DTO.
 func NewUserResponse(u *entity.User) UserResponse {
 	return UserResponse{
-		ID:                 u.ID,
-		TenantID:           u.TenantID,
-		Name:               u.Name,
-		Email:              u.Email,
-		Status:             string(u.Status),
-		RoleIDs:            u.RoleIDs,
-		SectorIDs:          u.SectorIDs,
-		MaxConcurrentChats: u.MaxConcurrentChats,
-		AvatarAttachmentID: u.AvatarAttachmentID,
-		Preferences:        u.Preferences,
-		CreatedAt:          u.CreatedAt,
-		UpdatedAt:          u.UpdatedAt,
+		ID:                   u.ID,
+		TenantID:             u.TenantID,
+		Name:                 u.Name,
+		Email:                u.Email,
+		Status:               string(u.Status),
+		RoleIDs:              u.RoleIDs,
+		SectorIDs:            u.SectorIDs,
+		MaxConcurrentChats:   u.MaxConcurrentChats,
+		AvatarAttachmentID:   u.AvatarAttachmentID,
+		PresenceAvailability: u.AvailabilityOr(),
+		AutoOffline:          u.AutoOfflineOr(),
+		Preferences:          u.Preferences,
+		CreatedAt:            u.CreatedAt,
+		UpdatedAt:            u.UpdatedAt,
 	}
 }
 

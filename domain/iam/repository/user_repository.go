@@ -26,4 +26,8 @@ type UserRepository interface {
 	// ListBySector returns the active users who belong to the given sector
 	// (within the tenant). Used by routing to find eligible agents.
 	ListBySector(ctx context.Context, sectorID string) ([]*entity.User, error)
+	// SetPresenceSettings persists the agent's durable presence availability and/or
+	// auto-offline toggle with a focused $set (nil fields unchanged), so it never
+	// clobbers a concurrent profile edit.
+	SetPresenceSettings(ctx context.Context, userID string, availability *string, autoOffline *bool) error
 }

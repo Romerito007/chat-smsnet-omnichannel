@@ -25,14 +25,16 @@ type Role struct {
 // User is an operator/agent account scoped to a tenant. PasswordHash is never
 // projected to clients (mapping to DTOs drops it).
 type User struct {
-	Base               `bson:",inline"`
-	Name               string         `bson:"name"`
-	Email              string         `bson:"email"`
-	PasswordHash       string         `bson:"password_hash"`
-	Status             string         `bson:"status"`
-	RoleIDs            []string       `bson:"role_ids"`
-	SectorIDs          []string       `bson:"sector_ids"`
-	MaxConcurrentChats int            `bson:"max_concurrent_chats"`
-	AvatarAttachmentID string         `bson:"avatar_attachment_id,omitempty"`
-	Preferences        map[string]any `bson:"preferences,omitempty"`
+	Base                 `bson:",inline"`
+	Name                 string         `bson:"name"`
+	Email                string         `bson:"email"`
+	PasswordHash         string         `bson:"password_hash"`
+	Status               string         `bson:"status"`
+	RoleIDs              []string       `bson:"role_ids"`
+	SectorIDs            []string       `bson:"sector_ids"`
+	MaxConcurrentChats   int            `bson:"max_concurrent_chats"`
+	PresenceAvailability string         `bson:"presence_availability,omitempty"`
+	AutoOffline          *bool          `bson:"auto_offline,omitempty"`
+	AvatarAttachmentID   string         `bson:"avatar_attachment_id,omitempty"`
+	Preferences          map[string]any `bson:"preferences,omitempty"`
 }

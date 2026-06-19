@@ -8,13 +8,14 @@ func TestParsePresenceKey(t *testing.T) {
 		wantTenant, want string
 		ok               bool
 	}{
-		{"presence:t1:u1", "t1", "u1", true},
-		{"presence:agents:t1", "", "", false},   // roster set, not a record
-		{"presence:t1", "", "", false},          // missing user
-		{"presence:t1:u1:extra", "", "", false}, // unexpected shape
-		{"presence::u1", "", "", false},         // blank tenant
-		{"presence:t1:", "", "", false},         // blank user
-		{"cache:t1:u1", "", "", false},          // wrong prefix
+		{"presence:conns:t1:u1", "t1", "u1", true},
+		{"presence:t1:u1", "", "", false},             // the status hash carries no TTL
+		{"presence:agents:t1", "", "", false},         // roster set, not a record
+		{"presence:conns:t1", "", "", false},          // missing user
+		{"presence:conns:t1:u1:extra", "", "", false}, // unexpected shape
+		{"presence:conns::u1", "", "", false},         // blank tenant
+		{"presence:conns:t1:", "", "", false},         // blank user
+		{"cache:t1:u1", "", "", false},                // wrong prefix
 		{"", "", "", false},
 	}
 	for _, c := range cases {

@@ -8,12 +8,20 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/shared"
 )
 
-// SetStatusRequest is the body of POST /v1/agents/presence/status. UserID is
-// optional: empty means the caller's own presence; a different value requires
-// the user.manage permission.
+// SetStatusRequest is the body of POST /v1/agents/presence/status. It sets the
+// agent's DURABLE manual availability (online|away|offline). UserID is optional:
+// empty means the caller's own presence; a different value requires user.manage.
 type SetStatusRequest struct {
 	UserID string `json:"user_id"`
 	Status string `json:"status"`
+}
+
+// SetAutoOfflineRequest is the body of PATCH /v1/agents/presence/auto-offline. It
+// toggles whether the agent goes effective-offline when their last socket drops
+// while availability is online. UserID is optional (self unless user.manage).
+type SetAutoOfflineRequest struct {
+	UserID      string `json:"user_id"`
+	AutoOffline bool   `json:"auto_offline"`
 }
 
 // PresenceResponse is the public representation of an agent's presence. Name and
@@ -21,11 +29,15 @@ type SetStatusRequest struct {
 // agent without a per-row lookup and never shows a raw user id; both are empty
 // when the directory could not resolve the user.
 type PresenceResponse struct {
-	TenantID           string    `json:"tenant_id"`
-	UserID             string    `json:"user_id"`
-	Name               string    `json:"name,omitempty"`
-	AvatarURL          string    `json:"avatar_url,omitempty"`
+	TenantID  string `json:"tenant_id"`
+	UserID    string `json:"user_id"`
+	Name      string `json:"name,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	// Status is the EFFECTIVE status (precedence applied); availability is the raw
+	// manual choice and auto_offline the per-agent toggle, so the front renders both.
 	Status             string    `json:"status"`
+	Availability       string    `json:"availability"`
+	AutoOffline        bool      `json:"auto_offline"`
 	CurrentLoad        int       `json:"current_load"`
 	MaxConcurrentChats int       `json:"max_concurrent_chats"`
 	LastSeenAt         time.Time `json:"last_seen_at"`
@@ -37,6 +49,8 @@ func NewPresenceResponse(p *entity.AgentPresence) PresenceResponse {
 		TenantID:           p.TenantID,
 		UserID:             p.UserID,
 		Status:             string(p.Status),
+		Availability:       p.Availability,
+		AutoOffline:        p.AutoOffline,
 		CurrentLoad:        p.CurrentLoad,
 		MaxConcurrentChats: p.MaxConcurrentChats,
 		LastSeenAt:         p.LastSeenAt,

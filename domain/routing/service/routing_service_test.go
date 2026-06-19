@@ -133,7 +133,10 @@ type fakePresence struct {
 }
 
 func (p *fakePresence) Save(context.Context, *presenceentity.AgentPresence) error { return nil }
-func (p *fakePresence) Touch(context.Context, string) error                       { return nil }
+func (p *fakePresence) Connect(context.Context, string, string) (bool, error)     { return false, nil }
+func (p *fakePresence) Heartbeat(context.Context, string, string) error           { return nil }
+func (p *fakePresence) Disconnect(context.Context, string, string) (bool, error)  { return false, nil }
+func (p *fakePresence) HasLiveSocket(context.Context, string) (bool, error)       { return false, nil }
 func (p *fakePresence) Remove(context.Context, string) error                      { return nil }
 func (p *fakePresence) Get(_ context.Context, userID string) (*presenceentity.AgentPresence, error) {
 	if pr, ok := p.byUser[userID]; ok {
@@ -177,6 +180,7 @@ func (r *fakeUsers) ListBySector(_ context.Context, sectorID string) ([]*iamenti
 	}
 	return out, nil
 }
+func (r *fakeUsers) SetPresenceSettings(context.Context, string, *string, *bool) error { return nil }
 
 type fakeSectors struct {
 	sectorrepo.SectorRepository

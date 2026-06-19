@@ -62,10 +62,12 @@ func schemas() M {
 			"id": str(), "tenant_id": str(), "name": str(), "email": str(),
 			"status":   enum("active", "disabled", "pending_verification"),
 			"role_ids": arr(str()), "sector_ids": arr(str()), "max_concurrent_chats": integer(),
-			"avatar_attachment_id": str(),
-			"avatar_url":           describedStr("Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term."),
-			"preferences":          userPreferencesSchema(),
-			"created_at":           dateTime(), "updated_at": dateTime(),
+			"avatar_attachment_id":  str(),
+			"presence_availability": withDesc(enum("online", "away", "offline"), "Durable manual availability (defaults to online). Read-only here — set via POST /v1/agents/presence/status."),
+			"auto_offline":          withDesc(boolean(), "Whether the agent goes effective-offline when their last socket drops while online (defaults to true). Read-only here — set via PATCH /v1/agents/presence/auto-offline."),
+			"avatar_url":            describedStr("Read-only, derived: a short-lived signed URL loadable directly in <img src> (no Authorization). Present only when the avatar exists and is ready. Do not cache long-term."),
+			"preferences":           userPreferencesSchema(),
+			"created_at":            dateTime(), "updated_at": dateTime(),
 		}),
 		"CreateUserRequest": object(M{
 			"name": str(), "email": str(), "password": str(),
@@ -100,12 +102,16 @@ func schemas() M {
 		"UpdateQueueRequest": object(M{"name": str(), "strategy": str(), "max_wait_seconds": integer(), "enabled": boolean()}),
 		"Presence": object(M{
 			"tenant_id": str(), "user_id": str(),
-			"name":       describedStr("Read-only, derived: the agent's display name, resolved in batch so the dashboard renders the agent instead of a raw user id. Empty when unresolved."),
-			"avatar_url": describedStr("Read-only, derived: the agent's short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar."),
-			"status":     str(), "current_load": integer(),
+			"name":                 describedStr("Read-only, derived: the agent's display name, resolved in batch so the dashboard renders the agent instead of a raw user id. Empty when unresolved."),
+			"avatar_url":           describedStr("Read-only, derived: the agent's short-lived signed avatar URL (loadable in <img src>, no Authorization). Empty when the agent has no ready avatar."),
+			"status":               withDesc(str(), "The EFFECTIVE status (precedence applied): manual offline/away wins; otherwise online when a socket is live, else offline-or-online per auto_offline."),
+			"availability":         withDesc(enum("online", "away", "offline"), "The agent's raw DURABLE manual availability."),
+			"auto_offline":         withDesc(boolean(), "The agent's auto-offline-on-last-disconnect toggle."),
+			"current_load":         integer(),
 			"max_concurrent_chats": integer(), "last_seen_at": dateTime(),
 		}),
-		"SetStatusRequest": object(M{"user_id": str(), "status": str()}, "status"),
+		"SetStatusRequest":      object(M{"user_id": describedStr("Optional: another agent's id (requires user.manage); empty = self."), "status": enum("online", "away", "offline")}, "status"),
+		"SetAutoOfflineRequest": object(M{"user_id": describedStr("Optional: another agent's id (requires user.manage); empty = self."), "auto_offline": boolean()}, "auto_offline"),
 
 		// ── conversations / messages ───────────────────────────────────────────
 		"Conversation": object(M{

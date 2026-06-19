@@ -65,6 +65,9 @@ func (r *fakeUsers) List(context.Context, shared.PageRequest) ([]*iamentity.User
 	return nil, nil
 }
 func (r *fakeUsers) ListBySector(context.Context, string) ([]*iamentity.User, error) { return nil, nil }
+func (r *fakeUsers) SetPresenceSettings(context.Context, string, *string, *bool) error {
+	return nil
+}
 
 type fakeRoles struct{}
 

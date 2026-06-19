@@ -17,11 +17,11 @@ type ExpiryHandler interface {
 }
 
 // ExpiryWatcher subscribes to Redis keyspace "expired" events and, for every
-// presence:<tenant>:<user> key that lapses (the last WS heartbeat stopped renewing
-// its TTL), asks the handler to publish the agent's offline event. This is what
-// turns an abrupt disconnect — where the graceful fast-path never ran — into a
-// live offline on the dashboards, instead of a stale "online" until the next
-// refetch.
+// presence:conns:<tenant>:<user> connection-set key that lapses (the last WS
+// heartbeat stopped renewing its TTL), asks the handler to recompute the agent's
+// effective status (Vanished). This is the abrupt-disconnect FALLBACK — where the
+// graceful fast-path never ran — turning a dead socket into a live offline on the
+// dashboards (subject to the agent's auto-offline rule), not a stale "online".
 type ExpiryWatcher struct {
 	rdb     redis.Client
 	db      int
@@ -77,18 +77,17 @@ func (w *ExpiryWatcher) dispatch(ctx context.Context, key string) {
 	}
 }
 
-// parsePresenceKey extracts tenant + user from a presence record key
-// "presence:<tenant>:<user>". It rejects the roster set key
-// "presence:agents:<tenant>" and anything not matching the 3-part shape. Tenant
-// and user ids carry no colons, so a plain split is unambiguous.
+// parsePresenceKey extracts tenant + user from an expired connection-set key
+// "presence:conns:<tenant>:<user>" (the only presence key that carries a TTL).
+// Tenant and user ids carry no colons, so a plain split is unambiguous.
 func parsePresenceKey(key string) (tenant, user string, ok bool) {
-	const prefix = "presence:"
-	if !strings.HasPrefix(key, prefix) || strings.HasPrefix(key, "presence:agents:") {
+	const prefix = "presence:conns:"
+	if !strings.HasPrefix(key, prefix) {
 		return "", "", false
 	}
 	parts := strings.Split(key, ":")
-	if len(parts) != 3 || parts[1] == "" || parts[2] == "" {
+	if len(parts) != 4 || parts[2] == "" || parts[3] == "" {
 		return "", "", false
 	}
-	return parts[1], parts[2], true
+	return parts[2], parts[3], true
 }

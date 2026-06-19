@@ -33,12 +33,58 @@ func (s Status) IsConnected() bool {
 	return s != StatusOffline && s != ""
 }
 
+// CanReceive reports whether an agent in this EFFECTIVE status is eligible to receive
+// auto-routed conversations (online — or the legacy "available").
+func (s Status) CanReceive() bool {
+	return s == StatusOnline || s == StatusAvailable
+}
+
+// Availability is the agent's DURABLE manual choice: online, away or offline.
+type Availability string
+
+const (
+	AvailabilityOnline  Availability = "online"
+	AvailabilityAway    Availability = "away"
+	AvailabilityOffline Availability = "offline"
+)
+
+// ResolveEffective applies the presence precedence to compute the EFFECTIVE status:
+//   - availability offline           → offline (always; a live socket does not change it)
+//   - availability away (or any other
+//     non-online "away-like" value)  → that same status (sticky until changed manually)
+//   - availability online:
+//     has a live socket            → online
+//     no live socket               → autoOffline ? offline : online
+func ResolveEffective(availability string, autoOffline, hasLiveSocket bool) Status {
+	switch availability {
+	case string(AvailabilityOffline):
+		return StatusOffline
+	case string(AvailabilityOnline), "":
+		if hasLiveSocket {
+			return StatusOnline
+		}
+		if autoOffline {
+			return StatusOffline
+		}
+		return StatusOnline
+	default:
+		// away / busy / paused / lunch / training → sticky, socket-independent.
+		return Status(availability)
+	}
+}
+
 // AgentPresence is the live state of an agent. CurrentLoad is derived from open
 // conversations assigned to the agent and is recomputed on writes/reads.
 type AgentPresence struct {
-	TenantID           string
-	UserID             string
-	Status             Status
+	TenantID string
+	UserID   string
+	// Status is the EFFECTIVE status (precedence applied).
+	Status Status
+	// Availability is the raw DURABLE manual choice (online|away|offline); AutoOffline
+	// is the per-agent toggle. Both come from the user document and let the front
+	// render the two controls.
+	Availability       string
+	AutoOffline        bool
 	CurrentLoad        int
 	MaxConcurrentChats int
 	LastSeenAt         time.Time

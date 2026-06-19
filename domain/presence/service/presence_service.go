@@ -40,77 +40,96 @@ func New(
 	return &Service{store: store, load: load, users: users, publisher: publisher, clock: clock}
 }
 
-// SetStatus changes an agent's status and publishes the realtime event.
-//
-// Authorization: a user may only change their own status, unless they hold
-// user.manage (supervisor/admin). The "available" status additionally requires
-// the agent to be online and to have at least one linked sector.
+// SetStatus sets an agent's DURABLE manual availability (online|away|offline) and
+// publishes the recomputed effective status. The availability is persisted on the
+// user document, so it sticks across logout/reconnect/tab/machine and the Redis TTL —
+// only the agent changes it. Authorization: self, or user.manage for another agent.
 func (s *Service) SetStatus(ctx context.Context, targetUserID string, status entity.Status) (*entity.AgentPresence, error) {
-	tenantID, err := shared.RequireTenant(ctx)
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	target, err := s.authorizeTarget(ctx, targetUserID)
 	if err != nil {
 		return nil, err
 	}
-	ac, ok := authz.FromContext(ctx)
-	if !ok {
-		return nil, apperror.Unauthorized("authentication required")
-	}
-
-	target := targetUserID
-	if target == "" {
-		target = ac.UserID
-	}
-	if target != ac.UserID && !ac.Has(authz.UserManage) {
-		return nil, apperror.Forbidden("cannot change another agent's status")
-	}
-	if !status.Valid() {
+	availability := string(status)
+	if !validAvailability(availability) {
 		return nil, apperror.Validation("invalid status").
-			WithDetails(map[string]any{"status": "unknown value"})
+			WithDetails(map[string]any{"status": "must be online, away or offline"})
 	}
-
-	user, err := s.users.FindByID(ctx, target)
-	if err != nil {
+	if err := s.users.SetPresenceSettings(ctx, target, &availability, nil); err != nil {
 		return nil, err
 	}
-
-	load, err := s.load.CountOpenAssigned(ctx, target)
-	if err != nil {
-		return nil, err
-	}
-
-	if status == entity.StatusAvailable {
-		if len(user.SectorIDs) == 0 {
-			return nil, apperror.Validation("available requires at least one linked sector").
-				WithDetails(map[string]any{"sector_ids": "required to become available"})
-		}
-		current := s.currentStatus(ctx, target)
-		if current != entity.StatusOnline && current != entity.StatusAvailable {
-			return nil, apperror.Conflict("agent must be online before becoming available")
-		}
-	}
-
-	presence := &entity.AgentPresence{
-		TenantID:           tenantID,
-		UserID:             target,
-		Status:             status,
-		CurrentLoad:        load,
-		MaxConcurrentChats: user.MaxConcurrentChats,
-		LastSeenAt:         s.clock.Now(),
-	}
-	if err := s.store.Save(ctx, presence); err != nil {
-		return nil, err
-	}
-
-	// Best-effort realtime fan-out; a transport hiccup must not fail the request.
-	event := contracts.NewPresenceChanged(presence)
-	_ = s.publisher.Publish(ctx, shared.TopicPresence(tenantID), contracts.EventPresenceChanged, event)
-	_ = s.publisher.Publish(ctx, shared.TopicUser(tenantID, target), contracts.EventPresenceChanged, event)
-
-	return presence, nil
+	return s.recomputeAndPublish(ctx, target)
 }
 
-// List returns agent presence with a freshly recomputed load. When sectorID is
-// non-empty it returns only the agents linked to that sector. Load is derived in
-// ONE aggregation across the tenant (no count-per-agent N+1).
+// SetAutoOffline sets the per-agent auto-offline toggle (durable) and publishes the
+// recomputed effective status. Authorization: self, or user.manage.
+func (s *Service) SetAutoOffline(ctx context.Context, targetUserID string, enabled bool) (*entity.AgentPresence, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	target, err := s.authorizeTarget(ctx, targetUserID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.users.SetPresenceSettings(ctx, target, nil, &enabled); err != nil {
+		return nil, err
+	}
+	return s.recomputeAndPublish(ctx, target)
+}
+
+// Connected records a new live socket for the agent. When it is the agent's FIRST
+// live socket, the effective status is recomputed (an availability=online agent
+// becomes online) and published.
+func (s *Service) Connected(ctx context.Context, userID, clientID string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	becameLive, err := s.store.Connect(ctx, userID, clientID)
+	if err != nil {
+		return err
+	}
+	if becameLive {
+		_, _ = s.recomputeAndPublish(ctx, userID)
+	}
+	return nil
+}
+
+// Heartbeat renews a socket's liveness while it is open. It never changes status.
+func (s *Service) Heartbeat(ctx context.Context, userID, clientID string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	return s.store.Heartbeat(ctx, userID, clientID)
+}
+
+// Disconnected drops a closed socket and reports whether it was the agent's LAST one
+// (so the caller can debounce the auto-offline transition via Vanished). It does not
+// itself flip the status — the grace window is owned by the WS handler.
+func (s *Service) Disconnected(ctx context.Context, userID, clientID string) (lastGone bool, err error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return false, err
+	}
+	return s.store.Disconnect(ctx, userID, clientID)
+}
+
+// Vanished recomputes and publishes the agent's effective status after its last
+// socket is gone — the debounced graceful path and the Redis-TTL expiry fallback both
+// call it. With no live socket: an availability=online agent goes offline only when
+// auto_offline is on (otherwise it STAYS online); a manual away/offline is unchanged.
+// Idempotent.
+func (s *Service) Vanished(ctx context.Context, userID string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	_, err := s.recomputeAndPublish(ctx, userID)
+	return err
+}
+
+// List returns presence for every agent with cached presence state in the tenant,
+// each carrying the EFFECTIVE status plus the raw availability + auto_offline. Load
+// is recomputed in ONE aggregation (no count-per-agent N+1).
 func (s *Service) List(ctx context.Context, sectorID string) ([]*entity.AgentPresence, error) {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return nil, err
@@ -146,50 +165,67 @@ func (s *Service) List(ctx context.Context, sectorID string) ([]*entity.AgentPre
 	return items, nil
 }
 
-// Touch renews the liveness TTL for an agent's presence. The WS transport calls
-// it on connect and on every heartbeat while the socket is open. It NEVER changes
-// the stored status, so it neither promotes a freshly connected socket to "online"
-// (availability is an explicit choice, not a side effect of connecting) nor
-// overrides a deliberate "offline": it only keeps an already-declared status alive
-// while the socket is. A missing record is a no-op. Best-effort.
-func (s *Service) Touch(ctx context.Context, userID string) error {
-	if _, err := shared.RequireTenant(ctx); err != nil {
-		return err
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+// authorizeTarget resolves the target user (default self) and enforces that only the
+// agent themselves — or a user.manage holder — may change it.
+func (s *Service) authorizeTarget(ctx context.Context, targetUserID string) (string, error) {
+	ac, ok := authz.FromContext(ctx)
+	if !ok {
+		return "", apperror.Unauthorized("authentication required")
 	}
-	return s.store.Touch(ctx, userID)
+	target := targetUserID
+	if target == "" {
+		target = ac.UserID
+	}
+	if target != ac.UserID && !ac.Has(authz.UserManage) {
+		return "", apperror.Forbidden("cannot change another agent's presence")
+	}
+	return target, nil
 }
 
-// Vanished records that an agent's session disappeared — a graceful WS disconnect
-// or a TTL expiry caught by the keyspace watcher. It drops the presence record and
-// the roster entry, then publishes the offline event (presence board + the agent's
-// own user room) so open dashboards update live instead of waiting for a refetch.
-// Idempotent: a redundant call (e.g. the expiry firing after a graceful close
-// already removed the key) simply republishes offline.
-func (s *Service) Vanished(ctx context.Context, userID string) error {
-	tenantID, err := shared.RequireTenant(ctx)
+// recomputeAndPublish reads the agent's durable settings + live-socket state, computes
+// the effective status, caches it (so routing/List read it) and publishes the change.
+func (s *Service) recomputeAndPublish(ctx context.Context, userID string) (*entity.AgentPresence, error) {
+	user, err := s.users.FindByID(ctx, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := s.store.Remove(ctx, userID); err != nil {
-		return err
+	hasLive, err := s.store.HasLiveSocket(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
-	offline := &entity.AgentPresence{
-		TenantID:   tenantID,
-		UserID:     userID,
-		Status:     entity.StatusOffline,
-		LastSeenAt: s.clock.Now(),
+	load, err := s.load.CountOpenAssigned(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
-	event := contracts.NewPresenceChanged(offline)
+	tenantID, _ := shared.TenantFrom(ctx)
+	availability := user.AvailabilityOr()
+	autoOffline := user.AutoOfflineOr()
+	p := &entity.AgentPresence{
+		TenantID:           tenantID,
+		UserID:             userID,
+		Status:             entity.ResolveEffective(availability, autoOffline, hasLive),
+		Availability:       availability,
+		AutoOffline:        autoOffline,
+		CurrentLoad:        load,
+		MaxConcurrentChats: user.MaxConcurrentChats,
+		LastSeenAt:         s.clock.Now(),
+	}
+	if err := s.store.Save(ctx, p); err != nil {
+		return nil, err
+	}
+	event := contracts.NewPresenceChanged(p)
 	_ = s.publisher.Publish(ctx, shared.TopicPresence(tenantID), contracts.EventPresenceChanged, event)
 	_ = s.publisher.Publish(ctx, shared.TopicUser(tenantID, userID), contracts.EventPresenceChanged, event)
-	return nil
+	return p, nil
 }
 
-// currentStatus returns the stored status, or offline when no record exists.
-func (s *Service) currentStatus(ctx context.Context, userID string) entity.Status {
-	cur, err := s.store.Get(ctx, userID)
-	if err != nil || cur == nil {
-		return entity.StatusOffline
+// validAvailability reports whether a is a settable manual availability.
+func validAvailability(a string) bool {
+	switch entity.Availability(a) {
+	case entity.AvailabilityOnline, entity.AvailabilityAway, entity.AvailabilityOffline:
+		return true
 	}
-	return cur.Status
+	return false
 }

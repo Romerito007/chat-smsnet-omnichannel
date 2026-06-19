@@ -126,6 +126,9 @@ func (r *fakeUserRepo) List(context.Context, shared.PageRequest) ([]*iamentity.U
 func (r *fakeUserRepo) ListBySector(context.Context, string) ([]*iamentity.User, error) {
 	return nil, nil
 }
+func (r *fakeUserRepo) SetPresenceSettings(context.Context, string, *string, *bool) error {
+	return nil
+}
 
 type captured struct {
 	topic, event string

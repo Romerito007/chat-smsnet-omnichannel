@@ -28,6 +28,15 @@ type User struct {
 	RoleIDs            []string
 	SectorIDs          []string
 	MaxConcurrentChats int
+	// PresenceAvailability is the agent's DURABLE manual availability
+	// (online|away|offline) — a persistent override that sticks to the account
+	// across logout/reconnect/tab/machine and the Redis TTL. Empty = never set →
+	// defaults to online. Changed only by the agent (POST presence/status).
+	PresenceAvailability string
+	// AutoOffline governs what happens when the agent's LAST live socket drops while
+	// availability is online: true → effective offline; false → stays online. nil =
+	// never set → defaults to true. It never affects a manual away/offline.
+	AutoOffline *bool
 	// AvatarAttachmentID is the attachment (uploaded via the signed-URL flow) used
 	// as the user's avatar. Optional.
 	AvatarAttachmentID string
@@ -44,6 +53,23 @@ type User struct {
 
 // IsActive reports whether the user may authenticate.
 func (u *User) IsActive() bool { return u.Status == StatusActive }
+
+// AvailabilityOr returns the agent's durable manual availability, defaulting to
+// "online" when it was never set.
+func (u *User) AvailabilityOr() string {
+	if strings.TrimSpace(u.PresenceAvailability) == "" {
+		return "online"
+	}
+	return u.PresenceAvailability
+}
+
+// AutoOfflineOr returns the auto-offline toggle, defaulting to true when never set.
+func (u *User) AutoOfflineOr() bool {
+	if u.AutoOffline == nil {
+		return true
+	}
+	return *u.AutoOffline
+}
 
 // NormalizeSectorIDs returns the sector ids trimmed, with empty entries and
 // duplicates removed, never nil. "Sem setor" is always the empty slice — never

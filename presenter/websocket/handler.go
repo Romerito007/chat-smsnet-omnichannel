@@ -37,12 +37,16 @@ const (
 	disconnectGrace = 5 * time.Second
 )
 
-// PresenceLifecycle ties an agent's presence liveness to its WS session: Touch
-// renews the TTL while the socket is open; Vanished marks the agent offline when
-// the last socket closes gracefully. Both require the tenant on the context.
+// PresenceLifecycle ties an agent's presence liveness to its WS session: Connected
+// records a live socket (flipping an online agent to effective-online on the first
+// one); Heartbeat renews a socket's liveness; Disconnected drops a closed socket; and
+// Vanished recomputes the effective status once the last socket is gone (debounced) or
+// its liveness lapses (the expiry watcher). All require the tenant on the context.
 // Optional — when unset, the WS handler runs without presence side effects.
 type PresenceLifecycle interface {
-	Touch(ctx context.Context, userID string) error
+	Connected(ctx context.Context, userID, clientID string) error
+	Heartbeat(ctx context.Context, userID, clientID string) error
+	Disconnected(ctx context.Context, userID, clientID string) (lastGone bool, err error)
 	Vanished(ctx context.Context, userID string) error
 }
 
@@ -125,22 +129,43 @@ func tenantCtx(client *realtime.Client) (context.Context, context.CancelFunc) {
 	return shared.WithTenant(ctx, client.TenantID), cancel
 }
 
-// touchPresence renews the agent's presence TTL (best-effort). No-op when no
-// presence lifecycle is wired.
-func (h *Handler) touchPresence(client *realtime.Client) {
+// presenceConnected records this socket as live (best-effort). On the agent's first
+// socket the presence service flips an availability=online agent to effective-online.
+func (h *Handler) presenceConnected(client *realtime.Client) {
 	if h.presence == nil {
 		return
 	}
 	ctx, cancel := tenantCtx(client)
 	defer cancel()
-	_ = h.presence.Touch(ctx, client.UserID)
+	_ = h.presence.Connected(ctx, client.UserID, client.ID)
 }
 
-// scheduleVanish runs the debounced offline fast-path after the last local socket
-// of a user closes. It waits disconnectGrace and, only if the user still has no
-// connection (i.e. it was a real close, not a refresh), marks the agent offline so
-// boards update without waiting for the TTL. Abrupt kills where this never runs
-// are still covered by the Redis key TTL + the expiry watcher.
+// presenceHeartbeat renews this socket's liveness (best-effort).
+func (h *Handler) presenceHeartbeat(client *realtime.Client) {
+	if h.presence == nil {
+		return
+	}
+	ctx, cancel := tenantCtx(client)
+	defer cancel()
+	_ = h.presence.Heartbeat(ctx, client.UserID, client.ID)
+}
+
+// presenceDisconnected drops this socket from the agent's live set (best-effort).
+func (h *Handler) presenceDisconnected(client *realtime.Client) {
+	if h.presence == nil {
+		return
+	}
+	ctx, cancel := tenantCtx(client)
+	defer cancel()
+	_, _ = h.presence.Disconnected(ctx, client.UserID, client.ID)
+}
+
+// scheduleVanish runs the debounced offline fast-path after the last local socket of
+// a user closes. It waits disconnectGrace and, only if the user still has no LOCAL
+// connection (i.e. a real close, not a refresh), recomputes presence. Vanished itself
+// reads the CROSS-NODE live-socket state, so an agent still connected on another node
+// stays online; a true last-socket close (with auto_offline on) goes offline. Abrupt
+// kills where this never runs are covered by the conns-key TTL + the expiry watcher.
 func (h *Handler) scheduleVanish(client *realtime.Client) {
 	if h.presence == nil || h.hub.ConnectionsFor(client.TenantID, client.UserID) > 0 {
 		return
@@ -198,10 +223,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ac := authz.NewAuthContext(claims.TenantID, claims.UserID, claims.Permissions, claims.SectorIDs, claims.SectorScope)
 
 	h.joinDefaultRooms(client, claims)
-	// Renew presence liveness immediately on connect (don't wait for the first
-	// heartbeat). Status-agnostic: it keeps an already-declared status alive, never
-	// promotes the connection to online.
-	h.touchPresence(client)
+	// Record the live socket immediately on connect. An agent whose durable manual
+	// availability is online (the default) becomes effective-online on this first
+	// socket; a deliberate away/offline is preserved.
+	h.presenceConnected(client)
 	h.logger.Info("ws connected",
 		"client_id", client.ID,
 		"tenant_id", client.TenantID,
@@ -236,8 +261,10 @@ func (h *Handler) joinDefaultRooms(client *realtime.Client, claims auth.AccessCl
 func (h *Handler) readPump(conn *websocket.Conn, client *realtime.Client, ac authz.AuthContext) {
 	defer func() {
 		h.hub.Remove(client)
-		// If this was the user's last socket, mark them offline after a short grace
-		// (debounced so a refresh doesn't flicker offline).
+		// Drop this socket from the agent's live set, then — if it was the last one —
+		// recompute presence after a short grace (debounced so a refresh doesn't
+		// flicker offline; cross-node liveness is re-checked by Vanished).
+		h.presenceDisconnected(client)
 		h.scheduleVanish(client)
 		_ = conn.Close()
 		h.logger.Info("ws disconnected", "client_id", client.ID, "user_id", client.UserID)
@@ -305,10 +332,10 @@ func (h *Handler) writePump(conn *websocket.Conn, client *realtime.Client) {
 				return
 			}
 		case <-heartbeat.C:
-			// Renew presence liveness while the socket is open, then send the
-			// app-level keepalive. A write failure below tears down the pump, so
-			// renewals stop and the presence key lapses to offline.
-			h.touchPresence(client)
+			// Renew this socket's liveness while it is open, then send the app-level
+			// keepalive. A write failure below tears down the pump, so renewals stop
+			// and the conns-key TTL lapses → the expiry watcher recomputes presence.
+			h.presenceHeartbeat(client)
 			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteMessage(websocket.TextMessage, pingFrame()); err != nil {
 				return

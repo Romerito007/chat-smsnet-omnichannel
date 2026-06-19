@@ -134,6 +134,9 @@ func (r *fakeUserRepo) ListBySector(ctx context.Context, sectorID string) ([]*en
 	}
 	return out, nil
 }
+func (r *fakeUserRepo) SetPresenceSettings(context.Context, string, *string, *bool) error {
+	return nil
+}
 
 func tenantCtx(tenant string) context.Context {
 	return shared.WithTenant(context.Background(), tenant)

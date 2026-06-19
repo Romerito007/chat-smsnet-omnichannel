@@ -22,6 +22,7 @@ func registerPresenceRoutes(r chi.Router, c *container.Container) {
 		p.Use(middleware.AuthContext(c.Tokens))
 		p.Get("/agents/presence", ctl.List)
 		p.Post("/agents/presence/status", ctl.SetStatus)
+		p.Patch("/agents/presence/auto-offline", ctl.SetAutoOffline)
 		// Assignable-agents directory for the assignment selector (id, name,
 		// presence). Lighter than /v1/users and readable by anyone who can assign.
 		p.With(middleware.RequirePermission(authz.ConversationAssign)).Get("/agents", agents.List)

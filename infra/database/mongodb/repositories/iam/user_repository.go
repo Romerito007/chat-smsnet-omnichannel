@@ -60,6 +60,37 @@ func (r *UserRepository) Update(ctx context.Context, u *entity.User) error {
 	return nil
 }
 
+// SetPresenceSettings persists an agent's DURABLE presence settings (manual
+// availability and/or the auto-offline toggle) with a focused $set, so a concurrent
+// profile edit is never clobbered. Nil fields are left unchanged.
+func (r *UserRepository) SetPresenceSettings(ctx context.Context, userID string, availability *string, autoOffline *bool) error {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return err
+	}
+	set := bson.M{}
+	if availability != nil {
+		set["presence_availability"] = *availability
+	}
+	if autoOffline != nil {
+		set["auto_offline"] = *autoOffline
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	res, err := r.coll.UpdateOne(ctx,
+		bson.M{"_id": userID, "tenant_id": tenantID},
+		bson.M{"$set": set},
+	)
+	if err != nil {
+		return mongodb.MapError(err)
+	}
+	if res.MatchedCount == 0 {
+		return mongodb.MapError(mongo.ErrNoDocuments)
+	}
+	return nil
+}
+
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
@@ -195,10 +226,12 @@ func userToModel(u *entity.User) models.User {
 		RoleIDs:      u.RoleIDs,
 		// Persist sector membership clean: never null, never [""] — so dirty input
 		// (e.g. an empty sector id) can't corrupt the assign/listing filters.
-		SectorIDs:          entity.NormalizeSectorIDs(u.SectorIDs),
-		MaxConcurrentChats: u.MaxConcurrentChats,
-		AvatarAttachmentID: u.AvatarAttachmentID,
-		Preferences:        u.Preferences,
+		SectorIDs:            entity.NormalizeSectorIDs(u.SectorIDs),
+		MaxConcurrentChats:   u.MaxConcurrentChats,
+		PresenceAvailability: u.PresenceAvailability,
+		AutoOffline:          u.AutoOffline,
+		AvatarAttachmentID:   u.AvatarAttachmentID,
+		Preferences:          u.Preferences,
 	}
 	m.ID = u.ID
 	m.TenantID = u.TenantID
@@ -209,19 +242,21 @@ func userToModel(u *entity.User) models.User {
 
 func userToEntity(m *models.User) *entity.User {
 	return &entity.User{
-		ID:                 m.ID,
-		TenantID:           m.TenantID,
-		Name:               m.Name,
-		Email:              m.Email,
-		PasswordHash:       m.PasswordHash,
-		Status:             entity.Status(m.Status),
-		RoleIDs:            m.RoleIDs,
-		SectorIDs:          entity.NormalizeSectorIDs(m.SectorIDs),
-		MaxConcurrentChats: m.MaxConcurrentChats,
-		AvatarAttachmentID: m.AvatarAttachmentID,
-		Preferences:        m.Preferences,
-		CreatedAt:          m.CreatedAt,
-		UpdatedAt:          m.UpdatedAt,
+		ID:                   m.ID,
+		TenantID:             m.TenantID,
+		Name:                 m.Name,
+		Email:                m.Email,
+		PasswordHash:         m.PasswordHash,
+		Status:               entity.Status(m.Status),
+		RoleIDs:              m.RoleIDs,
+		SectorIDs:            entity.NormalizeSectorIDs(m.SectorIDs),
+		MaxConcurrentChats:   m.MaxConcurrentChats,
+		PresenceAvailability: m.PresenceAvailability,
+		AutoOffline:          m.AutoOffline,
+		AvatarAttachmentID:   m.AvatarAttachmentID,
+		Preferences:          m.Preferences,
+		CreatedAt:            m.CreatedAt,
+		UpdatedAt:            m.UpdatedAt,
 	}
 }
 

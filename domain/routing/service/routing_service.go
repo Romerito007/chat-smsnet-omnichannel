@@ -379,8 +379,8 @@ func (s *Service) eligibleAgents(ctx context.Context, sectorID string) ([]candid
 		if err != nil {
 			continue // no presence record → offline
 		}
-		if p.Status != presenceentity.StatusAvailable {
-			continue
+		if !p.Status.CanReceive() {
+			continue // not effectively online → not eligible for auto-assignment
 		}
 		load := loads[u.ID]
 		if u.MaxConcurrentChats > 0 && load >= u.MaxConcurrentChats {
