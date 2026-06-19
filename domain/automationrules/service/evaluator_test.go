@@ -330,6 +330,33 @@ func TestEvaluate_PlainMessageDoesNotTriggerInteractiveRule(t *testing.T) {
 	}
 }
 
+// move_deal_stage must work under ANY trigger that has conversation context — not
+// only interactive_reply_received. The WhatsApp-unofficial channel sends no buttons,
+// so the rule uses message_created + a text condition and still moves the deal of the
+// event's conversation (found via task.ConversationID, independent of the payload).
+func TestEvaluate_MessageCreatedMovesDeal(t *testing.T) {
+	conv := &conventity.Conversation{ID: "cv1", TenantID: "t1", Channel: "whatsapp", ContactID: "c1"}
+	repo := newFakeRuleRepo()
+	repo.byID["r1"] = &entity.AutomationRule{
+		ID: "r1", TenantID: "t1", Name: "move-on-text", Event: entity.EventMessageCreated, Enabled: true,
+		Conditions: []entity.Condition{{Field: entity.FieldMessageContent, Operator: entity.OpContains, Value: "quero comprar"}},
+		Actions:    []entity.Action{{Type: entity.ActionMoveDealStage, Params: map[string]string{"pipeline_id": "p1", "stage_id": "s2"}}},
+	}
+	deals := &fakeDealOps{}
+	ev := dealEvaluator(conv, repo, deals)
+
+	msg := task("message.created", "cv1", map[string]any{"id": "m1", "conversation_id": "cv1", "text": "Olá, quero comprar o plano", "message_type": "text"})
+	if err := ev.Evaluate(context.Background(), msg); err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if len(deals.calls) != 1 {
+		t.Fatalf("expected one move from the message_created trigger, got %d", len(deals.calls))
+	}
+	if got := deals.calls[0]; got.conv != "cv1" || got.pipeline != "p1" || got.stage != "s2" {
+		t.Errorf("move forwarded wrong args (conversation must come from the event context): %+v", got)
+	}
+}
+
 func TestEvaluate_UnmappedEventIgnored(t *testing.T) {
 	repo := newFakeRuleRepo()
 	emitter := &fakeEmitter{}
