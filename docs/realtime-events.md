@@ -27,7 +27,9 @@ handshake do WebSocket).
   - `t:{tenant}:tenant` — broadcast do tenant;
   - `t:{tenant}:user:{userId}` — notificações/atribuições/presença pessoal;
   - `t:{tenant}:presence` — quadro de presença da equipe;
-  - `t:{tenant}:inbox:{sectorId}` — uma por setor que o ator pode ver.
+  - `t:{tenant}:inbox:{sectorId}` — uma por setor que o ator pode ver;
+  - `t:{tenant}:unassigned` — **só agentes all-scope** (que veem toda a fila/todos
+    os deals): conversas sem setor na fila + eventos de CRM de qualquer setor.
 - **Keepalive (dois níveis):**
   - **Heartbeat de aplicação:** o servidor envia, a cada **20s**, um frame de
     dados no envelope padrão `{ "event": "ping", "ts": <ms>, "data": {} }`. Como
@@ -70,7 +72,8 @@ Sempre **tenant-scoped**. Convenção `t:{tenant_id}:{escopo}[:{id}]`
 | `t:{tenant}:tenant` | toda conexão do tenant | broadcasts do tenant |
 | `t:{tenant}:user:{userId}` | o próprio agente (auto) | notificações, atribuições, presença pessoal |
 | `t:{tenant}:presence` | toda conexão (auto) | mudanças de presença agregadas |
-| `t:{tenant}:inbox:{sectorId}` | agentes do setor (auto) | novas conversas, lifecycle, `queue.stats` |
+| `t:{tenant}:inbox:{sectorId}` | agentes do setor (auto) | novas conversas, lifecycle, `queue.stats`, eventos de deal do setor |
+| `t:{tenant}:unassigned` | agentes all-scope (auto) | conversas sem setor na fila + eventos de deal (`deal.*`) |
 | `t:{tenant}:conversation:{id}` | sob demanda (`subscribe`) | mensagens, status, typing, SLA, aprovações |
 
 ## Envelope (servidor → cliente)
@@ -203,6 +206,26 @@ traz os cards e segue um `mcp.approval_requested`.
 Emitido quando uma ferramenta **write** é proposta (pela IA ou por um run manual)
 e aguarda aprovação explícita do atendente. A execução só ocorre via
 `POST /v1/conversations/{id}/copilot/approvals/{approvalId}`.
+
+### CRM / Kanban (`deals`)
+Publicados nas rooms que **espelham a visibilidade do deal** (mesmas rooms
+automáticas — nenhuma assinatura nova no cliente):
+`t:{tenant}:unassigned` (gestores **all-scope**, que veem todos os deals) **+**
+`t:{tenant}:inbox:{sectorId}` (o setor do deal, quando houver) **+**
+`t:{tenant}:user:{assignedTo}` (o vendedor responsável, quando houver). Assim, só
+quem pode ver o card recebe o evento.
+
+| Evento | Quando | Payload |
+|---|---|---|
+| `deal.stage_changed` | move de estágio — manual, automação **ou** mark-lost (qualquer origem) | `DealEvent` |
+| `deal.created` | criação de oportunidade (`Create`) | `DealEvent` |
+| `deal.updated` | edição do card (título/valor/vendedor/setor/…) | `DealEvent` |
+
+`DealEvent` = `{ deal_id, pipeline_id, from_stage_id, to_stage_id, status, moved_by,
+assigned_to }`. `from_stage_id` e `moved_by` (`user`|`automation`) vêm só no
+`deal.stage_changed` (em `created`/`updated`, `from_stage_id` é vazio e
+`to_stage_id` é o estágio atual). O cliente deduplica/posiciona pelo `deal_id`.
+Reconciliação canônica via `GET /v1/deals` ao (re)conectar.
 
 ### Notificações (`notifications`)
 | Evento | Tópico | Payload |

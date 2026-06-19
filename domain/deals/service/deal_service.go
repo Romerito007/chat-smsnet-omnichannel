@@ -25,6 +25,7 @@ type Service struct {
 	contacts      contracts.ContactChecker
 	auditor       shared.Auditor
 	notifier      shared.Notifier
+	publisher     shared.EventPublisher
 	clock         shared.Clock
 }
 
@@ -35,7 +36,7 @@ func New(repo repository.DealRepository, pipelines contracts.PipelineLookup, clo
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, pipelines: pipelines, auditor: shared.NoopAuditor{}, notifier: shared.NoopNotifier{}, clock: clock}
+	return &Service{repo: repo, pipelines: pipelines, auditor: shared.NoopAuditor{}, notifier: shared.NoopNotifier{}, publisher: shared.NoopPublisher{}, clock: clock}
 }
 
 // SetAuditor wires the audit trail (optional).
@@ -64,6 +65,14 @@ func (s *Service) SetContactChecker(c contracts.ContactChecker) {
 func (s *Service) SetNotifier(n shared.Notifier) {
 	if n != nil {
 		s.notifier = n
+	}
+}
+
+// SetPublisher wires the realtime publisher so the Kanban reacts live to deal
+// create/update/stage-change. Optional: when unset, no realtime event is emitted.
+func (s *Service) SetPublisher(p shared.EventPublisher) {
+	if p != nil {
+		s.publisher = p
 	}
 }
 
@@ -110,6 +119,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateDeal) (*entity
 		return nil, err
 	}
 	s.audit(ctx, "deal.created", d.ID)
+	s.publishDeal(ctx, d, contracts.RealtimeDealCreated, "", "")
 	return d, nil
 }
 
@@ -213,6 +223,7 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateDea
 		return nil, err
 	}
 	s.audit(ctx, "deal.updated", d.ID)
+	s.publishDeal(ctx, d, contracts.RealtimeDealUpdated, "", "")
 	return d, nil
 }
 
@@ -235,12 +246,14 @@ func (s *Service) MoveStage(ctx context.Context, dealID, stageID string) (*entit
 	if stage == nil {
 		return nil, apperror.Validation("the stage does not belong to the deal's pipeline")
 	}
+	fromStageID := d.StageID
 	applyStage(d, stage, s.clock.Now())
 	d.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, d); err != nil {
 		return nil, err
 	}
 	s.auditMove(ctx, d.ID, "user")
+	s.publishDeal(ctx, d, contracts.RealtimeDealStageChanged, fromStageID, "user")
 	return d, nil
 }
 
@@ -287,6 +300,7 @@ func (s *Service) AutomationMoveDealStage(ctx context.Context, conversationID, p
 		if stage == nil {
 			return apperror.Validation("the stage does not belong to the deal's pipeline")
 		}
+		fromStageID := d.StageID
 		now := s.clock.Now()
 		applyStage(d, stage, now)
 		d.UpdatedAt = now
@@ -294,6 +308,7 @@ func (s *Service) AutomationMoveDealStage(ctx context.Context, conversationID, p
 			return err
 		}
 		s.auditMove(ctx, d.ID, "automation")
+		s.publishDeal(ctx, d, contracts.RealtimeDealStageChanged, fromStageID, "automation")
 		s.notifyMoved(ctx, d, stage.Name)
 	}
 	return nil
@@ -360,6 +375,7 @@ func (s *Service) MarkLost(ctx context.Context, dealID, reason string) (*entity.
 		return nil, err
 	}
 	now := s.clock.Now()
+	fromStageID := d.StageID
 	if lost := lostStage(pl); lost != nil {
 		applyStage(d, lost, now)
 	} else {
@@ -372,6 +388,7 @@ func (s *Service) MarkLost(ctx context.Context, dealID, reason string) (*entity.
 		return nil, err
 	}
 	s.audit(ctx, "deal.marked_lost", d.ID)
+	s.publishDeal(ctx, d, contracts.RealtimeDealStageChanged, fromStageID, "user")
 	return d, nil
 }
 
@@ -465,6 +482,26 @@ func (s *Service) auditMove(ctx context.Context, id, movedBy string) {
 		Action: "deal.stage_moved", ResourceType: "deal", ResourceID: id,
 		Data: map[string]any{"moved_by": movedBy},
 	})
+}
+
+// publishDeal emits a realtime deal event to the rooms that mirror the deal's
+// visibility (all-scope managers, its sector, its seller), so an open Kanban reacts
+// live. fromStageID/movedBy are set only for a stage change. Best-effort.
+func (s *Service) publishDeal(ctx context.Context, d *entity.Deal, event, fromStageID, movedBy string) {
+	payload := contracts.DealEvent{
+		DealID:      d.ID,
+		PipelineID:  d.PipelineID,
+		FromStageID: fromStageID,
+		ToStageID:   d.StageID,
+		Status:      string(d.Status),
+		MovedBy:     movedBy,
+		AssignedTo:  d.AssignedTo,
+	}
+	events := make([]shared.PublishEvent, 0, 3)
+	for _, topic := range shared.DealTopicsFor(d.TenantID, d.SectorID, d.AssignedTo) {
+		events = append(events, shared.PublishEvent{Topic: topic, Event: event, Data: payload})
+	}
+	shared.PublishAll(ctx, s.publisher, events...)
 }
 
 // applyStage moves a deal into a stage and reconciles its status + closed_at:

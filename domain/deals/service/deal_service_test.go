@@ -187,6 +187,38 @@ func newAutoSvc() (*Service, *fakeRepo, *capturingAuditor, *capturingNotifier) {
 
 func seedDeal(repo *fakeRepo, d *entity.Deal) { repo.byID[d.ID] = d }
 
+type capturedEvent struct {
+	topic string
+	event string
+	data  contracts.DealEvent
+}
+
+type fakePublisher struct{ events []capturedEvent }
+
+func (p *fakePublisher) Publish(_ context.Context, topic, event string, data any) error {
+	de, _ := data.(contracts.DealEvent)
+	p.events = append(p.events, capturedEvent{topic: topic, event: event, data: de})
+	return nil
+}
+
+func (p *fakePublisher) byEvent(name string) []capturedEvent {
+	var out []capturedEvent
+	for _, e := range p.events {
+		if e.event == name {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (p *fakePublisher) topicsFor(name string) map[string]bool {
+	out := map[string]bool{}
+	for _, e := range p.byEvent(name) {
+		out[e.topic] = true
+	}
+	return out
+}
+
 func movedBys(entries []shared.AuditEntry) []string {
 	var out []string
 	for _, e := range entries {
@@ -420,6 +452,94 @@ func TestAutomationMoveDealStage_UnassignedDealMovesWithoutNotify(t *testing.T) 
 	}
 	if len(not.inputs) != 0 {
 		t.Errorf("no seller → no notification, got %+v", not.inputs)
+	}
+}
+
+func TestMoveStage_PublishesStageChangedRealtime(t *testing.T) {
+	repo := newRepo()
+	svc := New(repo, fakePipelines{pl: samplePipeline()}, nil)
+	pub := &fakePublisher{}
+	svc.SetPublisher(pub)
+	seedDeal(repo, &entity.Deal{
+		ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen,
+		SectorID: "sec1", AssignedTo: "u1", Title: "Acme", ConversationIDs: []string{"cv1"},
+	})
+
+	if _, err := svc.MoveStage(tenantCtx(), "d1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	got := pub.byEvent(contracts.RealtimeDealStageChanged)
+	if len(got) == 0 {
+		t.Fatalf("expected a deal.stage_changed event, got none")
+	}
+	// Visibility rooms: all-scope (unassigned), the deal's sector, and the seller.
+	want := map[string]bool{
+		shared.TopicUnassigned("t1"):    true,
+		shared.TopicInbox("t1", "sec1"): true,
+		shared.TopicUser("t1", "u1"):    true,
+	}
+	if topics := pub.topicsFor(contracts.RealtimeDealStageChanged); len(topics) != len(want) {
+		t.Errorf("wrong topics: got %v want %v", topics, want)
+	} else {
+		for tp := range want {
+			if !topics[tp] {
+				t.Errorf("missing topic %q in %v", tp, topics)
+			}
+		}
+	}
+	p := got[0].data
+	if p.DealID != "d1" || p.PipelineID != "p1" || p.FromStageID != "s1" || p.ToStageID != "sw" {
+		t.Errorf("payload ids wrong: %+v", p)
+	}
+	if p.Status != string(entity.StatusWon) || p.MovedBy != "user" || p.AssignedTo != "u1" {
+		t.Errorf("payload status/moved_by/assigned_to wrong: %+v", p)
+	}
+}
+
+func TestAutomationMoveDealStage_PublishesStageChangedAsAutomation(t *testing.T) {
+	repo := newRepo()
+	svc := New(repo, fakePipelines{pl: samplePipeline()}, nil)
+	pub := &fakePublisher{}
+	svc.SetPublisher(pub)
+	seedDeal(repo, &entity.Deal{
+		ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen,
+		AssignedTo: "u1", Title: "Acme", ConversationIDs: []string{"cv1"},
+	})
+
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	got := pub.byEvent(contracts.RealtimeDealStageChanged)
+	if len(got) == 0 {
+		t.Fatalf("expected a deal.stage_changed event from the automation move")
+	}
+	p := got[0].data
+	if p.FromStageID != "s1" || p.ToStageID != "sw" || p.MovedBy != "automation" {
+		t.Errorf("automation stage-change payload wrong: %+v", p)
+	}
+	// A sector-less deal reaches the all-scope room + the seller (no sector room).
+	topics := pub.topicsFor(contracts.RealtimeDealStageChanged)
+	if !topics[shared.TopicUnassigned("t1")] || !topics[shared.TopicUser("t1", "u1")] {
+		t.Errorf("expected unassigned + user rooms, got %v", topics)
+	}
+	if topics[shared.TopicInbox("t1", "")] {
+		t.Errorf("a sector-less deal must not publish to an empty sector room: %v", topics)
+	}
+}
+
+func TestMoveStage_Idempotent_NoChangeStillPublishes(t *testing.T) {
+	// MoveStage to a different stage always publishes; this guards the from→to wiring.
+	repo := newRepo()
+	svc := New(repo, fakePipelines{pl: samplePipeline()}, nil)
+	pub := &fakePublisher{}
+	svc.SetPublisher(pub)
+	seedDeal(repo, &entity.Deal{ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen})
+
+	if _, err := svc.MoveStage(tenantCtx(), "d1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if len(pub.byEvent(contracts.RealtimeDealStageChanged)) == 0 {
+		t.Errorf("a manual move must emit deal.stage_changed")
 	}
 }
 

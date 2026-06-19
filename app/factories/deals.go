@@ -39,6 +39,8 @@ func DealService(c *container.Container) *dealservice.Service {
 	svc.SetContactChecker(contactChecker{contacts: ContactService(c)})
 	// Alert a deal's seller in-app when an automation advances their card.
 	svc.SetNotifier(NotificationEnqueuer(c))
+	// Emit realtime deal events so an open Kanban reacts live (no F5).
+	svc.SetPublisher(c.Events)
 	return svc
 }
 

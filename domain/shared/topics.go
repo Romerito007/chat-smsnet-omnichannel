@@ -55,3 +55,25 @@ func InboxTopicsFor(tenantID TenantID, sectorID, assignedTo ID) []string {
 	}
 	return out
 }
+
+// DealTopicsFor returns the rooms that must receive a deal's Kanban update
+// (deal.created/updated/stage_changed), mirroring the deal visibility (all-scope OR
+// assigned-to-me OR my-sector) onto the rooms clients already auto-join:
+//   - the unassigned room, which ONLY all-scope agents join → reaches every manager
+//     who can see all deals;
+//   - the deal's sector room, when it has a sector → reaches that team;
+//   - the assignee's own user room, when assigned → reaches the seller even when the
+//     deal carries no sector (or the seller is scoped to a different one).
+//
+// No client subscribes to anything new: these are the same default rooms used for
+// conversation/inbox/notification fan-out.
+func DealTopicsFor(tenantID TenantID, sectorID, assignedTo ID) []string {
+	out := []string{TopicUnassigned(tenantID)}
+	if sectorID != "" {
+		out = append(out, TopicInbox(tenantID, sectorID))
+	}
+	if assignedTo != "" {
+		out = append(out, TopicUser(tenantID, assignedTo))
+	}
+	return out
+}
