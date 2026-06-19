@@ -83,6 +83,12 @@ func (r *fakeConvRepo) FindByIDs(_ context.Context, ids []string) ([]*entity.Con
 func (r *fakeConvRepo) FindLastByContactChannelID(context.Context, string, string) (*entity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeConvRepo) FindOpenByContact(context.Context, string) (*entity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
+func (r *fakeConvRepo) FindLastByContact(context.Context, string) (*entity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
 func (r *fakeConvRepo) FindOpenByContactChannelID(ctx context.Context, contactID, channel string) (*entity.Conversation, error) {
 	tenant, _ := shared.TenantFrom(ctx)
 	for _, c := range r.items {

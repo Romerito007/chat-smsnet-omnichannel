@@ -50,6 +50,12 @@ func (r *fakeConvRepo) FindLastByContactChannelID(context.Context, string, strin
 func (r *fakeConvRepo) FindOpenByContactChannelID(context.Context, string, string) (*conventity.Conversation, error) {
 	return nil, apperror.NotFound("none")
 }
+func (r *fakeConvRepo) FindOpenByContact(context.Context, string) (*conventity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
+func (r *fakeConvRepo) FindLastByContact(context.Context, string) (*conventity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
 func (r *fakeConvRepo) List(context.Context, convcontracts.ListFilter, convcontracts.Visibility, shared.PageRequest) ([]*conventity.Conversation, error) {
 	return nil, nil
 }

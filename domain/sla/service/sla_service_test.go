@@ -116,6 +116,12 @@ func (r *fakeConvRepo) FindLastByContactChannelID(context.Context, string, strin
 func (r *fakeConvRepo) FindOpenByContactChannelID(context.Context, string, string) (*conventity.Conversation, error) {
 	return nil, apperror.NotFound("nf")
 }
+func (r *fakeConvRepo) FindOpenByContact(context.Context, string) (*conventity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
+func (r *fakeConvRepo) FindLastByContact(context.Context, string) (*conventity.Conversation, error) {
+	return nil, apperror.NotFound("nf")
+}
 func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {
 	return nil, nil
 }

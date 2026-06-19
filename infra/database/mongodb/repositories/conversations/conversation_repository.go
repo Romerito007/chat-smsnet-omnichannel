@@ -151,6 +151,43 @@ func (r *ConversationRepository) FindLastByContactChannelID(ctx context.Context,
 	return convToEntity(&m), nil
 }
 
+// FindOpenByContact returns the most recent non-closed conversation for a contact
+// across ANY channel connection (group threads are keyed by the contact, not the
+// connection).
+func (r *ConversationRepository) FindOpenByContact(ctx context.Context, contactID string) (*entity.Conversation, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	filter := bson.M{
+		"tenant_id":  tenantID,
+		"contact_id": contactID,
+		"status":     bson.M{"$nin": closedStatuses},
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})
+	var m models.Conversation
+	if err := r.coll.FindOne(ctx, filter, opts).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return convToEntity(&m), nil
+}
+
+// FindLastByContact returns the most recent conversation for a contact across ANY
+// channel connection regardless of status (used to reopen a group's last thread).
+func (r *ConversationRepository) FindLastByContact(ctx context.Context, contactID string) (*entity.Conversation, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	filter := bson.M{"tenant_id": tenantID, "contact_id": contactID}
+	opts := options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})
+	var m models.Conversation
+	if err := r.coll.FindOne(ctx, filter, opts).Decode(&m); err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	return convToEntity(&m), nil
+}
+
 func (r *ConversationRepository) ListInactiveOpen(ctx context.Context, idleBefore time.Time, limit int) ([]*entity.Conversation, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {

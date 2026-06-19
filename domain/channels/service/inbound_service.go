@@ -259,7 +259,7 @@ func (s *InboundService) Handle(ctx context.Context, conn *chentity.ChannelConne
 		return chcontracts.InboundResult{Discarded: true, Status: "discarded"}, nil
 	}
 
-	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel, conn.ID, conn.UsesProtocol)
+	conv, isNew, err := s.findOrCreateConversation(ctx, tenantID, contact.ID, channel, conn.ID, conn.UsesProtocol, isGroup)
 	if err != nil {
 		return chcontracts.InboundResult{}, err
 	}
@@ -369,12 +369,19 @@ func (s *InboundService) idempotentResult(ctx context.Context, rec *chentity.Inb
 //   - protocol mode (usesProtocol=true): always create a NEW conversation with a
 //     NEW protocol number (a closed last one is not reopened).
 //
+// GROUP messages are special: the SAME group is reachable via every connected number
+// that is a member, so the group's inbound arrives on multiple channel connections.
+// To avoid fragmenting one group into one conversation per connection, a group thread
+// is keyed by the (group) CONTACT across connections (never protocol-tracked) — the
+// receiving connection only fixes which one a reply goes out through.
+//
 // The bool return is true only when a brand-new conversation was created (so the
 // caller routes it); a reused or reopened conversation returns false.
-func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID, contactID, channel, channelID string, usesProtocol bool) (*conventity.Conversation, bool, error) {
-	// Reuse an open conversation for this contact on the SAME channel connection
-	// (not just the same type) — two connections of the same type are distinct.
-	conv, err := s.conversations.FindOpenByContactChannelID(ctx, contactID, channelID)
+func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID, contactID, channel, channelID string, usesProtocol, isGroup bool) (*conventity.Conversation, bool, error) {
+	// Reuse an open conversation. A 1:1 thread is scoped to the SAME channel
+	// connection (two connections of the same type are distinct inboxes); a GROUP
+	// thread is shared across every connection that received it (keyed by the contact).
+	conv, err := s.findOpenConversation(ctx, contactID, channelID, isGroup)
 	if err == nil {
 		return conv, false, nil
 	}
@@ -384,10 +391,10 @@ func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID,
 
 	now := s.clock.Now()
 
-	// Single mode: reopen the contact's last conversation on this channel (closed,
-	// since no open one was found) instead of creating a new one.
-	if !usesProtocol {
-		last, lerr := s.conversations.FindLastByContactChannelID(ctx, contactID, channelID)
+	// Reopen the contact's last (closed) conversation instead of creating a new one —
+	// single mode for 1:1, always for a group (a group is never protocol-tracked).
+	if !usesProtocol || isGroup {
+		last, lerr := s.findLastConversation(ctx, contactID, channelID, isGroup)
 		if lerr == nil {
 			if err := s.reopen(ctx, last, now); err != nil {
 				return nil, false, err
@@ -400,10 +407,10 @@ func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID,
 		// Never had a conversation here → fall through to create the first one.
 	}
 
-	// Protocol mode assigns a fresh per-tenant/year protocol number; single mode
-	// leaves it empty.
+	// Protocol mode assigns a fresh per-tenant/year protocol number; single mode and
+	// groups leave it empty.
 	protocol := ""
-	if usesProtocol {
+	if usesProtocol && !isGroup {
 		p, perr := s.nextProtocol(ctx, tenantID, now)
 		if perr != nil {
 			return nil, false, perr
@@ -430,6 +437,23 @@ func (s *InboundService) findOrCreateConversation(ctx context.Context, tenantID,
 	s.recordEvent(ctx, conv, conventity.EventConversationCreated, nil)
 	s.emitRule(ctx, conv, conventity.EventConversationCreated)
 	return conv, true, nil
+}
+
+// findOpenConversation picks the open-conversation lookup by message kind: a group
+// thread is keyed by the contact across connections; a 1:1 thread by the connection.
+func (s *InboundService) findOpenConversation(ctx context.Context, contactID, channelID string, isGroup bool) (*conventity.Conversation, error) {
+	if isGroup {
+		return s.conversations.FindOpenByContact(ctx, contactID)
+	}
+	return s.conversations.FindOpenByContactChannelID(ctx, contactID, channelID)
+}
+
+// findLastConversation mirrors findOpenConversation for the reopen path (any status).
+func (s *InboundService) findLastConversation(ctx context.Context, contactID, channelID string, isGroup bool) (*conventity.Conversation, error) {
+	if isGroup {
+		return s.conversations.FindLastByContact(ctx, contactID)
+	}
+	return s.conversations.FindLastByContactChannelID(ctx, contactID, channelID)
 }
 
 // reopen revives a closed conversation in place: status returns to new (or

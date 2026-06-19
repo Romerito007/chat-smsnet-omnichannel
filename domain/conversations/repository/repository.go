@@ -30,6 +30,15 @@ type ConversationRepository interface {
 	// closed), or a not_found AppError. Used by single-mode inbound to reopen the
 	// last conversation instead of creating a new one.
 	FindLastByContactChannelID(ctx context.Context, contactID, channelID string) (*entity.Conversation, error)
+	// FindOpenByContact returns the most recent non-closed conversation for a contact
+	// across ANY channel connection, or a not_found AppError. Used for GROUP messages:
+	// a group is reachable via every connected number that is a member, so the group
+	// thread is keyed by the (group) contact, not by the receiving connection.
+	FindOpenByContact(ctx context.Context, contactID string) (*entity.Conversation, error)
+	// FindLastByContact returns the most recent conversation for a contact across ANY
+	// channel connection REGARDLESS of status, or a not_found AppError. Used to reopen
+	// a group's last (closed) thread instead of creating a new one.
+	FindLastByContact(ctx context.Context, contactID string) (*entity.Conversation, error)
 	// List returns conversations matching the filter and visibility, ordered by
 	// updated_at desc (keyset). Over-fetches by one for has_more detection.
 	List(ctx context.Context, filter contracts.ListFilter, vis contracts.Visibility, page shared.PageRequest) ([]*entity.Conversation, error)

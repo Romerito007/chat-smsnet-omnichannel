@@ -6,6 +6,7 @@ import (
 
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	chcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/contracts"
+	chentity "github.com/romerito007/chat-smsnet-omnichannel/domain/channels/entity"
 	contactentity "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/entity"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
@@ -108,6 +109,40 @@ func TestInbound_Group_Attended_OneContactOneConversation(t *testing.T) {
 	// The registry description is seeded into the contact's Notes for the agent.
 	if c.Notes != "desc" {
 		t.Errorf("group description should seed the contact's notes, got %q", c.Notes)
+	}
+}
+
+// The real-world fragmentation bug: the SAME group is reachable via SEVERAL connected
+// numbers (channel connections) that are all members, so its inbound arrives on
+// different connections. A group thread must stay ONE conversation across connections
+// (keyed by the group contact), not one per connection.
+func TestInbound_Group_AcrossConnections_OneConversation(t *testing.T) {
+	const jid = "120363424769983123@g.us"
+	fx, contacts := newGroupFixture(attendedGate(jid, "Nexxa Plug"))
+	ctx := tenantCtx()
+
+	connA := &chentity.ChannelConnection{ID: "connA", TenantID: "t1", Type: chentity.TypeWhatsApp, Enabled: true}
+	connB := &chentity.ChannelConnection{ID: "connB", TenantID: "t1", Type: chentity.TypeWhatsApp, Enabled: true}
+
+	first, err := fx.svc.Handle(ctx, connA, groupMsg("g-A", jid, "5544100@s.whatsapp.net", "João"))
+	if err != nil {
+		t.Fatalf("first (connA): %v", err)
+	}
+	// The next message in the SAME group is delivered to a DIFFERENT connected number.
+	second, err := fx.svc.Handle(ctx, connB, groupMsg("g-B", jid, "5544200@s.whatsapp.net", "Maria"))
+	if err != nil {
+		t.Fatalf("second (connB): %v", err)
+	}
+
+	if second.ConversationID != first.ConversationID {
+		t.Errorf("a group is ONE conversation across connections; got two (%s via connA, %s via connB)",
+			first.ConversationID, second.ConversationID)
+	}
+	if len(fx.convs.items) != 1 {
+		t.Errorf("expected 1 group conversation across connections, got %d", len(fx.convs.items))
+	}
+	if len(contacts.byID) != 1 {
+		t.Errorf("expected 1 group contact, got %d", len(contacts.byID))
 	}
 }
 

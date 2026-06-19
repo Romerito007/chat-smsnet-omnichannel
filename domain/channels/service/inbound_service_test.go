@@ -116,6 +116,34 @@ func (r *fakeConvRepo) FindLastByContactChannelID(_ context.Context, contactID, 
 	cp := *last
 	return &cp, nil
 }
+func (r *fakeConvRepo) FindOpenByContact(_ context.Context, contactID string) (*conventity.Conversation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.items {
+		if c.ContactID == contactID && !c.Status.IsClosed() {
+			cp := *c
+			return &cp, nil
+		}
+	}
+	return nil, apperror.NotFound("nf")
+}
+func (r *fakeConvRepo) FindLastByContact(_ context.Context, contactID string) (*conventity.Conversation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var last *conventity.Conversation
+	for _, c := range r.items {
+		if c.ContactID == contactID {
+			if last == nil || c.UpdatedAt.After(last.UpdatedAt) {
+				last = c
+			}
+		}
+	}
+	if last == nil {
+		return nil, apperror.NotFound("nf")
+	}
+	cp := *last
+	return &cp, nil
+}
 func (r *fakeConvRepo) ListInactiveOpen(context.Context, time.Time, int) ([]*conventity.Conversation, error) {
 	return nil, nil
 }
