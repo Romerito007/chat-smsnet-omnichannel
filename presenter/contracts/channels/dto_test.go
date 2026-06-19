@@ -40,6 +40,43 @@ func TestInboundRequest_ToMessage_GroupContact(t *testing.T) {
 	}
 }
 
+// The gateway sends an interactive reply as {id, title, type} (Meta-native
+// button_reply/list_reply). The id+type must reach the domain as structured fields.
+func TestInboundRequest_ToMessage_InteractiveReply(t *testing.T) {
+	body := `{
+		"external_message_id": "wamid.3",
+		"interactive_reply": { "id": "intent_500mb", "title": "Plano 500MB", "type": "button_reply", "context_external_id": "wamid.menu" }
+	}`
+	var req InboundRequest
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	msg := req.ToMessage("whatsapp")
+	if msg.InteractiveReply == nil {
+		t.Fatal("interactive_reply not mapped")
+	}
+	if msg.InteractiveReply.ID != "intent_500mb" || msg.InteractiveReply.Type != "button_reply" {
+		t.Errorf("id/type not mapped structurally: %+v", msg.InteractiveReply)
+	}
+	if msg.InteractiveReply.Title != "Plano 500MB" || msg.InteractiveReply.ContextExternalID != "wamid.menu" {
+		t.Errorf("title/context not mapped: %+v", msg.InteractiveReply)
+	}
+}
+
+// A legacy gateway that still sends the deprecated kind ("button"/"list") must be
+// normalized to the Meta-native reply type.
+func TestInboundRequest_ToMessage_InteractiveReplyLegacyKind(t *testing.T) {
+	body := `{"interactive_reply": { "id": "fatura", "title": "2ª via", "kind": "list" }}`
+	var req InboundRequest
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	msg := req.ToMessage("whatsapp")
+	if msg.InteractiveReply == nil || msg.InteractiveReply.Type != "list_reply" {
+		t.Errorf("legacy kind 'list' must normalize to 'list_reply': %+v", msg.InteractiveReply)
+	}
+}
+
 // A gateway group LOCATION message in JSON must map the location block + group context.
 func TestInboundRequest_ToMessage_GroupLocation(t *testing.T) {
 	body := `{

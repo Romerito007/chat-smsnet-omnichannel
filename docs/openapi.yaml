@@ -2299,13 +2299,21 @@ components:
                             description: Meta context.id — the external id of the menu message the chat sent; resolved to the internal menu id.
                             type: string
                         description:
+                            description: Only for list replies (the row description).
                             type: string
                         id:
+                            description: The button/row id the customer chose (e.g. "intent_500mb"). REQUIRED — stored as a structured, queryable field (never embedded in text) so automations can trigger on it (e.g. move a CRM card).
                             type: string
                         kind:
-                            description: '''button'' or ''list''.'
+                            description: 'Deprecated alias for type: ''button'' or ''list''. Still accepted; prefer type.'
                             type: string
                         title:
+                            description: The button/row label (e.g. "Plano 500MB"); mirrored to the message text so agents see the choice.
+                            type: string
+                        type:
+                            enum:
+                                - button_reply
+                                - list_reply
                             type: string
                     required:
                         - id
@@ -2792,10 +2800,12 @@ components:
                 id:
                     description: The chosen button/row id (stable — branch automations on this).
                     type: string
-                kind:
-                    description: '''button'' or ''list''.'
-                    type: string
                 title:
+                    type: string
+                type:
+                    enum:
+                        - button_reply
+                        - list_reply
                     type: string
             required:
                 - id

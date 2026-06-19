@@ -152,8 +152,11 @@ type MsgIntRow struct {
 }
 
 // MessageInteractiveReply is the BSON sub-document for an inbound interactive reply.
+// Type holds the Meta-native reply type ("button_reply"|"list_reply"); LegacyKind
+// reads documents written before the rename ("button"|"list") so they still render.
 type MessageInteractiveReply struct {
-	Kind             string `bson:"kind"`
+	Type             string `bson:"type"`
+	LegacyKind       string `bson:"kind,omitempty"`
 	ID               string `bson:"id"`
 	Title            string `bson:"title"`
 	Description      string `bson:"description,omitempty"`

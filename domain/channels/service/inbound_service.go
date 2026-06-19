@@ -709,7 +709,7 @@ func (s *InboundService) recordEvent(ctx context.Context, conv *conventity.Conve
 // sent — best-effort: if the menu isn't found (e.g. its external id wasn't recorded
 // yet), ContextMessageID is left empty rather than failing the inbound.
 func (s *InboundService) resolveInteractiveReply(ctx context.Context, conversationID string, in *chcontracts.InboundInteractiveReply) *conventity.InteractiveReply {
-	r := &conventity.InteractiveReply{Kind: in.Kind, ID: in.ID, Title: in.Title, Description: in.Description}
+	r := &conventity.InteractiveReply{Type: in.Type, ID: in.ID, Title: in.Title, Description: in.Description}
 	ext := strings.TrimSpace(in.ContextExternalID)
 	if ext != "" {
 		if menu, err := s.messages.FindByExternalMessageID(ctx, conversationID, ext); err == nil && menu != nil {

@@ -318,7 +318,7 @@ func msgInteractiveReplyToModel(r *entity.InteractiveReply) *models.MessageInter
 	if r == nil {
 		return nil
 	}
-	return &models.MessageInteractiveReply{Kind: r.Kind, ID: r.ID, Title: r.Title, Description: r.Description, ContextMessageID: r.ContextMessageID}
+	return &models.MessageInteractiveReply{Type: r.Type, ID: r.ID, Title: r.Title, Description: r.Description, ContextMessageID: r.ContextMessageID}
 }
 
 func msgGroupSenderToModel(g *entity.GroupSender) *models.MessageGroupSender {
@@ -339,7 +339,26 @@ func msgInteractiveReplyToEntity(r *models.MessageInteractiveReply) *entity.Inte
 	if r == nil {
 		return nil
 	}
-	return &entity.InteractiveReply{Kind: r.Kind, ID: r.ID, Title: r.Title, Description: r.Description, ContextMessageID: r.ContextMessageID}
+	return &entity.InteractiveReply{
+		Type: replyTypeOrLegacy(r.Type, r.LegacyKind), ID: r.ID, Title: r.Title,
+		Description: r.Description, ContextMessageID: r.ContextMessageID,
+	}
+}
+
+// replyTypeOrLegacy returns the Meta-native reply type, promoting a legacy
+// "button"/"list" kind from older documents to "button_reply"/"list_reply".
+func replyTypeOrLegacy(typ, legacyKind string) string {
+	if typ != "" {
+		return typ
+	}
+	switch legacyKind {
+	case "button":
+		return "button_reply"
+	case "list":
+		return "list_reply"
+	default:
+		return legacyKind
+	}
 }
 
 func msgTemplateToEntity(t *models.MessageTemplate) *entity.TemplatePayload {

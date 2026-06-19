@@ -204,7 +204,7 @@ func TestInbound_InteractiveReply(t *testing.T) {
 	m := inMsg("ext-reply")
 	m.Text = ""
 	m.InteractiveReply = &chcontracts.InboundInteractiveReply{
-		Kind: "button", ID: "fatura", Title: "2ª via fatura", ContextExternalID: "wamid.menu",
+		Type: "button_reply", ID: "intent_500mb", Title: "Plano 500MB", ContextExternalID: "wamid.menu",
 	}
 	if _, err := fx.svc.Handle(tenantCtx(), conn(""), m); err != nil {
 		t.Fatalf("inbound reply: %v", err)
@@ -213,8 +213,12 @@ func TestInbound_InteractiveReply(t *testing.T) {
 	if msg.MessageType != conventity.MessageInteractiveReply || msg.InteractiveReply == nil {
 		t.Fatalf("reply not typed/stored: %+v", msg)
 	}
-	if msg.InteractiveReply.ID != "fatura" || msg.Text != "2ª via fatura" {
-		t.Errorf("reply id/title mirror wrong: %+v text=%q", msg.InteractiveReply, msg.Text)
+	// The id is a structured, queryable field (the automation trigger), not text.
+	if msg.InteractiveReply.ID != "intent_500mb" || msg.InteractiveReply.Type != "button_reply" {
+		t.Errorf("reply id/type not stored structurally: %+v", msg.InteractiveReply)
+	}
+	if msg.Text != "Plano 500MB" {
+		t.Errorf("title must mirror to text for the inbox, got %q", msg.Text)
 	}
 	if msg.InteractiveReply.ContextMessageID != "menu1" {
 		t.Errorf("context must resolve to the internal menu id, got %q", msg.InteractiveReply.ContextMessageID)

@@ -242,13 +242,32 @@ type InboundRequest struct {
 
 // InteractiveReplyItem is the inbound interactive reply on the wire: the chosen
 // button/list id+title (+description for list) and the menu's context id (Meta
-// context.id, i.e. the external id of the menu message the chat sent).
+// context.id, i.e. the external id of the menu message the chat sent). Type is the
+// Meta-native reply type ("button_reply"|"list_reply"); the deprecated Kind
+// ("button"|"list") is still accepted from older gateways.
 type InteractiveReplyItem struct {
-	Kind              string `json:"kind"` // "button" | "list"
+	Type              string `json:"type"`
+	Kind              string `json:"kind"` // deprecated alias: "button" | "list"
 	ID                string `json:"id"`
 	Title             string `json:"title"`
 	Description       string `json:"description"`
 	ContextExternalID string `json:"context_external_id"`
+}
+
+// replyType normalizes the wire fields to the Meta-native reply type, promoting a
+// legacy kind ("button"/"list") when only that was sent.
+func (r *InteractiveReplyItem) replyType() string {
+	if r.Type != "" {
+		return r.Type
+	}
+	switch r.Kind {
+	case "button":
+		return "button_reply"
+	case "list":
+		return "list_reply"
+	default:
+		return r.Kind
+	}
 }
 
 // Token returns the integration token from the body, preferring the canonical
@@ -298,7 +317,7 @@ func (r *InteractiveReplyItem) toContract() *chcontracts.InboundInteractiveReply
 		return nil
 	}
 	return &chcontracts.InboundInteractiveReply{
-		Kind: r.Kind, ID: r.ID, Title: r.Title, Description: r.Description, ContextExternalID: r.ContextExternalID,
+		Type: r.replyType(), ID: r.ID, Title: r.Title, Description: r.Description, ContextExternalID: r.ContextExternalID,
 	}
 }
 

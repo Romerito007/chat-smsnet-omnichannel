@@ -41,9 +41,10 @@ type InboundMessage struct {
 // InboundInteractiveReply is the gateway's normalized form of a WhatsApp
 // interactive button_reply/list_reply: the chosen id+title (+description for list)
 // and ContextExternalID (Meta context.id — the external id of the menu message we
-// sent), which the chat resolves to the internal menu message id.
+// sent), which the chat resolves to the internal menu message id. Type carries the
+// Meta-native reply type ("button_reply"|"list_reply").
 type InboundInteractiveReply struct {
-	Kind              string // "button" | "list"
+	Type              string // "button_reply" | "list_reply"
 	ID                string
 	Title             string
 	Description       string

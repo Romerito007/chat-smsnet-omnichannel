@@ -225,7 +225,7 @@ func schemas() M {
 		}, "kind", "body"),
 		// message_type=interactive_reply: the INBOUND customer choice on a menu.
 		"MessageInteractiveReply": object(M{
-			"kind":               describedStr("'button' or 'list'."),
+			"type":               enum("button_reply", "list_reply"),
 			"id":                 describedStr("The chosen button/row id (stable — branch automations on this)."),
 			"title":              str(),
 			"description":        describedStr("Only for list replies."),
@@ -325,8 +325,12 @@ func schemas() M {
 			"contacts":     describedArr(ref("MessageContact"), "Set when the customer shares contact(s) (message_type=contact)."),
 			"location":     withDesc(ref("MessageLocation"), "Set when the customer shares a location (message_type=location)."),
 			"interactive_reply": withDesc(object(M{
-				"kind": describedStr("'button' or 'list'."), "id": str(), "title": str(), "description": str(),
+				"type":                enum("button_reply", "list_reply"),
+				"id":                  describedStr("The button/row id the customer chose (e.g. \"intent_500mb\"). REQUIRED — stored as a structured, queryable field (never embedded in text) so automations can trigger on it (e.g. move a CRM card)."),
+				"title":               describedStr("The button/row label (e.g. \"Plano 500MB\"); mirrored to the message text so agents see the choice."),
+				"description":         describedStr("Only for list replies (the row description)."),
 				"context_external_id": describedStr("Meta context.id — the external id of the menu message the chat sent; resolved to the internal menu id."),
+				"kind":                describedStr("Deprecated alias for type: 'button' or 'list'. Still accepted; prefer type."),
 			}, "id"), "Set when the customer answers an interactive menu (message_type=interactive_reply)."),
 			"metadata": freeObject(), "timestamp": integer(),
 		}),

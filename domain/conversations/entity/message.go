@@ -207,9 +207,10 @@ type InteractiveRow struct {
 
 // InteractiveReply is the INBOUND customer choice (message_type=interactive_reply):
 // the id+title of the chosen button/row, plus ContextMessageID linking it back to
-// the internal id of the menu message the chat sent.
+// the internal id of the menu message the chat sent. ID is the stable, structured
+// trigger for automations (e.g. move a CRM card) — never embedded in the text.
 type InteractiveReply struct {
-	Kind             string `json:"kind" bson:"kind"` // "button" | "list"
+	Type             string `json:"type" bson:"type"` // "button_reply" | "list_reply" (Meta-native)
 	ID               string `json:"id" bson:"id"`
 	Title            string `json:"title" bson:"title"`
 	Description      string `json:"description,omitempty" bson:"description,omitempty"`
