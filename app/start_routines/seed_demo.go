@@ -23,6 +23,7 @@ import (
 	conventity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversations/entity"
 	ctentity "github.com/romerito007/chat-smsnet-omnichannel/domain/conversationtools/entity"
 	cpentity "github.com/romerito007/chat-smsnet-omnichannel/domain/copilot/entity"
+	crmentity "github.com/romerito007/chat-smsnet-omnichannel/domain/crmsettings/entity"
 	csatentity "github.com/romerito007/chat-smsnet-omnichannel/domain/csat/entity"
 	iamentity "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/entity"
 	mcpentity "github.com/romerito007/chat-smsnet-omnichannel/domain/mcp/entity"
@@ -41,6 +42,7 @@ import (
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	ctrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversationtools"
 	cprepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/copilot"
+	crmrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/crmsettings"
 	csatrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/csat"
 	iamrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/iam"
 	mcprepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/mcp"
@@ -249,6 +251,7 @@ func (d *demoSeeder) run() error {
 		// agents end up with sector_ids: [""], which breaks sector assignment.
 		{"sectors_queues", d.seedSectorsQueues},
 		{"pipeline", d.seedPipeline},
+		{"crm_settings", d.seedCRMSettings},
 		{"team", d.seedTeam},
 		{"sla", d.seedSLAPolicy},
 		{"privacy", d.seedPrivacy},
@@ -333,6 +336,23 @@ func (d *demoSeeder) seedPipeline() error {
 		return err
 	}
 	d.mark("pipelines", p.ID)
+	return nil
+}
+
+// seedCRMSettings turns ALL optional CRM modules on for the demo tenant (timeline,
+// tasks and products) so every module is testable. Idempotent (upsert by tenant).
+func (d *demoSeeder) seedCRMSettings() error {
+	s := &crmentity.CRMSettings{
+		TenantID:        d.tenantID,
+		TasksEnabled:    true,
+		ProductsEnabled: true,
+		TimelineEnabled: true,
+		UpdatedAt:       d.now,
+	}
+	if err := crmrepo.New(d.db).Upsert(d.ctx, s); err != nil {
+		return err
+	}
+	d.mark("crm_settings", d.tenantID)
 	return nil
 }
 

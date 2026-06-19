@@ -65,6 +65,7 @@ channel.manage      webhook.manage
 group.view          group.manage
 pipeline.view       pipeline.manage
 deal.view           deal.manage
+crm.manage
 report.view         report.export
 audit.view          privacy.manage
 ```
@@ -91,6 +92,7 @@ audit.view          privacy.manage
 | Canais (`/channels`) | `channel.manage` |
 | **Grupos de WhatsApp** (`/groups`) | ler/buscar=`group.view`, marcar atendimento + sync=`group.manage` |
 | **Pipelines de vendas** (`/pipelines`) | ler=`pipeline.view`, configurar funil+estágios=`pipeline.manage` |
+| **Configurações do CRM** (`/crm/settings`) | ler=`deal.view`, ligar/desligar módulos opcionais=`crm.manage` |
 | Webhooks (`/webhooks`) | `webhook.manage` |
 | Regras de automação (`/automation-rules/*`) | `automation.manage` |
 | Copilot usar / configurar (`/copilot/*`) | `copilot.use` / `copilot.configure` |

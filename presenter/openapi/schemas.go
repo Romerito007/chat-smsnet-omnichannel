@@ -672,6 +672,19 @@ func schemas() M {
 			"name":       str(),
 			"is_default": withDesc(boolean(), "Set true to make this the tenant default (unsets the others)."),
 		}),
+		// ── CRM settings (per-tenant optional-module toggles) ────────────────────
+		"CRMSettings": object(M{
+			"tenant_id":        str(),
+			"tasks_enabled":    withDesc(boolean(), "The tasks module is enabled for the tenant (default false)."),
+			"products_enabled": withDesc(boolean(), "The products module is enabled for the tenant (default false)."),
+			"timeline_enabled": withDesc(boolean(), "The timeline module is enabled for the tenant (default true)."),
+			"updated_at":       withDesc(dateTime(), "Last change; zero value when the tenant has never configured its CRM (defaults returned)."),
+		}),
+		"UpdateCRMSettingsRequest": object(M{
+			"tasks_enabled":    boolean(),
+			"products_enabled": boolean(),
+			"timeline_enabled": boolean(),
+		}),
 		"AddStageRequest":    object(M{"name": str(), "order": integer(), "is_won": boolean(), "is_lost": boolean(), "color": str()}, "name"),
 		"UpdateStageRequest": object(M{"name": str(), "order": integer(), "is_won": boolean(), "is_lost": boolean(), "color": str()}),
 		"ReorderStagesRequest": object(M{

@@ -297,6 +297,16 @@ func registerDeals(p *paths) {
 		params: idp, responses: M{"204": emptyResp("Deleted"), "404": respRef("Error404")}}))
 }
 
+// registerCRMSettings mounts the per-tenant CRM settings (optional-module toggles).
+func registerCRMSettings(p *paths) {
+	p.add("GET", "/v1/crm/settings", op(opConfig{tag: "crm",
+		summary:   "Get the tenant's CRM module toggles (deal.view). Returns conservative defaults (timeline on, tasks/products off) when never configured.",
+		responses: M{"200": jsonResp("CRM settings", ref("CRMSettings"))}}))
+	p.add("PATCH", "/v1/crm/settings", op(opConfig{tag: "crm",
+		summary: "Toggle the tenant's optional CRM modules — tasks, products, timeline (crm.manage). PATCH semantics: omitted fields stay unchanged.",
+		reqBody: body(ref("UpdateCRMSettingsRequest")), responses: M{"200": jsonResp("Updated", ref("CRMSettings"))}}))
+}
+
 func registerIntegrations(p *paths) {
 	// automation rules (Chatwoot-style trigger/conditions/actions engine)
 	p.add("GET", "/v1/automation-rules", op(opConfig{tag: "automationrules", summary: "List automation rules",

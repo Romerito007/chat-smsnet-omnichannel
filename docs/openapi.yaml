@@ -445,6 +445,24 @@ components:
                         type: string
                     type: array
             type: object
+        CRMSettings:
+            properties:
+                products_enabled:
+                    description: The products module is enabled for the tenant (default false).
+                    type: boolean
+                tasks_enabled:
+                    description: The tasks module is enabled for the tenant (default false).
+                    type: boolean
+                tenant_id:
+                    type: string
+                timeline_enabled:
+                    description: The timeline module is enabled for the tenant (default true).
+                    type: boolean
+                updated_at:
+                    description: Last change; zero value when the tenant has never configured its CRM (defaults returned).
+                    format: date-time
+                    type: string
+            type: object
         CSATResponse:
             properties:
                 agent_avatar_url:
@@ -3899,6 +3917,15 @@ components:
                     type: string
                 priority:
                     type: integer
+            type: object
+        UpdateCRMSettingsRequest:
+            properties:
+                products_enabled:
+                    type: boolean
+                tasks_enabled:
+                    type: boolean
+                timeline_enabled:
+                    type: boolean
             type: object
         UpdateCannedRequest:
             properties:
@@ -8040,6 +8067,57 @@ paths:
             summary: Summarize the conversation
             tags:
                 - copilot
+    /v1/crm/settings:
+        get:
+            operationId: getCrmSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CRMSettings'
+                    description: CRM settings
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Get the tenant's CRM module toggles (deal.view). Returns conservative defaults (timeline on, tasks/products off) when never configured.
+            tags:
+                - crm
+        patch:
+            operationId: patchCrmSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateCRMSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CRMSettings'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: 'Toggle the tenant''s optional CRM modules — tasks, products, timeline (crm.manage). PATCH semantics: omitted fields stay unchanged.'
+            tags:
+                - crm
     /v1/csat/responses:
         get:
             operationId: getCsatResponses
@@ -12724,6 +12802,8 @@ tags:
       name: pipelines
     - description: 'Sales deals: the opportunities (Kanban cards) moving across a pipeline.'
       name: deals
+    - description: 'CRM settings: per-tenant toggles for the optional CRM modules (tasks, products, timeline).'
+      name: crm
     - description: Trigger/condition/action rules (Chatwoot-style).
       name: automationrules
     - description: smsnet-integrations config and on-demand external queries.

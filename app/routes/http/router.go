@@ -65,6 +65,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerGroupRoutes(v1, c)
 		registerPipelineRoutes(v1, c)
 		registerDealRoutes(v1, c)
+		registerCRMSettingsRoutes(v1, c)
 		registerAutomationRulesRoutes(v1, c)
 		registerProviderHubRoutes(v1, c)
 		registerWebhookRoutes(v1, c)

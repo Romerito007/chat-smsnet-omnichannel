@@ -52,6 +52,10 @@ const (
 	DealView   Permission = "deal.view"
 	DealManage Permission = "deal.manage"
 
+	// CRMManage lets an admin toggle the tenant's optional CRM modules (tasks,
+	// products, timeline) via the CRM settings.
+	CRMManage Permission = "crm.manage"
+
 	ReportView   Permission = "report.view"
 	ReportExport Permission = "report.export"
 
@@ -76,6 +80,7 @@ func AllPermissions() []Permission {
 		GroupView, GroupManage,
 		PipelineView, PipelineManage,
 		DealView, DealManage,
+		CRMManage,
 		ReportView, ReportExport,
 		AuditView, PrivacyManage,
 		CustomAttributeManage,
