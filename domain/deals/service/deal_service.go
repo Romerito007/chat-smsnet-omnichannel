@@ -23,6 +23,7 @@ type Service struct {
 	pipelines     contracts.PipelineLookup
 	conversations contracts.ConversationLookup
 	contacts      contracts.ContactChecker
+	tags          contracts.TagCatalog
 	auditor       shared.Auditor
 	notifier      shared.Notifier
 	audience      contracts.DealAudience
@@ -61,6 +62,15 @@ func (s *Service) SetConversationLookup(c contracts.ConversationLookup) {
 func (s *Service) SetContactChecker(c contracts.ContactChecker) {
 	if c != nil {
 		s.contacts = c
+	}
+}
+
+// SetTagCatalog wires the tag catalog (the /v1/tags registry shared with
+// conversations) used to validate tag ids on a deal. Optional: when unset, tags are
+// accepted as-is.
+func (s *Service) SetTagCatalog(t contracts.TagCatalog) {
+	if t != nil {
+		s.tags = t
 	}
 }
 
@@ -130,6 +140,10 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateDeal) (*entity
 	if err := s.requireContact(ctx, cmd.ContactID); err != nil {
 		return nil, err
 	}
+	tags, err := s.validateTags(ctx, cmd.Tags)
+	if err != nil {
+		return nil, err
+	}
 
 	now := s.clock.Now()
 	d := &entity.Deal{
@@ -144,6 +158,7 @@ func (s *Service) Create(ctx context.Context, cmd contracts.CreateDeal) (*entity
 		SectorID:          strings.TrimSpace(cmd.SectorID),
 		Source:            strings.TrimSpace(cmd.Source),
 		ExpectedCloseDate: cmd.ExpectedCloseDate,
+		Tags:              tags,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
@@ -244,6 +259,13 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateDea
 	if cmd.Currency != nil {
 		d.Currency = currencyOr(*cmd.Currency)
 	}
+	if cmd.ContactID != nil {
+		contactID := strings.TrimSpace(*cmd.ContactID)
+		if err := s.requireContact(ctx, contactID); err != nil {
+			return nil, err
+		}
+		d.ContactID = contactID
+	}
 	if cmd.AssignedTo != nil {
 		d.AssignedTo = strings.TrimSpace(*cmd.AssignedTo)
 	}
@@ -257,6 +279,13 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateDea
 		d.ExpectedCloseDate = nil
 	} else if cmd.ExpectedCloseDate != nil {
 		d.ExpectedCloseDate = cmd.ExpectedCloseDate
+	}
+	if cmd.Tags != nil {
+		tags, err := s.validateTags(ctx, *cmd.Tags)
+		if err != nil {
+			return nil, err
+		}
+		d.Tags = tags
 	}
 	d.UpdatedAt = s.clock.Now()
 	if err := s.repo.Update(ctx, d); err != nil {
@@ -437,6 +466,99 @@ func (s *Service) LinkConversation(ctx context.Context, dealID, conversationID s
 	}
 	s.audit(ctx, "deal.conversation_linked", d.ID)
 	return d, nil
+}
+
+// AddTag adds a tag (by id from the tenant's tag catalog) to a deal — idempotent. It
+// validates the tag and records tag_added on the timeline.
+func (s *Service) AddTag(ctx context.Context, dealID, tagID string) (*entity.Deal, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	tagID = strings.TrimSpace(tagID)
+	if tagID == "" {
+		return nil, apperror.Validation("tag_id is required")
+	}
+	d, err := s.repo.FindByID(ctx, dealID)
+	if err != nil {
+		return nil, err
+	}
+	if d.HasTag(tagID) {
+		return d, nil // idempotent
+	}
+	if _, err := s.validateTags(ctx, []string{tagID}); err != nil {
+		return nil, err
+	}
+	d.Tags = append(d.Tags, tagID)
+	d.UpdatedAt = s.clock.Now()
+	if err := s.repo.Update(ctx, d); err != nil {
+		return nil, err
+	}
+	s.audit(ctx, "deal.tagged", d.ID)
+	s.publishDeal(ctx, d, contracts.RealtimeDealUpdated, "", "")
+	s.recordTimeline(ctx, d.ID, contracts.TimelineTagAdded, dealActor(ctx), map[string]any{"tag_id": tagID})
+	return d, nil
+}
+
+// RemoveTag strips a tag from a deal — idempotent and lenient (a stale id is still
+// removed). It records tag_removed on the timeline.
+func (s *Service) RemoveTag(ctx context.Context, dealID, tagID string) (*entity.Deal, error) {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return nil, err
+	}
+	d, err := s.repo.FindByID(ctx, dealID)
+	if err != nil {
+		return nil, err
+	}
+	if !d.HasTag(tagID) {
+		return d, nil // idempotent: nothing to remove
+	}
+	out := d.Tags[:0]
+	for _, id := range d.Tags {
+		if id != tagID {
+			out = append(out, id)
+		}
+	}
+	d.Tags = out
+	d.UpdatedAt = s.clock.Now()
+	if err := s.repo.Update(ctx, d); err != nil {
+		return nil, err
+	}
+	s.audit(ctx, "deal.untagged", d.ID)
+	s.publishDeal(ctx, d, contracts.RealtimeDealUpdated, "", "")
+	s.recordTimeline(ctx, d.ID, contracts.TimelineTagRemoved, dealActor(ctx), map[string]any{"tag_id": tagID})
+	return d, nil
+}
+
+// validateTags de-duplicates the tag ids and validates them against the catalog (when
+// wired). Returns the cleaned id list (nil for empty).
+func (s *Service) validateTags(ctx context.Context, tagIDs []string) ([]string, error) {
+	cleaned := dedupeNonEmpty(tagIDs)
+	if len(cleaned) == 0 {
+		return nil, nil
+	}
+	if s.tags != nil {
+		if err := s.tags.ValidateTags(ctx, cleaned); err != nil {
+			return nil, err
+		}
+	}
+	return cleaned, nil
+}
+
+func dedupeNonEmpty(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, dup := seen[v]; dup {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
 }
 
 // MarkLost marks the deal lost: it moves it to the pipeline's lost stage when one

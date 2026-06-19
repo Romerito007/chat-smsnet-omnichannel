@@ -297,6 +297,17 @@ type fakeProductsGate struct{ on bool }
 
 func (g fakeProductsGate) ProductsEnabled(context.Context) (bool, error) { return g.on, nil }
 
+type fakeTags struct{ valid map[string]bool }
+
+func (f fakeTags) ValidateTags(_ context.Context, ids []string) error {
+	for _, id := range ids {
+		if !f.valid[id] {
+			return apperror.Validation("unknown tag: " + id)
+		}
+	}
+	return nil
+}
+
 func tenantCtx() context.Context { return shared.WithTenant(context.Background(), "t1") }
 func authCtx(scope authz.SectorScope, sectors []string, user string) context.Context {
 	return authz.WithAuthContext(tenantCtx(), authz.NewAuthContext("t1", user, authz.AllPermissions(), sectors, scope))
@@ -800,6 +811,98 @@ func TestUpdate_ManualValuePreservedWithoutItemsAndIgnoredWithItems(t *testing.T
 	d, _ = svc.Update(ctx, d.ID, contracts.UpdateDeal{Value: ptr(9999.0)})
 	if d.Value != 100 {
 		t.Errorf("with items, manual value must be ignored (sum=100), got %v", d.Value)
+	}
+}
+
+func TestTags_CreateAndUpdateValidate(t *testing.T) {
+	svc, _ := newSvc()
+	svc.SetTagCatalog(fakeTags{valid: map[string]bool{"t1": true, "t2": true, "t3": true}})
+	ctx := tenantCtx()
+
+	d, err := svc.Create(ctx, contracts.CreateDeal{Title: "x", Tags: []string{"t1", "t2", "t1"}})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(d.Tags) != 2 || d.Tags[0] != "t1" || d.Tags[1] != "t2" {
+		t.Errorf("tags not stored/deduped: %+v", d.Tags)
+	}
+	// Unknown tag rejected.
+	if _, err := svc.Create(ctx, contracts.CreateDeal{Title: "y", Tags: []string{"ghost"}}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("unknown tag on create must be validation, got %v", err)
+	}
+	// Update replaces the tag set.
+	d, err = svc.Update(ctx, d.ID, contracts.UpdateDeal{Tags: ptr([]string{"t3"})})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if len(d.Tags) != 1 || d.Tags[0] != "t3" {
+		t.Errorf("update must replace tags, got %+v", d.Tags)
+	}
+}
+
+func TestTags_AddRemoveIdempotentAndTimeline(t *testing.T) {
+	svc, _ := newSvc()
+	tl := &fakeTimeline{}
+	svc.SetTimeline(tl)
+	svc.SetTagCatalog(fakeTags{valid: map[string]bool{"t1": true}})
+	ctx := tenantCtx()
+	d, _ := svc.Create(ctx, contracts.CreateDeal{Title: "x"})
+
+	d, err := svc.AddTag(ctx, d.ID, "t1")
+	if err != nil {
+		t.Fatalf("add tag: %v", err)
+	}
+	if !d.HasTag("t1") || !tl.has("tag_added") {
+		t.Errorf("add tag must store + record tag_added: %+v", d.Tags)
+	}
+	// Idempotent add: no duplicate, no second event.
+	d, _ = svc.AddTag(ctx, d.ID, "t1")
+	if len(d.Tags) != 1 {
+		t.Errorf("adding the same tag must be idempotent: %+v", d.Tags)
+	}
+
+	// Unknown tag on add → validation.
+	if _, err := svc.AddTag(ctx, d.ID, "ghost"); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("unknown tag on add must be validation, got %v", err)
+	}
+
+	d, err = svc.RemoveTag(ctx, d.ID, "t1")
+	if err != nil {
+		t.Fatalf("remove tag: %v", err)
+	}
+	if d.HasTag("t1") || !tl.has("tag_removed") {
+		t.Errorf("remove tag must strip + record tag_removed: %+v", d.Tags)
+	}
+}
+
+func TestList_TagFilterForwarded(t *testing.T) {
+	svc, repo := newSvc()
+	ctx := authCtx(authz.ScopeAll, nil, "owner")
+	if _, err := svc.List(ctx, contracts.ListFilter{TagID: "t1"}, shared.PageRequest{Limit: 10}); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if repo.gotFilter.TagID != "t1" {
+		t.Errorf("tag_id filter not forwarded: %+v", repo.gotFilter)
+	}
+}
+
+func TestUpdate_ContactIDValidated(t *testing.T) {
+	svc, _ := newSvc()
+	svc.SetContactChecker(fakeContacts{exists: true})
+	ctx := tenantCtx()
+	d, _ := svc.Create(ctx, contracts.CreateDeal{Title: "x"})
+
+	d, err := svc.Update(ctx, d.ID, contracts.UpdateDeal{ContactID: ptr("ct1")})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if d.ContactID != "ct1" {
+		t.Errorf("contact_id not updated, got %q", d.ContactID)
+	}
+	// A non-existent contact is rejected.
+	svc.SetContactChecker(fakeContacts{exists: false})
+	if _, err := svc.Update(ctx, d.ID, contracts.UpdateDeal{ContactID: ptr("ghost")}); apperror.From(err).Code != apperror.CodeValidation {
+		t.Errorf("unknown contact on update must be validation, got %v", err)
 	}
 }
 

@@ -139,6 +139,29 @@ func (s *TagService) ValidateTags(ctx context.Context, tagIDs []string) error {
 	return nil
 }
 
+// TagCard is a tag's display data (name + color) for batch chip rendering.
+type TagCard struct {
+	Name  string
+	Color string
+}
+
+// Cards resolves tag ids to their display cards (name + color) in ONE call, so a
+// consumer (e.g. the deals card) can render coloured chips without fetching each tag.
+func (s *TagService) Cards(ctx context.Context, ids []string) (map[string]TagCard, error) {
+	if len(ids) == 0 {
+		return map[string]TagCard{}, nil
+	}
+	found, err := s.repo.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]TagCard, len(found))
+	for _, t := range found {
+		out[t.ID] = TagCard{Name: t.Name, Color: t.Color}
+	}
+	return out, nil
+}
+
 // ResolveTags maps each ref (a tag id OR a tag name) to its canonical id so a
 // tags array is always stored as ids. strict rejects unknown/disabled refs (add);
 // lenient passes unresolved refs through (remove). De-duplicates the result.

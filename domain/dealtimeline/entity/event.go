@@ -20,6 +20,8 @@ const (
 	KindTaskCompleted   Kind = "task_completed"
 	KindProductAdded    Kind = "product_added"
 	KindProductRemoved  Kind = "product_removed"
+	KindTagAdded        Kind = "tag_added"
+	KindTagRemoved      Kind = "tag_removed"
 	KindWon             Kind = "won"
 	KindLost            Kind = "lost"
 )
@@ -28,7 +30,7 @@ const (
 var AllKinds = []Kind{
 	KindDealCreated, KindStageChanged, KindValueChanged, KindAssignedChanged,
 	KindPriorityChanged, KindComment, KindTaskCreated, KindTaskCompleted,
-	KindProductAdded, KindProductRemoved, KindWon, KindLost,
+	KindProductAdded, KindProductRemoved, KindTagAdded, KindTagRemoved, KindWon, KindLost,
 }
 
 // ValidKind reports whether k is a known kind.

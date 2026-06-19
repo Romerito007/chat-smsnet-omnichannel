@@ -68,6 +68,39 @@ func TestEnrichDeals_FillsNamesInBatch(t *testing.T) {
 	}
 }
 
+type fakeTagDir struct{ calls int }
+
+func (d *fakeTagDir) TagCards(_ context.Context, _ []string) (map[string]TagCard, error) {
+	d.calls++
+	return map[string]TagCard{"vip": {Name: "VIP", Color: "#ff0000"}}, nil
+}
+
+// The deal response resolves its tag chips to name+color in one batch call; an
+// unknown tag id stays id-only.
+func TestEnrichDeals_ResolvesTagChips(t *testing.T) {
+	tagDir := &fakeTagDir{}
+	c := NewController(nil).SetTagDirectory(tagDir)
+
+	rows := []dto.DealResponse{
+		{ID: "d1", Tags: []dto.DealTagResponse{{ID: "vip"}, {ID: "churn"}}},
+		{ID: "d2", Tags: []dto.DealTagResponse{{ID: "vip"}}},
+	}
+	c.enrich(context.Background(), rows)
+
+	if tagDir.calls != 1 {
+		t.Fatalf("tags must resolve in ONE batch call, got %d", tagDir.calls)
+	}
+	if rows[0].Tags[0].Name != "VIP" || rows[0].Tags[0].Color != "#ff0000" {
+		t.Errorf("tag chip not resolved: %+v", rows[0].Tags[0])
+	}
+	if rows[0].Tags[1].Name != "" || rows[0].Tags[1].ID != "churn" {
+		t.Errorf("unknown tag must stay id-only: %+v", rows[0].Tags[1])
+	}
+	if rows[1].Tags[0].Name != "VIP" {
+		t.Errorf("second row tag not resolved: %+v", rows[1].Tags[0])
+	}
+}
+
 func TestEnrichDeals_NoDirectoriesIsSafe(t *testing.T) {
 	c := NewController(nil)
 	rows := []dto.DealResponse{{ID: "d1", ContactID: "ct1", AssignedTo: "u9", PipelineID: "p1", StageID: "s1"}}

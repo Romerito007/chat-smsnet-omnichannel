@@ -6,6 +6,7 @@ import (
 	"github.com/romerito007/chat-smsnet-omnichannel/app/container"
 	"github.com/romerito007/chat-smsnet-omnichannel/domain/apperror"
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
+	ctservice "github.com/romerito007/chat-smsnet-omnichannel/domain/conversationtools/service"
 	dcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/deals/contracts"
 	dealservice "github.com/romerito007/chat-smsnet-omnichannel/domain/deals/service"
 	iamservice "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/service"
@@ -39,6 +40,8 @@ func DealService(c *container.Container) *dealservice.Service {
 	svc.SetAuditor(AuditService(c))
 	svc.SetConversationLookup(conversationLookup{repo: convrepo.NewConversationRepository(c.Mongo.DB)})
 	svc.SetContactChecker(contactChecker{contacts: ContactService(c)})
+	// Validate deal tags against the same /v1/tags catalog the conversations use.
+	svc.SetTagCatalog(ConversationToolsTagService(c))
 	// Alert the audience in-app when an automation advances a card: the owner, or —
 	// when unowned — the deal's sector team.
 	svc.SetNotifier(NotificationEnqueuer(c))
@@ -85,10 +88,28 @@ func (a dealAudience) SectorAgents(ctx context.Context, sectorID string) ([]stri
 
 // DealController builds the deal controller, wired with the contact/agent/pipeline
 // directories so the Kanban renders names (contact_name, assigned_to_name + avatar,
-// stage_name, pipeline_name), not raw ids.
+// stage_name, pipeline_name) and coloured tag chips, not raw ids.
 func DealController(c *container.Container) *dealctl.Controller {
 	return dealctl.NewController(DealService(c)).
-		SetDirectories(ContactService(c), UserService(c), PipelineService(c))
+		SetDirectories(ContactService(c), UserService(c), PipelineService(c)).
+		SetTagDirectory(dealTagDirectory{tags: ConversationToolsTagService(c)})
+}
+
+// dealTagDirectory adapts the tag service to the deal controller's TagDirectory port
+// (resolve tag ids to name+color for the chips).
+type dealTagDirectory struct{ tags *ctservice.TagService }
+
+// TagCards implements dealctl.TagDirectory.
+func (a dealTagDirectory) TagCards(ctx context.Context, ids []string) (map[string]dealctl.TagCard, error) {
+	cards, err := a.tags.Cards(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]dealctl.TagCard, len(cards))
+	for id, c := range cards {
+		out[id] = dealctl.TagCard{Name: c.Name, Color: c.Color}
+	}
+	return out, nil
 }
 
 // conversationLookup adapts the conversations repository to the deals port.

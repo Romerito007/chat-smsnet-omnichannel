@@ -22,6 +22,7 @@ type CreateDeal struct {
 	SectorID          string
 	Source            string
 	ExpectedCloseDate *time.Time
+	Tags              []string
 }
 
 // UpdateDeal edits the editable fields. Nil = unchanged.
@@ -29,11 +30,13 @@ type UpdateDeal struct {
 	Title             *string
 	Value             *float64
 	Currency          *string
+	ContactID         *string
 	AssignedTo        *string
 	SectorID          *string
 	Source            *string
 	ExpectedCloseDate *time.Time
 	ClearExpectedDate bool
+	Tags              *[]string
 }
 
 // CreateFromConversation creates a deal pre-linked to a conversation and its contact.
@@ -53,6 +56,7 @@ type ListFilter struct {
 	ContactID  string
 	Status     string
 	Q          string
+	TagID      string
 }
 
 // Visibility constrains which deals an actor may see. When All is true the actor
@@ -91,6 +95,13 @@ type ContactChecker interface {
 	ContactExists(ctx context.Context, contactID string) (bool, error)
 }
 
+// TagCatalog validates tag ids against the tenant's tag catalog (the same /v1/tags
+// registry the conversations use). Implemented by the conversationtools tag service.
+// Optional: when unset, tags are accepted as-is.
+type TagCatalog interface {
+	ValidateTags(ctx context.Context, tagIDs []string) error
+}
+
 // DealAudience resolves the user ids of a sector's agents, so an automated deal move
 // with no owner still reaches the team that can see the sector. Implemented over the
 // IAM user service (ListBySector). Optional.
@@ -109,6 +120,8 @@ const (
 	TimelineLost            = "lost"
 	TimelineProductAdded    = "product_added"
 	TimelineProductRemoved  = "product_removed"
+	TimelineTagAdded        = "tag_added"
+	TimelineTagRemoved      = "tag_removed"
 )
 
 // AddItem adds a product line to a deal (snapshot of the product's name + price).

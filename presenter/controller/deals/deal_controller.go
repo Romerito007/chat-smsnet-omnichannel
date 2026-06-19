@@ -32,12 +32,25 @@ type PipelineDirectory interface {
 	List(ctx context.Context) ([]*pipelineentity.Pipeline, error)
 }
 
+// TagCard is the display data of a tag (name + color) for the coloured chips.
+type TagCard struct {
+	Name  string
+	Color string
+}
+
+// TagDirectory resolves tag ids to their display cards (name + color) in batch, so the
+// deal card renders coloured chips. Optional.
+type TagDirectory interface {
+	TagCards(ctx context.Context, tagIDs []string) (map[string]TagCard, error)
+}
+
 // Controller serves deal reads and writes. Tenant-scoped via the token.
 type Controller struct {
 	deals        *dealservice.Service
 	contactsDir  ContactDirectory
 	agentsDir    AgentDirectory
 	pipelinesDir PipelineDirectory
+	tagsDir      TagDirectory
 }
 
 // NewController builds the controller.
@@ -54,6 +67,13 @@ func (c *Controller) SetDirectories(contacts ContactDirectory, agents AgentDirec
 	return c
 }
 
+// SetTagDirectory wires the tag resolver so the deal response carries coloured tag
+// chips (id + name + color). Optional.
+func (c *Controller) SetTagDirectory(tags TagDirectory) *Controller {
+	c.tagsDir = tags
+	return c
+}
+
 // List handles GET /v1/deals (deal.view). Filters: pipeline_id, stage_id,
 // assigned_to, status, q (title); the Kanban consumes this and groups by stage.
 func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +86,7 @@ func (c *Controller) List(w http.ResponseWriter, r *http.Request) {
 		ContactID:  q.Get("contact_id"),
 		Status:     q.Get("status"),
 		Q:          q.Get("q"),
+		TagID:      q.Get("tag_id"),
 	}
 	items, err := c.deals.List(r.Context(), filter, page)
 	if err != nil {
@@ -180,6 +201,31 @@ func (c *Controller) MarkLost(w http.ResponseWriter, r *http.Request) {
 	c.writeEnriched(w, r, d)
 }
 
+// AddTag handles POST /v1/deals/{id}/tags (deal.manage): add a tag by id.
+func (c *Controller) AddTag(w http.ResponseWriter, r *http.Request) {
+	var req dto.AddTagRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	d, err := c.deals.AddTag(r.Context(), chi.URLParam(r, "id"), req.TagID)
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	c.writeEnriched(w, r, d)
+}
+
+// RemoveTag handles DELETE /v1/deals/{id}/tags/{tagId} (deal.manage).
+func (c *Controller) RemoveTag(w http.ResponseWriter, r *http.Request) {
+	d, err := c.deals.RemoveTag(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "tagId"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	c.writeEnriched(w, r, d)
+}
+
 // AddItem handles POST /v1/deals/{id}/items (deal.manage): snapshot a product onto
 // the deal and recompute the value.
 func (c *Controller) AddItem(w http.ResponseWriter, r *http.Request) {
@@ -272,6 +318,41 @@ func (c *Controller) enrich(ctx context.Context, rows []dto.DealResponse) {
 	}
 	if c.pipelinesDir != nil {
 		c.labelPipelines(ctx, rows)
+	}
+	if c.tagsDir != nil {
+		c.labelTags(ctx, rows)
+	}
+}
+
+// labelTags resolves each row's tag chips to name+color, in ONE batch call across the
+// whole page. Best-effort: a missing directory or lookup error leaves the raw ids.
+func (c *Controller) labelTags(ctx context.Context, rows []dto.DealResponse) {
+	ids := map[string]struct{}{}
+	for i := range rows {
+		for _, t := range rows[i].Tags {
+			if t.ID != "" {
+				ids[t.ID] = struct{}{}
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	list := make([]string, 0, len(ids))
+	for id := range ids {
+		list = append(list, id)
+	}
+	cards, err := c.tagsDir.TagCards(ctx, list)
+	if err != nil {
+		return
+	}
+	for i := range rows {
+		for j := range rows[i].Tags {
+			if card, ok := cards[rows[i].Tags[j].ID]; ok {
+				rows[i].Tags[j].Name = card.Name
+				rows[i].Tags[j].Color = card.Color
+			}
+		}
 	}
 }
 

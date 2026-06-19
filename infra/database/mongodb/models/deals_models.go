@@ -14,6 +14,7 @@ type Deal struct {
 	AssignedTo        string     `bson:"assigned_to,omitempty"`
 	SectorID          string     `bson:"sector_id,omitempty"`
 	ConversationIDs   []string   `bson:"conversation_ids,omitempty"`
+	Tags              []string   `bson:"tags,omitempty"`
 	Source            string     `bson:"source,omitempty"`
 	Status            string     `bson:"status"`
 	LostReason        string     `bson:"lost_reason,omitempty"`

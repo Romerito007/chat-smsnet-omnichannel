@@ -22,6 +22,7 @@ type CreateDealRequest struct {
 	SectorID          string     `json:"sector_id"`
 	Source            string     `json:"source"`
 	ExpectedCloseDate *time.Time `json:"expected_close_date"`
+	Tags              []string   `json:"tags"`
 }
 
 // ToCommand maps the request to the service command.
@@ -29,7 +30,7 @@ func (r CreateDealRequest) ToCommand() dcontracts.CreateDeal {
 	return dcontracts.CreateDeal{
 		Title: r.Title, Value: r.Value, Currency: r.Currency, PipelineID: r.PipelineID,
 		StageID: r.StageID, ContactID: r.ContactID, AssignedTo: r.AssignedTo,
-		SectorID: r.SectorID, Source: r.Source, ExpectedCloseDate: r.ExpectedCloseDate,
+		SectorID: r.SectorID, Source: r.Source, ExpectedCloseDate: r.ExpectedCloseDate, Tags: r.Tags,
 	}
 }
 
@@ -51,20 +52,27 @@ type UpdateDealRequest struct {
 	Title             *string    `json:"title"`
 	Value             *float64   `json:"value"`
 	Currency          *string    `json:"currency"`
+	ContactID         *string    `json:"contact_id"`
 	AssignedTo        *string    `json:"assigned_to"`
 	SectorID          *string    `json:"sector_id"`
 	Source            *string    `json:"source"`
 	ExpectedCloseDate *time.Time `json:"expected_close_date"`
 	ClearExpectedDate bool       `json:"clear_expected_close_date"`
+	Tags              *[]string  `json:"tags"`
 }
 
 // ToCommand maps to the service command.
 func (r UpdateDealRequest) ToCommand() dcontracts.UpdateDeal {
 	return dcontracts.UpdateDeal{
-		Title: r.Title, Value: r.Value, Currency: r.Currency, AssignedTo: r.AssignedTo,
-		SectorID: r.SectorID, Source: r.Source, ExpectedCloseDate: r.ExpectedCloseDate,
-		ClearExpectedDate: r.ClearExpectedDate,
+		Title: r.Title, Value: r.Value, Currency: r.Currency, ContactID: r.ContactID,
+		AssignedTo: r.AssignedTo, SectorID: r.SectorID, Source: r.Source,
+		ExpectedCloseDate: r.ExpectedCloseDate, ClearExpectedDate: r.ClearExpectedDate, Tags: r.Tags,
 	}
+}
+
+// AddTagRequest is the body of POST /v1/deals/{id}/tags.
+type AddTagRequest struct {
+	TagID string `json:"tag_id"`
 }
 
 // MoveStageRequest is the body of PATCH /v1/deals/{id}/stage.
@@ -134,10 +142,21 @@ type DealResponse struct {
 	ExpectedCloseDate   *time.Time `json:"expected_close_date,omitempty"`
 	StageChangedAt      time.Time  `json:"stage_changed_at"`
 	ClosedAt            *time.Time `json:"closed_at,omitempty"`
+	// Tags are the deal's etiquetas resolved to id+name+color (batch) so the card
+	// renders coloured chips without fetching each tag.
+	Tags []DealTagResponse `json:"tags,omitempty"`
 	// Items are the product line items (Products block); when present, value is their sum.
 	Items     []DealItemResponse `json:"items,omitempty"`
 	CreatedAt time.Time          `json:"created_at"`
 	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// DealTagResponse is a tag chip on a deal: the stored id plus the resolved name+color
+// (read-only/derived; name/color empty when unresolved).
+type DealTagResponse struct {
+	ID    string `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Color string `json:"color,omitempty"`
 }
 
 // DealItemResponse is one product line on a deal. Name/unit_price are the snapshot
@@ -163,8 +182,20 @@ func NewDealResponse(d *entity.Deal) DealResponse {
 		AssignedTo: d.AssignedTo, SectorID: d.SectorID, ConversationIDs: conv,
 		Source: d.Source, Status: string(d.Status), LostReason: d.LostReason,
 		ExpectedCloseDate: d.ExpectedCloseDate, StageChangedAt: d.StageChangedAt,
-		ClosedAt: d.ClosedAt, Items: newItemResponses(d.Items), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		ClosedAt: d.ClosedAt, Tags: newTagResponses(d.Tags), Items: newItemResponses(d.Items),
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
+}
+
+func newTagResponses(ids []string) []DealTagResponse {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]DealTagResponse, len(ids))
+	for i, id := range ids {
+		out[i] = DealTagResponse{ID: id}
+	}
+	return out
 }
 
 func newItemResponses(items []entity.DealItem) []DealItemResponse {

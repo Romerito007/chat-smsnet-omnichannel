@@ -56,6 +56,13 @@ components:
                 - name
                 - password
             type: object
+        AddDealTagRequest:
+            properties:
+                tag_id:
+                    type: string
+            required:
+                - tag_id
+            type: object
         AddItemRequest:
             properties:
                 product_id:
@@ -1414,6 +1421,11 @@ components:
                 stage_id:
                     description: Defaults to the pipeline's first stage.
                     type: string
+                tags:
+                    description: Tag ids from the shared /v1/tags catalog (validated).
+                    items:
+                        type: string
+                    type: array
                 title:
                     type: string
                 value:
@@ -1872,6 +1884,11 @@ components:
                         - won
                         - lost
                     type: string
+                tags:
+                    description: Etiquetas resolved to id+name+color (batch) so the card renders coloured chips. References the shared /v1/tags catalog.
+                    items:
+                        $ref: '#/components/schemas/DealTag'
+                    type: array
                 tenant_id:
                     type: string
                 title:
@@ -1908,6 +1925,17 @@ components:
                 unit_price:
                     description: Snapshot of the product price when added (or the negotiated price); a later catalog change does not alter it.
                     type: number
+            type: object
+        DealTag:
+            properties:
+                color:
+                    description: 'Read-only, derived: the tag colour for the chip.'
+                    type: string
+                id:
+                    type: string
+                name:
+                    description: 'Read-only, derived: the tag name (batch-resolved); empty when unresolved.'
+                    type: string
             type: object
         DealTask:
             properties:
@@ -1988,6 +2016,8 @@ components:
                         - task_completed
                         - product_added
                         - product_removed
+                        - tag_added
+                        - tag_removed
                         - won
                         - lost
                     type: string
@@ -4287,6 +4317,9 @@ components:
                     type: string
                 clear_expected_close_date:
                     type: boolean
+                contact_id:
+                    description: Reassign the deal's contact (validated to exist in the tenant).
+                    type: string
                 currency:
                     type: string
                 expected_close_date:
@@ -4296,6 +4329,11 @@ components:
                     type: string
                 source:
                     type: string
+                tags:
+                    description: Replace the deal's tag ids (validated against /v1/tags).
+                    items:
+                        type: string
+                    type: array
                 title:
                     type: string
                 value:
@@ -9012,6 +9050,12 @@ paths:
                   required: false
                   schema:
                     type: string
+                - description: Filter by an etiqueta (tag id) for the Kanban
+                  in: query
+                  name: tag_id
+                  required: false
+                  schema:
+                    type: string
                 - description: Free-text over the title
                   in: query
                   name: q
@@ -9406,6 +9450,82 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Move a deal to another stage (deal.manage) — the drag-and-drop. Entering a won/lost stage closes the deal; leaving it reopens.
+            tags:
+                - deals
+    /v1/deals/{id}/tags:
+        post:
+            operationId: postDealsByIdTags
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AddDealTagRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Deal'
+                    description: Updated deal
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Add a tag to a deal by id (deal.manage, idempotent). The tag id references the shared /v1/tags catalog (validated). Records tag_added on the timeline.
+            tags:
+                - deals
+    /v1/deals/{id}/tags/{tagId}:
+        delete:
+            operationId: deleteDealsByIdTagsByTagId
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: tag id
+                  in: path
+                  name: tagId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Deal'
+                    description: Updated deal
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Remove a tag from a deal (deal.manage, idempotent). Records tag_removed on the timeline.
             tags:
                 - deals
     /v1/deals/{id}/tasks:

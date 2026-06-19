@@ -275,6 +275,7 @@ func registerDeals(p *paths) {
 			queryParam("assigned_to", "Filter by seller (agent id)"),
 			queryParam("contact_id", "Filter by contact"),
 			queryParam("status", "Filter by status (open|won|lost)"),
+			queryParam("tag_id", "Filter by an etiqueta (tag id) for the Kanban"),
 			queryParam("q", "Free-text over the title")),
 		responses: M{"200": jsonResp("Deal page", pageOf(ref("Deal")))}}))
 	p.add("POST", "/v1/deals", op(opConfig{tag: "deals", summary: "Create a deal (deal.manage). Pipeline/stage default to the tenant default pipeline + first stage.",
@@ -305,6 +306,16 @@ func registerDeals(p *paths) {
 		summary: "Add a manual comment to a deal's timeline (deal.manage). 409 when the timeline module is disabled for the tenant.",
 		params:  idp, reqBody: body(ref("DealCommentRequest")),
 		responses: M{"201": jsonResp("Created", ref("DealTimelineEvent")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
+
+	// deal tags (etiquetas) — add/remove one tag; read back via GET /deals/{id}
+	tagp := []M{pathParam("id", "deal id"), pathParam("tagId", "tag id")}
+	p.add("POST", "/v1/deals/{id}/tags", op(opConfig{tag: "deals",
+		summary: "Add a tag to a deal by id (deal.manage, idempotent). The tag id references the shared /v1/tags catalog (validated). Records tag_added on the timeline.",
+		params:  idp, reqBody: body(ref("AddDealTagRequest")),
+		responses: M{"200": jsonResp("Updated deal", ref("Deal")), "400": respRef("Error400"), "404": respRef("Error404")}}))
+	p.add("DELETE", "/v1/deals/{id}/tags/{tagId}", op(opConfig{tag: "deals",
+		summary: "Remove a tag from a deal (deal.manage, idempotent). Records tag_removed on the timeline.",
+		params:  tagp, responses: M{"200": jsonResp("Updated deal", ref("Deal")), "404": respRef("Error404")}}))
 
 	// deal product items (read back via GET /deals/{id}; respect the products toggle)
 	itemp := []M{pathParam("id", "deal id"), pathParam("itemId", "item id")}

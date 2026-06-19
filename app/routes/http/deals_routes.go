@@ -34,6 +34,11 @@ func registerDealRoutes(r chi.Router, c *container.Container) {
 		p.With(middleware.RequirePermission(authz.DealView)).Get("/deals/{id}/timeline", timeline.Feed)
 		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/timeline/comments", timeline.Comment)
 
+		// Deal tags (etiquetas) — add/remove one tag without resending the deal. The
+		// tag id references the shared /v1/tags catalog; results enrich to id+name+color.
+		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/tags", ctl.AddTag)
+		p.With(middleware.RequirePermission(authz.DealManage)).Delete("/deals/{id}/tags/{tagId}", ctl.RemoveTag)
+
 		// Deal product items (deal.manage; respects the products toggle). They are read
 		// back as part of GET /deals/{id}.
 		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/items", ctl.AddItem)

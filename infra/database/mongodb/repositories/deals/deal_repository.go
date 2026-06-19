@@ -53,6 +53,7 @@ func (r *Repository) Update(ctx context.Context, d *entity.Deal) error {
 			"assigned_to":         d.AssignedTo,
 			"sector_id":           d.SectorID,
 			"conversation_ids":    d.ConversationIDs,
+			"tags":                d.Tags,
 			"source":              d.Source,
 			"status":              string(d.Status),
 			"lost_reason":         d.LostReason,
@@ -124,6 +125,9 @@ func (r *Repository) List(ctx context.Context, f contracts.ListFilter, vis contr
 	if f.Status != "" {
 		base["status"] = f.Status
 	}
+	if f.TagID != "" {
+		base["tags"] = f.TagID
+	}
 	if f.Q != "" {
 		base["title"] = bson.M{"$regex": f.Q, "$options": "i"}
 	}
@@ -189,7 +193,7 @@ func toModel(d *entity.Deal) models.Deal {
 	m := models.Deal{
 		PipelineID: d.PipelineID, StageID: d.StageID, ContactID: d.ContactID, Title: d.Title,
 		Value: d.Value, Currency: d.Currency, AssignedTo: d.AssignedTo, SectorID: d.SectorID,
-		ConversationIDs: d.ConversationIDs, Source: d.Source, Status: string(d.Status),
+		ConversationIDs: d.ConversationIDs, Tags: d.Tags, Source: d.Source, Status: string(d.Status),
 		LostReason: d.LostReason, ExpectedCloseDate: d.ExpectedCloseDate,
 		StageChangedAt: d.StageChangedAt, ClosedAt: d.ClosedAt, Items: toItemModels(d.Items),
 	}
@@ -205,7 +209,7 @@ func toEntity(m *models.Deal) *entity.Deal {
 		ID: m.ID, TenantID: m.TenantID, PipelineID: m.PipelineID, StageID: m.StageID,
 		ContactID: m.ContactID, Title: m.Title, Value: m.Value, Currency: m.Currency,
 		AssignedTo: m.AssignedTo, SectorID: m.SectorID, ConversationIDs: m.ConversationIDs,
-		Source: m.Source, Status: entity.Status(m.Status), LostReason: m.LostReason,
+		Tags: m.Tags, Source: m.Source, Status: entity.Status(m.Status), LostReason: m.LostReason,
 		ExpectedCloseDate: m.ExpectedCloseDate, StageChangedAt: m.StageChangedAt,
 		ClosedAt: m.ClosedAt, Items: toItemEntities(m.Items), CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}

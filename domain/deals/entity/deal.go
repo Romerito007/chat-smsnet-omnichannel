@@ -31,8 +31,11 @@ type Deal struct {
 	// AssignedTo is the seller (agent) handling the deal; optional.
 	AssignedTo string
 	// SectorID scopes visibility (mirrors conversations); optional.
-	SectorID          string
-	ConversationIDs   []string
+	SectorID        string
+	ConversationIDs []string
+	// Tags stores canonical tag ids (never names), referencing the tenant's tag
+	// catalog (/v1/tags, shared with conversations). Resolved to name+color at read.
+	Tags              []string
 	Source            string
 	Status            Status
 	LostReason        string
@@ -84,6 +87,16 @@ func (d *Deal) FindItem(itemID string) int {
 func (d *Deal) HasConversation(conversationID string) bool {
 	for _, id := range d.ConversationIDs {
 		if id == conversationID {
+			return true
+		}
+	}
+	return false
+}
+
+// HasTag reports whether the deal already carries the given tag id.
+func (d *Deal) HasTag(tagID string) bool {
+	for _, id := range d.Tags {
+		if id == tagID {
 			return true
 		}
 	}

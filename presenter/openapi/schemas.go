@@ -723,6 +723,7 @@ func schemas() M {
 			"assigned_to_avatar_url": describedStr("Read-only, derived: the seller's signed avatar URL, resolved in batch; empty when unresolved."),
 			"sector_id":              str(),
 			"conversation_ids":       arr(str()),
+			"tags":                   describedArr(ref("DealTag"), "Etiquetas resolved to id+name+color (batch) so the card renders coloured chips. References the shared /v1/tags catalog."),
 			"source":                 str(),
 			"status":                 enum("open", "won", "lost"),
 			"lost_reason":            str(),
@@ -731,6 +732,11 @@ func schemas() M {
 			"closed_at":              dateTime(),
 			"items":                  describedArr(ref("DealItem"), "Product line items (Products block); present only when the deal has items."),
 			"created_at":             dateTime(), "updated_at": dateTime(),
+		}),
+		"DealTag": object(M{
+			"id":    str(),
+			"name":  describedStr("Read-only, derived: the tag name (batch-resolved); empty when unresolved."),
+			"color": describedStr("Read-only, derived: the tag colour for the chip."),
 		}),
 		"DealItem": object(M{
 			"id": str(), "product_id": str(),
@@ -747,23 +753,28 @@ func schemas() M {
 			"stage_id":    describedStr("Defaults to the pipeline's first stage."),
 			"contact_id":  str(), "assigned_to": str(), "sector_id": str(), "source": str(),
 			"expected_close_date": dateTime(),
+			"tags":                describedArr(str(), "Tag ids from the shared /v1/tags catalog (validated)."),
 		}, "title"),
 		"CreateFromConversationRequest": object(M{
 			"conversation_id": str(), "title": str(), "value": number(), "currency": str(),
 		}, "conversation_id"),
 		"UpdateDealRequest": object(M{
-			"title": str(), "value": number(), "currency": str(), "assigned_to": str(),
-			"sector_id": str(), "source": str(), "expected_close_date": dateTime(),
+			"title": str(), "value": number(), "currency": str(),
+			"contact_id":  describedStr("Reassign the deal's contact (validated to exist in the tenant)."),
+			"assigned_to": str(),
+			"sector_id":   str(), "source": str(), "expected_close_date": dateTime(),
 			"clear_expected_close_date": boolean(),
+			"tags":                      describedArr(str(), "Replace the deal's tag ids (validated against /v1/tags)."),
 		}),
 		"MoveStageRequest":        object(M{"stage_id": str()}, "stage_id"),
 		"LinkConversationRequest": object(M{"conversation_id": str()}, "conversation_id"),
 		"MarkLostRequest":         object(M{"reason": str()}),
+		"AddDealTagRequest":       object(M{"tag_id": str()}, "tag_id"),
 
 		// ── deal timeline (feed of business events + comments) ───────────────────
 		"DealTimelineEvent": object(M{
 			"id": str(), "deal_id": str(),
-			"kind":             enum("deal_created", "stage_changed", "value_changed", "assigned_changed", "priority_changed", "comment", "task_created", "task_completed", "product_added", "product_removed", "won", "lost"),
+			"kind":             enum("deal_created", "stage_changed", "value_changed", "assigned_changed", "priority_changed", "comment", "task_created", "task_completed", "product_added", "product_removed", "tag_added", "tag_removed", "won", "lost"),
 			"actor_id":         describedStr("Who caused the event: a user id, or \"system\"/\"automation\" for non-human actors."),
 			"actor_name":       describedStr("Read-only, derived: the actor's display name (batch-resolved; empty for system/automation or when unresolved)."),
 			"actor_avatar_url": describedStr("Read-only, derived: the actor's avatar URL."),
