@@ -98,8 +98,8 @@ type DealAudience interface {
 	SectorAgents(ctx context.Context, sectorID string) ([]string, error)
 }
 
-// Timeline event kinds the deals service writes (the others — comment, task_*,
-// product_* — are written by the timeline/tasks/products blocks).
+// Timeline event kinds the deals service writes (comment + task_* come from the
+// timeline/tasks blocks).
 const (
 	TimelineDealCreated     = "deal_created"
 	TimelineStageChanged    = "stage_changed"
@@ -107,7 +107,42 @@ const (
 	TimelineAssignedChanged = "assigned_changed"
 	TimelineWon             = "won"
 	TimelineLost            = "lost"
+	TimelineProductAdded    = "product_added"
+	TimelineProductRemoved  = "product_removed"
 )
+
+// AddItem adds a product line to a deal (snapshot of the product's name + price).
+type AddItem struct {
+	ProductID string
+	Quantity  int
+}
+
+// UpdateItem edits a line's quantity and/or negotiated unit price. Nil = unchanged.
+type UpdateItem struct {
+	Quantity  *int
+	UnitPrice *float64
+}
+
+// ProductRef is the minimal product data needed to snapshot a line item.
+type ProductRef struct {
+	Name     string
+	Price    float64
+	Currency string
+	Active   bool
+}
+
+// ProductLookup resolves a catalog product (tenant-scoped) to snapshot it onto a deal
+// item. Implemented over the products repository. Optional (no lookup → items can't be
+// added).
+type ProductLookup interface {
+	Product(ctx context.Context, productID string) (*ProductRef, error)
+}
+
+// ProductsGate reports whether the products module is enabled for the tenant.
+// Implemented over the crmsettings service. Optional: a nil gate means always enabled.
+type ProductsGate interface {
+	ProductsEnabled(ctx context.Context) (bool, error)
+}
 
 // TimelineEvent is one automatic event the deals service records on a deal's
 // timeline. Data carries the kind-specific fields (ids only; names resolved at read).

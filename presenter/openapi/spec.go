@@ -367,6 +367,7 @@ func Build() M {
 	registerDeals(p)
 	registerCRMSettings(p)
 	registerDealTasks(p)
+	registerProducts(p)
 	registerIntegrations(p)
 	registerCopilotMCP(p)
 	registerProductivity(p)

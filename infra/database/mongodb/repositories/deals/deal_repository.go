@@ -59,6 +59,7 @@ func (r *Repository) Update(ctx context.Context, d *entity.Deal) error {
 			"expected_close_date": d.ExpectedCloseDate,
 			"stage_changed_at":    d.StageChangedAt,
 			"closed_at":           d.ClosedAt,
+			"items":               toItemModels(d.Items),
 			"updated_at":          d.UpdatedAt,
 		}},
 	)
@@ -190,7 +191,7 @@ func toModel(d *entity.Deal) models.Deal {
 		Value: d.Value, Currency: d.Currency, AssignedTo: d.AssignedTo, SectorID: d.SectorID,
 		ConversationIDs: d.ConversationIDs, Source: d.Source, Status: string(d.Status),
 		LostReason: d.LostReason, ExpectedCloseDate: d.ExpectedCloseDate,
-		StageChangedAt: d.StageChangedAt, ClosedAt: d.ClosedAt,
+		StageChangedAt: d.StageChangedAt, ClosedAt: d.ClosedAt, Items: toItemModels(d.Items),
 	}
 	m.ID = d.ID
 	m.TenantID = d.TenantID
@@ -206,8 +207,36 @@ func toEntity(m *models.Deal) *entity.Deal {
 		AssignedTo: m.AssignedTo, SectorID: m.SectorID, ConversationIDs: m.ConversationIDs,
 		Source: m.Source, Status: entity.Status(m.Status), LostReason: m.LostReason,
 		ExpectedCloseDate: m.ExpectedCloseDate, StageChangedAt: m.StageChangedAt,
-		ClosedAt: m.ClosedAt, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		ClosedAt: m.ClosedAt, Items: toItemEntities(m.Items), CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
+}
+
+func toItemModels(items []entity.DealItem) []models.DealItem {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]models.DealItem, len(items))
+	for i, it := range items {
+		out[i] = models.DealItem{
+			ID: it.ID, ProductID: it.ProductID, Name: it.Name,
+			Quantity: it.Quantity, UnitPrice: it.UnitPrice, Total: it.Total,
+		}
+	}
+	return out
+}
+
+func toItemEntities(items []models.DealItem) []entity.DealItem {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]entity.DealItem, len(items))
+	for i, it := range items {
+		out[i] = entity.DealItem{
+			ID: it.ID, ProductID: it.ProductID, Name: it.Name,
+			Quantity: it.Quantity, UnitPrice: it.UnitPrice, Total: it.Total,
+		}
+	}
+	return out
 }
 
 // ── sales metrics aggregations ───────────────────────────────────────────────

@@ -82,6 +82,29 @@ type MarkLostRequest struct {
 	Reason string `json:"reason"`
 }
 
+// AddItemRequest is the body of POST /v1/deals/{id}/items.
+type AddItemRequest struct {
+	ProductID string `json:"product_id"`
+	Quantity  int    `json:"quantity"`
+}
+
+// ToCommand maps to the service command.
+func (r AddItemRequest) ToCommand() dcontracts.AddItem {
+	return dcontracts.AddItem{ProductID: r.ProductID, Quantity: r.Quantity}
+}
+
+// UpdateItemRequest is the body of PATCH /v1/deals/{id}/items/{itemId}. Nil =
+// unchanged.
+type UpdateItemRequest struct {
+	Quantity  *int     `json:"quantity"`
+	UnitPrice *float64 `json:"unit_price"`
+}
+
+// ToCommand maps to the service command.
+func (r UpdateItemRequest) ToCommand() dcontracts.UpdateItem {
+	return dcontracts.UpdateItem{Quantity: r.Quantity, UnitPrice: r.UnitPrice}
+}
+
 // ── responses ────────────────────────────────────────────────────────────────
 
 // DealResponse is the public representation of a deal. The *_name fields are
@@ -111,8 +134,21 @@ type DealResponse struct {
 	ExpectedCloseDate   *time.Time `json:"expected_close_date,omitempty"`
 	StageChangedAt      time.Time  `json:"stage_changed_at"`
 	ClosedAt            *time.Time `json:"closed_at,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	// Items are the product line items (Products block); when present, value is their sum.
+	Items     []DealItemResponse `json:"items,omitempty"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// DealItemResponse is one product line on a deal. Name/unit_price are the snapshot
+// taken when the product was added.
+type DealItemResponse struct {
+	ID        string  `json:"id"`
+	ProductID string  `json:"product_id"`
+	Name      string  `json:"name"`
+	Quantity  int     `json:"quantity"`
+	UnitPrice float64 `json:"unit_price"`
+	Total     float64 `json:"total"`
 }
 
 // NewDealResponse maps a deal entity to its DTO (without enrichment).
@@ -127,8 +163,22 @@ func NewDealResponse(d *entity.Deal) DealResponse {
 		AssignedTo: d.AssignedTo, SectorID: d.SectorID, ConversationIDs: conv,
 		Source: d.Source, Status: string(d.Status), LostReason: d.LostReason,
 		ExpectedCloseDate: d.ExpectedCloseDate, StageChangedAt: d.StageChangedAt,
-		ClosedAt: d.ClosedAt, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		ClosedAt: d.ClosedAt, Items: newItemResponses(d.Items), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
+}
+
+func newItemResponses(items []entity.DealItem) []DealItemResponse {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]DealItemResponse, len(items))
+	for i, it := range items {
+		out[i] = DealItemResponse{
+			ID: it.ID, ProductID: it.ProductID, Name: it.Name,
+			Quantity: it.Quantity, UnitPrice: it.UnitPrice, Total: it.Total,
+		}
+	}
+	return out
 }
 
 // NewDealResponses maps a slice.

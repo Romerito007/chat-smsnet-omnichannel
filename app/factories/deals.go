@@ -11,6 +11,7 @@ import (
 	iamservice "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/service"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	dealrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/deals"
+	productrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/products"
 	dealctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/deals"
 	salesctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/salesreports"
 )
@@ -46,7 +47,23 @@ func DealService(c *container.Container) *dealservice.Service {
 	svc.SetPublisher(c.Events)
 	// Record user-facing timeline events on every relevant action (best-effort).
 	svc.SetTimeline(dealTimelineWriter{tl: DealTimelineService(c)})
+	// Product items: snapshot the catalog (over the products repo, no module re-gate —
+	// the deal service gates) + the products toggle.
+	svc.SetProductCatalog(dealProductLookup{repo: productrepo.New(c.Mongo.DB)}, productsGate{settings: CRMSettingsService(c)})
 	return svc
+}
+
+// dealProductLookup adapts the products repository to the deals' ProductLookup port
+// (snapshot the product's name/price/active when added as a deal item).
+type dealProductLookup struct{ repo *productrepo.Repository }
+
+// Product implements dcontracts.ProductLookup.
+func (a dealProductLookup) Product(ctx context.Context, productID string) (*dcontracts.ProductRef, error) {
+	p, err := a.repo.FindByID(ctx, productID)
+	if err != nil {
+		return nil, err
+	}
+	return &dcontracts.ProductRef{Name: p.Name, Price: p.Price, Currency: p.Currency, Active: p.Active}, nil
 }
 
 // dealAudience resolves a sector's agents (user ids) for the deal-move notification,

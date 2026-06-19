@@ -180,6 +180,47 @@ func (c *Controller) MarkLost(w http.ResponseWriter, r *http.Request) {
 	c.writeEnriched(w, r, d)
 }
 
+// AddItem handles POST /v1/deals/{id}/items (deal.manage): snapshot a product onto
+// the deal and recompute the value.
+func (c *Controller) AddItem(w http.ResponseWriter, r *http.Request) {
+	var req dto.AddItemRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	d, err := c.deals.AddItem(r.Context(), chi.URLParam(r, "id"), req.ToCommand())
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	c.writeEnrichedStatus(w, r, d, http.StatusCreated)
+}
+
+// UpdateItem handles PATCH /v1/deals/{id}/items/{itemId} (deal.manage).
+func (c *Controller) UpdateItem(w http.ResponseWriter, r *http.Request) {
+	var req dto.UpdateItemRequest
+	if err := middleware.DecodeJSON(r, &req); err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	d, err := c.deals.UpdateItem(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "itemId"), req.ToCommand())
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	c.writeEnriched(w, r, d)
+}
+
+// RemoveItem handles DELETE /v1/deals/{id}/items/{itemId} (deal.manage).
+func (c *Controller) RemoveItem(w http.ResponseWriter, r *http.Request) {
+	d, err := c.deals.RemoveItem(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "itemId"))
+	if err != nil {
+		middleware.WriteError(w, r, err)
+		return
+	}
+	c.writeEnriched(w, r, d)
+}
+
 // Delete handles DELETE /v1/deals/{id} (deal.manage).
 func (c *Controller) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := c.deals.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {

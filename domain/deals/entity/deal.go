@@ -40,8 +40,44 @@ type Deal struct {
 	// StageChangedAt is bumped on every stage move (measures time-in-stage later).
 	StageChangedAt time.Time
 	ClosedAt       *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Items are the product line items (Products block). When present, Value is their
+	// sum; with no items Value is edited manually (backward compatible).
+	Items     []DealItem
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// DealItem is a product line on a deal. Name and UnitPrice are a SNAPSHOT taken when
+// the product was added — a later catalog price change does not alter existing items.
+type DealItem struct {
+	ID        string
+	ProductID string
+	Name      string
+	Quantity  int
+	UnitPrice float64
+	Total     float64
+}
+
+// RecalcValue recomputes each item's total and sets the deal Value to the sum of the
+// items. It is called on every item mutation; with no items Value becomes 0 (and the
+// deal is then editable manually again).
+func (d *Deal) RecalcValue() {
+	var sum float64
+	for i := range d.Items {
+		d.Items[i].Total = float64(d.Items[i].Quantity) * d.Items[i].UnitPrice
+		sum += d.Items[i].Total
+	}
+	d.Value = sum
+}
+
+// FindItem returns the index of the item with the given id, or -1.
+func (d *Deal) FindItem(itemID string) int {
+	for i := range d.Items {
+		if d.Items[i].ID == itemID {
+			return i
+		}
+	}
+	return -1
 }
 
 // HasConversation reports whether the deal already links the given conversation.

@@ -33,5 +33,11 @@ func registerDealRoutes(r chi.Router, c *container.Container) {
 		// Deal timeline: read the feed (deal.view) and add a manual comment (deal.manage).
 		p.With(middleware.RequirePermission(authz.DealView)).Get("/deals/{id}/timeline", timeline.Feed)
 		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/timeline/comments", timeline.Comment)
+
+		// Deal product items (deal.manage; respects the products toggle). They are read
+		// back as part of GET /deals/{id}.
+		p.With(middleware.RequirePermission(authz.DealManage)).Post("/deals/{id}/items", ctl.AddItem)
+		p.With(middleware.RequirePermission(authz.DealManage)).Patch("/deals/{id}/items/{itemId}", ctl.UpdateItem)
+		p.With(middleware.RequirePermission(authz.DealManage)).Delete("/deals/{id}/items/{itemId}", ctl.RemoveItem)
 	})
 }

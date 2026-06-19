@@ -305,6 +305,39 @@ func registerDeals(p *paths) {
 		summary: "Add a manual comment to a deal's timeline (deal.manage). 409 when the timeline module is disabled for the tenant.",
 		params:  idp, reqBody: body(ref("DealCommentRequest")),
 		responses: M{"201": jsonResp("Created", ref("DealTimelineEvent")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
+
+	// deal product items (read back via GET /deals/{id}; respect the products toggle)
+	itemp := []M{pathParam("id", "deal id"), pathParam("itemId", "item id")}
+	p.add("POST", "/v1/deals/{id}/items", op(opConfig{tag: "deals",
+		summary: "Add a product line to a deal (deal.manage). Snapshots the product's name+price NOW, recomputes the deal value from the items, and records product_added on the timeline. 409 when the products module is disabled.",
+		params:  idp, reqBody: body(ref("AddItemRequest")),
+		responses: M{"201": jsonResp("Updated deal", ref("Deal")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
+	p.add("PATCH", "/v1/deals/{id}/items/{itemId}", op(opConfig{tag: "deals",
+		summary: "Edit a deal item's quantity / negotiated unit price (deal.manage). Recomputes the deal value.",
+		params:  itemp, reqBody: body(ref("UpdateItemRequest")),
+		responses: M{"200": jsonResp("Updated deal", ref("Deal")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
+	p.add("DELETE", "/v1/deals/{id}/items/{itemId}", op(opConfig{tag: "deals",
+		summary: "Remove a deal item (deal.manage). Recomputes the value and records product_removed on the timeline.",
+		params:  itemp, responses: M{"200": jsonResp("Updated deal", ref("Deal")), "404": respRef("Error404"), "409": respRef("Error409")}}))
+}
+
+// registerProducts mounts the CRM product-catalog endpoints (respect the products
+// toggle: empty list / 409 writes when disabled).
+func registerProducts(p *paths) {
+	p.add("GET", "/v1/crm/products", op(opConfig{tag: "crm",
+		summary: "List/search the product catalog (deal.view). Empty when the products module is disabled.",
+		params: append(paginationParams(),
+			queryParam("q", "Name search (case-insensitive)."),
+			queryParam("active", "Filter by active flag (true|false).")),
+		responses: M{"200": jsonResp("Product page", pageOf(ref("Product")))}}))
+	p.add("POST", "/v1/crm/products", op(opConfig{tag: "crm",
+		summary:   "Create a catalog product (crm.manage). 409 when the products module is disabled.",
+		reqBody:   body(ref("CreateProductRequest")),
+		responses: M{"201": jsonResp("Created", ref("Product")), "400": respRef("Error400"), "409": respRef("Error409")}}))
+	p.add("PATCH", "/v1/crm/products/{id}", op(opConfig{tag: "crm",
+		summary: "Edit a product, or deactivate it with active=false (crm.manage). Deactivating is preferred over deleting so deals keep referencing the product.",
+		params:  []M{pathParam("id", "product id")}, reqBody: body(ref("UpdateProductRequest")),
+		responses: M{"200": jsonResp("Updated", ref("Product")), "400": respRef("Error400"), "404": respRef("Error404"), "409": respRef("Error409")}}))
 }
 
 // registerCRMSettings mounts the per-tenant CRM settings (optional-module toggles).
@@ -323,8 +356,8 @@ func registerDealTasks(p *paths) {
 	idp := []M{pathParam("id", "deal id")}
 	taskp := []M{pathParam("id", "deal id"), pathParam("taskId", "task id")}
 	p.add("GET", "/v1/deals/{id}/tasks", op(opConfig{tag: "deals",
-		summary: "List a deal's tasks (deal.view, deal visibility). Empty when the tasks module is disabled (crmsettings.tasks_enabled).",
-		params:  append(paginationParams(), idp...),
+		summary:   "List a deal's tasks (deal.view, deal visibility). Empty when the tasks module is disabled (crmsettings.tasks_enabled).",
+		params:    append(paginationParams(), idp...),
 		responses: M{"200": jsonResp("Task page", pageOf(ref("DealTask"))), "404": respRef("Error404")}}))
 	p.add("POST", "/v1/deals/{id}/tasks", op(opConfig{tag: "deals",
 		summary: "Create a task on a deal (deal.manage). Records task_created on the timeline and notifies the assignee. 409 when the tasks module is disabled.",

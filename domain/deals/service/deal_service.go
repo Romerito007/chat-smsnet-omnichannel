@@ -28,6 +28,8 @@ type Service struct {
 	audience      contracts.DealAudience
 	publisher     shared.EventPublisher
 	timeline      contracts.TimelineWriter
+	products      contracts.ProductLookup
+	productsGate  contracts.ProductsGate
 	clock         shared.Clock
 }
 
@@ -93,6 +95,17 @@ func (s *Service) SetAudience(a contracts.DealAudience) {
 func (s *Service) SetTimeline(w contracts.TimelineWriter) {
 	if w != nil {
 		s.timeline = w
+	}
+}
+
+// SetProductCatalog wires the product lookup (snapshot) and the products toggle used
+// by the deal-item endpoints. Optional: without them items cannot be managed.
+func (s *Service) SetProductCatalog(lookup contracts.ProductLookup, gate contracts.ProductsGate) {
+	if lookup != nil {
+		s.products = lookup
+	}
+	if gate != nil {
+		s.productsGate = gate
 	}
 }
 
@@ -222,7 +235,11 @@ func (s *Service) Update(ctx context.Context, id string, cmd contracts.UpdateDea
 		if *cmd.Value < 0 {
 			return nil, apperror.Validation("value must be >= 0")
 		}
-		d.Value = *cmd.Value
+		// With product items present, Value is their sum (authoritative) — a manual
+		// value edit is ignored. With no items it stays manually editable (compatible).
+		if len(d.Items) == 0 {
+			d.Value = *cmd.Value
+		}
 	}
 	if cmd.Currency != nil {
 		d.Currency = currencyOr(*cmd.Currency)
@@ -453,6 +470,136 @@ func (s *Service) MarkLost(ctx context.Context, dealID, reason string) (*entity.
 	s.publishDeal(ctx, d, contracts.RealtimeDealStageChanged, fromStageID, "user")
 	s.recordStageMove(ctx, d, fromStageID, fromStatus, dealActor(ctx))
 	return d, nil
+}
+
+// AddItem adds a product line to a deal: it snapshots the catalog product's name and
+// price NOW (a later catalog change won't alter this line), recomputes the deal value
+// from the items, and records product_added on the timeline.
+func (s *Service) AddItem(ctx context.Context, dealID string, cmd contracts.AddItem) (*entity.Deal, error) {
+	if err := s.requireProducts(ctx); err != nil {
+		return nil, err
+	}
+	if cmd.Quantity <= 0 {
+		return nil, apperror.Validation("quantity must be > 0")
+	}
+	if s.products == nil {
+		return nil, apperror.Integration("product catalog is not configured")
+	}
+	d, err := s.repo.FindByID(ctx, dealID)
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.products.Product(ctx, strings.TrimSpace(cmd.ProductID))
+	if err != nil {
+		return nil, err
+	}
+	if !p.Active {
+		return nil, apperror.Validation("the product is not active")
+	}
+	item := entity.DealItem{
+		ID: shared.NewID(), ProductID: strings.TrimSpace(cmd.ProductID),
+		Name: p.Name, Quantity: cmd.Quantity, UnitPrice: p.Price,
+	}
+	d.Items = append(d.Items, item)
+	if err := s.saveItems(ctx, d); err != nil {
+		return nil, err
+	}
+	s.recordItem(ctx, d, contracts.TimelineProductAdded, item)
+	return d, nil
+}
+
+// UpdateItem edits a line's quantity and/or negotiated unit price and recomputes the
+// deal value.
+func (s *Service) UpdateItem(ctx context.Context, dealID, itemID string, cmd contracts.UpdateItem) (*entity.Deal, error) {
+	if err := s.requireProducts(ctx); err != nil {
+		return nil, err
+	}
+	d, err := s.repo.FindByID(ctx, dealID)
+	if err != nil {
+		return nil, err
+	}
+	i := d.FindItem(itemID)
+	if i < 0 {
+		return nil, apperror.NotFound("item not found")
+	}
+	if cmd.Quantity != nil {
+		if *cmd.Quantity <= 0 {
+			return nil, apperror.Validation("quantity must be > 0")
+		}
+		d.Items[i].Quantity = *cmd.Quantity
+	}
+	if cmd.UnitPrice != nil {
+		if *cmd.UnitPrice < 0 {
+			return nil, apperror.Validation("unit_price must be >= 0")
+		}
+		d.Items[i].UnitPrice = *cmd.UnitPrice
+	}
+	if err := s.saveItems(ctx, d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// RemoveItem removes a line, recomputes the deal value, and records product_removed.
+func (s *Service) RemoveItem(ctx context.Context, dealID, itemID string) (*entity.Deal, error) {
+	if err := s.requireProducts(ctx); err != nil {
+		return nil, err
+	}
+	d, err := s.repo.FindByID(ctx, dealID)
+	if err != nil {
+		return nil, err
+	}
+	i := d.FindItem(itemID)
+	if i < 0 {
+		return nil, apperror.NotFound("item not found")
+	}
+	removed := d.Items[i]
+	d.Items = append(d.Items[:i], d.Items[i+1:]...)
+	if err := s.saveItems(ctx, d); err != nil {
+		return nil, err
+	}
+	s.recordItem(ctx, d, contracts.TimelineProductRemoved, removed)
+	return d, nil
+}
+
+// saveItems recomputes the deal value from its items and persists, publishing the
+// realtime deal.updated so the Kanban reflects the new total.
+func (s *Service) saveItems(ctx context.Context, d *entity.Deal) error {
+	d.RecalcValue()
+	d.UpdatedAt = s.clock.Now()
+	if err := s.repo.Update(ctx, d); err != nil {
+		return err
+	}
+	s.audit(ctx, "deal.updated", d.ID)
+	s.publishDeal(ctx, d, contracts.RealtimeDealUpdated, "", "")
+	return nil
+}
+
+// requireProducts enforces the tenant and that the products module is enabled (409
+// when off), so deal items can only be managed while the module is on.
+func (s *Service) requireProducts(ctx context.Context) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	if s.productsGate == nil {
+		return nil
+	}
+	on, err := s.productsGate.ProductsEnabled(ctx)
+	if err != nil {
+		return err
+	}
+	if !on {
+		return apperror.Conflict("the products module is disabled for this tenant")
+	}
+	return nil
+}
+
+// recordItem writes a product_added/product_removed event to the deal's timeline.
+func (s *Service) recordItem(ctx context.Context, d *entity.Deal, kind string, item entity.DealItem) {
+	s.recordTimeline(ctx, d.ID, kind, dealActor(ctx), map[string]any{
+		"product_id": item.ProductID, "name": item.Name,
+		"quantity": item.Quantity, "total": item.Total,
+	})
 }
 
 // Delete removes a deal.

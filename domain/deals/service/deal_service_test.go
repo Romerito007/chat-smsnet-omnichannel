@@ -265,6 +265,15 @@ func (f *fakeTimeline) last(kind string) (contracts.TimelineEvent, bool) {
 	return contracts.TimelineEvent{}, false
 }
 
+func (f *fakeTimeline) has(kind string) bool {
+	for _, e := range f.events {
+		if e.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
 func hasKind(kinds []string, k string) bool {
 	for _, x := range kinds {
 		if x == k {
@@ -273,6 +282,20 @@ func hasKind(kinds []string, k string) bool {
 	}
 	return false
 }
+
+type fakeProducts struct{ ref *contracts.ProductRef }
+
+func (f *fakeProducts) Product(context.Context, string) (*contracts.ProductRef, error) {
+	if f.ref == nil {
+		return nil, apperror.NotFound("nf")
+	}
+	cp := *f.ref
+	return &cp, nil
+}
+
+type fakeProductsGate struct{ on bool }
+
+func (g fakeProductsGate) ProductsEnabled(context.Context) (bool, error) { return g.on, nil }
 
 func tenantCtx() context.Context { return shared.WithTenant(context.Background(), "t1") }
 func authCtx(scope authz.SectorScope, sectors []string, user string) context.Context {
@@ -687,6 +710,96 @@ func TestTimeline_AutomationMoveRecordsAsAutomation(t *testing.T) {
 	sc, ok := tl.last("stage_changed")
 	if !ok || sc.ActorID != "automation" {
 		t.Errorf("automation move must tag the actor as automation, got %+v", sc)
+	}
+}
+
+func TestItems_AddSnapshotsAndRecalculatesValue(t *testing.T) {
+	svc, _ := newSvc()
+	tl := &fakeTimeline{}
+	svc.SetTimeline(tl)
+	prod := &fakeProducts{ref: &contracts.ProductRef{Name: "Plano 500MB", Price: 50, Active: true}}
+	svc.SetProductCatalog(prod, fakeProductsGate{on: true})
+	ctx := tenantCtx()
+	d, _ := svc.Create(ctx, contracts.CreateDeal{Title: "Acme", Value: 999})
+
+	// Add 2× @ 50 → snapshot + value recalculated to the items sum (100), not 999.
+	d, err := svc.AddItem(ctx, d.ID, contracts.AddItem{ProductID: "p1", Quantity: 2})
+	if err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+	if len(d.Items) != 1 || d.Items[0].Name != "Plano 500MB" || d.Items[0].UnitPrice != 50 || d.Items[0].Total != 100 {
+		t.Errorf("item snapshot wrong: %+v", d.Items)
+	}
+	if d.Value != 100 {
+		t.Errorf("value must be the items sum (100), got %v", d.Value)
+	}
+	if !tl.has("product_added") {
+		t.Errorf("product_added not recorded on the timeline")
+	}
+
+	// The catalog price changes — existing items must NOT change; a NEW item uses the
+	// new price.
+	prod.ref.Price = 80
+	d, _ = svc.AddItem(ctx, d.ID, contracts.AddItem{ProductID: "p1", Quantity: 1})
+	if d.Items[0].UnitPrice != 50 {
+		t.Errorf("existing item must keep its snapshot price 50, got %v", d.Items[0].UnitPrice)
+	}
+	if d.Items[1].UnitPrice != 80 {
+		t.Errorf("a new item must snapshot the new price 80, got %v", d.Items[1].UnitPrice)
+	}
+	if d.Value != 180 {
+		t.Errorf("value must be 100+80=180, got %v", d.Value)
+	}
+}
+
+func TestItems_RemoveRecalculatesAndEmits(t *testing.T) {
+	svc, _ := newSvc()
+	tl := &fakeTimeline{}
+	svc.SetTimeline(tl)
+	svc.SetProductCatalog(&fakeProducts{ref: &contracts.ProductRef{Name: "Plano", Price: 50, Active: true}}, fakeProductsGate{on: true})
+	ctx := tenantCtx()
+	d, _ := svc.Create(ctx, contracts.CreateDeal{Title: "x"})
+	d, _ = svc.AddItem(ctx, d.ID, contracts.AddItem{ProductID: "p1", Quantity: 2}) // value 100
+
+	d, err := svc.RemoveItem(ctx, d.ID, d.Items[0].ID)
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if len(d.Items) != 0 || d.Value != 0 {
+		t.Errorf("after removing the only item, value must be 0: %+v", d)
+	}
+	if !tl.has("product_removed") {
+		t.Errorf("product_removed not recorded")
+	}
+}
+
+func TestItems_RejectedWhenModuleDisabled(t *testing.T) {
+	svc, _ := newSvc()
+	svc.SetProductCatalog(&fakeProducts{ref: &contracts.ProductRef{Name: "x", Price: 1, Active: true}}, fakeProductsGate{on: false})
+	ctx := tenantCtx()
+	d, _ := svc.Create(ctx, contracts.CreateDeal{Title: "x"})
+	if _, err := svc.AddItem(ctx, d.ID, contracts.AddItem{ProductID: "p1", Quantity: 1}); apperror.From(err).Code != apperror.CodeConflict {
+		t.Errorf("disabled products module must be a conflict, got %v", err)
+	}
+}
+
+func TestUpdate_ManualValuePreservedWithoutItemsAndIgnoredWithItems(t *testing.T) {
+	svc, _ := newSvc()
+	svc.SetProductCatalog(&fakeProducts{ref: &contracts.ProductRef{Name: "Plano", Price: 50, Active: true}}, fakeProductsGate{on: true})
+	ctx := tenantCtx()
+	d, _ := svc.Create(ctx, contracts.CreateDeal{Title: "x", Value: 500})
+
+	// No items → manual value edit works (compatible with the pre-products behavior).
+	d, _ = svc.Update(ctx, d.ID, contracts.UpdateDeal{Value: ptr(700.0)})
+	if d.Value != 700 {
+		t.Errorf("manual value must apply with no items, got %v", d.Value)
+	}
+
+	// With items → the sum is authoritative; a manual value edit is ignored.
+	d, _ = svc.AddItem(ctx, d.ID, contracts.AddItem{ProductID: "p1", Quantity: 2}) // value 100
+	d, _ = svc.Update(ctx, d.ID, contracts.UpdateDeal{Value: ptr(9999.0)})
+	if d.Value != 100 {
+		t.Errorf("with items, manual value must be ignored (sum=100), got %v", d.Value)
 	}
 }
 

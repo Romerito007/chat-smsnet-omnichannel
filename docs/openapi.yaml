@@ -56,6 +56,16 @@ components:
                 - name
                 - password
             type: object
+        AddItemRequest:
+            properties:
+                product_id:
+                    type: string
+                quantity:
+                    type: integer
+            required:
+                - product_id
+                - quantity
+            type: object
         AddStageRequest:
             properties:
                 color:
@@ -1560,6 +1570,22 @@ components:
             required:
                 - name
             type: object
+        CreateProductRequest:
+            properties:
+                currency:
+                    description: Defaults to BRL.
+                    type: string
+                description:
+                    type: string
+                name:
+                    type: string
+                price:
+                    type: number
+                sku:
+                    type: string
+            required:
+                - name
+            type: object
         CreateQueueRequest:
             properties:
                 enabled:
@@ -1816,6 +1842,11 @@ components:
                     type: string
                 id:
                     type: string
+                items:
+                    description: Product line items (Products block); present only when the deal has items.
+                    items:
+                        $ref: '#/components/schemas/DealItem'
+                    type: array
                 lost_reason:
                     type: string
                 pipeline_id:
@@ -1849,6 +1880,7 @@ components:
                     format: date-time
                     type: string
                 value:
+                    description: When the deal has product items, this is the SUM of their totals (recomputed on add/edit/remove). With no items it is edited manually via PATCH.
                     type: number
             type: object
         DealCommentRequest:
@@ -1858,6 +1890,24 @@ components:
                     type: string
             required:
                 - text
+            type: object
+        DealItem:
+            properties:
+                id:
+                    type: string
+                name:
+                    description: Snapshot of the product name when added.
+                    type: string
+                product_id:
+                    type: string
+                quantity:
+                    type: integer
+                total:
+                    description: quantity × unit_price.
+                    type: number
+                unit_price:
+                    description: Snapshot of the product price when added (or the negotiated price); a later catalog change does not alter it.
+                    type: number
             type: object
         DealTask:
             properties:
@@ -3163,6 +3213,32 @@ components:
                 status:
                     type: string
             type: object
+        Product:
+            properties:
+                active:
+                    description: Inactive products stay referenceable by existing deal items but are hidden from the active catalog and cannot be added.
+                    type: boolean
+                created_at:
+                    format: date-time
+                    type: string
+                currency:
+                    type: string
+                description:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                price:
+                    type: number
+                sku:
+                    type: string
+                tenant_id:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+            type: object
         ProposedAction:
             properties:
                 approval_id:
@@ -4327,6 +4403,14 @@ components:
                     description: 'How many invoices /cliente returns: false (default) = ALL invoices; true = ONLY the oldest (overdue) one. Most tenants list all; enable only for an oldest-invoice billing flow.'
                     type: boolean
             type: object
+        UpdateItemRequest:
+            properties:
+                quantity:
+                    type: integer
+                unit_price:
+                    description: The negotiated unit price.
+                    type: number
+            type: object
         UpdateMcpServerRequest:
             properties:
                 auth_header:
@@ -4359,6 +4443,22 @@ components:
                     additionalProperties:
                         type: boolean
                     type: object
+            type: object
+        UpdateProductRequest:
+            properties:
+                active:
+                    description: Set false to deactivate (preferred over deleting).
+                    type: boolean
+                currency:
+                    type: string
+                description:
+                    type: string
+                name:
+                    type: string
+                price:
+                    type: number
+                sku:
+                    type: string
             type: object
         UpdateProfileRequest:
             properties:
@@ -8191,6 +8291,133 @@ paths:
             summary: Summarize the conversation
             tags:
                 - copilot
+    /v1/crm/products:
+        get:
+            operationId: getCrmProducts
+            parameters:
+                - description: Page size (max 100).
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                - description: Opaque keyset cursor from a previous page's next_cursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+                - description: Name search (case-insensitive).
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - description: Filter by active flag (true|false).
+                  in: query
+                  name: active
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    data:
+                                        items:
+                                            $ref: '#/components/schemas/Product'
+                                        type: array
+                                    page:
+                                        $ref: '#/components/schemas/PageInfo'
+                                type: object
+                    description: Product page
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: List/search the product catalog (deal.view). Empty when the products module is disabled.
+            tags:
+                - crm
+        post:
+            operationId: postCrmProducts
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateProductRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Product'
+                    description: Created
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Create a catalog product (crm.manage). 409 when the products module is disabled.
+            tags:
+                - crm
+    /v1/crm/products/{id}:
+        patch:
+            operationId: patchCrmProductsById
+            parameters:
+                - description: product id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateProductRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Product'
+                    description: Updated
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Edit a product, or deactivate it with active=false (crm.manage). Deactivating is preferred over deleting so deals keep referencing the product.
+            tags:
+                - crm
     /v1/crm/settings:
         get:
             operationId: getCrmSettings
@@ -8978,6 +9205,131 @@ paths:
                 "500":
                     $ref: '#/components/responses/Error500'
             summary: Link a conversation to a deal (deal.manage, idempotent)
+            tags:
+                - deals
+    /v1/deals/{id}/items:
+        post:
+            operationId: postDealsByIdItems
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AddItemRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Deal'
+                    description: Updated deal
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Add a product line to a deal (deal.manage). Snapshots the product's name+price NOW, recomputes the deal value from the items, and records product_added on the timeline. 409 when the products module is disabled.
+            tags:
+                - deals
+    /v1/deals/{id}/items/{itemId}:
+        delete:
+            operationId: deleteDealsByIdItemsByItemId
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: item id
+                  in: path
+                  name: itemId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Deal'
+                    description: Updated deal
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Remove a deal item (deal.manage). Recomputes the value and records product_removed on the timeline.
+            tags:
+                - deals
+        patch:
+            operationId: patchDealsByIdItemsByItemId
+            parameters:
+                - description: deal id
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: item id
+                  in: path
+                  name: itemId
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateItemRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Deal'
+                    description: Updated deal
+                "400":
+                    $ref: '#/components/responses/Error400'
+                "401":
+                    $ref: '#/components/responses/Error401'
+                "403":
+                    $ref: '#/components/responses/Error403'
+                "404":
+                    $ref: '#/components/responses/Error404'
+                "409":
+                    $ref: '#/components/responses/Error409'
+                "429":
+                    $ref: '#/components/responses/Error429'
+                "500":
+                    $ref: '#/components/responses/Error500'
+            summary: Edit a deal item's quantity / negotiated unit price (deal.manage). Recomputes the deal value.
             tags:
                 - deals
     /v1/deals/{id}/lost:

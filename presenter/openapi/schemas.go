@@ -685,6 +685,21 @@ func schemas() M {
 			"products_enabled": boolean(),
 			"timeline_enabled": boolean(),
 		}),
+		// ── product catalog ──────────────────────────────────────────────────────
+		"Product": object(M{
+			"id": str(), "tenant_id": str(), "name": str(), "description": str(),
+			"price": number(), "currency": str(), "sku": str(),
+			"active":     withDesc(boolean(), "Inactive products stay referenceable by existing deal items but are hidden from the active catalog and cannot be added."),
+			"created_at": dateTime(), "updated_at": dateTime(),
+		}),
+		"CreateProductRequest": object(M{
+			"name": str(), "description": str(), "price": number(),
+			"currency": describedStr("Defaults to BRL."), "sku": str(),
+		}, "name"),
+		"UpdateProductRequest": object(M{
+			"name": str(), "description": str(), "price": number(), "currency": str(), "sku": str(),
+			"active": withDesc(boolean(), "Set false to deactivate (preferred over deleting)."),
+		}),
 		"AddStageRequest":    object(M{"name": str(), "order": integer(), "is_won": boolean(), "is_lost": boolean(), "color": str()}, "name"),
 		"UpdateStageRequest": object(M{"name": str(), "order": integer(), "is_won": boolean(), "is_lost": boolean(), "color": str()}),
 		"ReorderStagesRequest": object(M{
@@ -694,13 +709,15 @@ func schemas() M {
 		// ── sales deals (Kanban cards) ───────────────────────────────────────────
 		"Deal": object(M{
 			"id": str(), "tenant_id": str(),
-			"pipeline_id":   str(),
-			"pipeline_name": describedStr("Read-only, derived: resolved in batch so the Kanban renders the name instead of a raw id; empty when unresolved."),
-			"stage_id":      str(),
-			"stage_name":    describedStr("Read-only, derived: resolved in batch from the pipeline; empty when unresolved."),
-			"contact_id":    str(),
-			"contact_name":  describedStr("Read-only, derived: resolved in batch; empty when unresolved."),
-			"title":         str(), "value": number(), "currency": str(),
+			"pipeline_id":            str(),
+			"pipeline_name":          describedStr("Read-only, derived: resolved in batch so the Kanban renders the name instead of a raw id; empty when unresolved."),
+			"stage_id":               str(),
+			"stage_name":             describedStr("Read-only, derived: resolved in batch from the pipeline; empty when unresolved."),
+			"contact_id":             str(),
+			"contact_name":           describedStr("Read-only, derived: resolved in batch; empty when unresolved."),
+			"title":                  str(),
+			"value":                  withDesc(number(), "When the deal has product items, this is the SUM of their totals (recomputed on add/edit/remove). With no items it is edited manually via PATCH."),
+			"currency":               str(),
 			"assigned_to":            str(),
 			"assigned_to_name":       describedStr("Read-only, derived: the seller's name, resolved in batch; empty when unresolved."),
 			"assigned_to_avatar_url": describedStr("Read-only, derived: the seller's signed avatar URL, resolved in batch; empty when unresolved."),
@@ -712,8 +729,18 @@ func schemas() M {
 			"expected_close_date":    dateTime(),
 			"stage_changed_at":       dateTime(),
 			"closed_at":              dateTime(),
+			"items":                  describedArr(ref("DealItem"), "Product line items (Products block); present only when the deal has items."),
 			"created_at":             dateTime(), "updated_at": dateTime(),
 		}),
+		"DealItem": object(M{
+			"id": str(), "product_id": str(),
+			"name":       describedStr("Snapshot of the product name when added."),
+			"quantity":   integer(),
+			"unit_price": withDesc(number(), "Snapshot of the product price when added (or the negotiated price); a later catalog change does not alter it."),
+			"total":      withDesc(number(), "quantity × unit_price."),
+		}),
+		"AddItemRequest":    object(M{"product_id": str(), "quantity": integer()}, "product_id", "quantity"),
+		"UpdateItemRequest": object(M{"quantity": integer(), "unit_price": withDesc(number(), "The negotiated unit price.")}),
 		"CreateDealRequest": object(M{
 			"title": str(), "value": number(), "currency": str(),
 			"pipeline_id": describedStr("Defaults to the tenant default pipeline."),

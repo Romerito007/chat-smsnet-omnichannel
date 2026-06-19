@@ -66,6 +66,7 @@ func NewRouter(c *container.Container) *chi.Mux {
 		registerPipelineRoutes(v1, c)
 		registerDealRoutes(v1, c)
 		registerDealTaskRoutes(v1, c)
+		registerProductRoutes(v1, c)
 		registerCRMSettingsRoutes(v1, c)
 		registerAutomationRulesRoutes(v1, c)
 		registerProviderHubRoutes(v1, c)

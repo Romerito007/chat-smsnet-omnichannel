@@ -20,4 +20,16 @@ type Deal struct {
 	ExpectedCloseDate *time.Time `bson:"expected_close_date,omitempty"`
 	StageChangedAt    time.Time  `bson:"stage_changed_at"`
 	ClosedAt          *time.Time `bson:"closed_at,omitempty"`
+	Items             []DealItem `bson:"items,omitempty"`
+}
+
+// DealItem is the embedded BSON sub-document for a product line on a deal. Name and
+// UnitPrice are a snapshot taken when the product was added.
+type DealItem struct {
+	ID        string  `bson:"id"`
+	ProductID string  `bson:"product_id"`
+	Name      string  `bson:"name"`
+	Quantity  int     `bson:"quantity"`
+	UnitPrice float64 `bson:"unit_price"`
+	Total     float64 `bson:"total"`
 }
