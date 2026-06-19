@@ -19,7 +19,8 @@ type ConditionDTO struct {
 // ActionDTO is one action. Each action reads only its own params: send_webhook →
 // webhook_id; send_message → text; send_attachment → attachment_id; assign_agent →
 // agent_id; assign_team → sector_id; add_tag/remove_tag → tag_id; change_priority
-// → priority. remove_*/resolve/open/mark_pending take no params.
+// → priority; move_deal_stage → pipeline_id + stage_id. remove_*/resolve/open/
+// mark_pending take no params.
 type ActionDTO struct {
 	Type         string `json:"type"`
 	WebhookID    string `json:"webhook_id,omitempty"`
@@ -29,6 +30,8 @@ type ActionDTO struct {
 	SectorID     string `json:"sector_id,omitempty"`
 	TagID        string `json:"tag_id,omitempty"`
 	Priority     string `json:"priority,omitempty"`
+	PipelineID   string `json:"pipeline_id,omitempty"`
+	StageID      string `json:"stage_id,omitempty"`
 }
 
 // MissingRefDTO is one action whose referenced entity no longer exists.
@@ -78,6 +81,8 @@ func NewRuleResponse(r *entity.AutomationRule) RuleResponse {
 			SectorID:     a.Param("sector_id"),
 			TagID:        a.Param("tag_id"),
 			Priority:     a.Param("priority"),
+			PipelineID:   a.Param("pipeline_id"),
+			StageID:      a.Param("stage_id"),
 		})
 	}
 	return RuleResponse{
@@ -200,6 +205,8 @@ func toActions(in []ActionDTO) []entity.Action {
 		setParam(params, "sector_id", a.SectorID)
 		setParam(params, "tag_id", a.TagID)
 		setParam(params, "priority", a.Priority)
+		setParam(params, "pipeline_id", a.PipelineID)
+		setParam(params, "stage_id", a.StageID)
 		out = append(out, entity.Action{Type: entity.ActionType(a.Type), Params: params})
 	}
 	return out

@@ -16,6 +16,11 @@ const (
 	EventConversationOpened   RuleEvent = "conversation_opened"
 	EventConversationClosed   RuleEvent = "conversation_closed"
 	EventMessageCreated       RuleEvent = "message_created"
+	// EventInteractiveReplyReceived fires when the customer answers an interactive
+	// menu (a message with message_type=interactive_reply is created). It rides the
+	// same internal message.created event but is a distinct rule event so a rule can
+	// trigger on the chosen interactive_reply.id (e.g. move a CRM card).
+	EventInteractiveReplyReceived RuleEvent = "interactive_reply_received"
 )
 
 // internalToRuleEvent maps the internal dot-notation events emitted by the
@@ -51,6 +56,7 @@ func ValidEvent(e RuleEvent) bool {
 var AllEvents = []RuleEvent{
 	EventConversationCreated, EventConversationUpdated, EventConversationResolved,
 	EventConversationOpened, EventConversationClosed, EventMessageCreated,
+	EventInteractiveReplyReceived,
 }
 
 // ConditionField is a conversation/contact field a condition tests.
@@ -69,6 +75,11 @@ const (
 	// message_created event (contains / does_not_contain). It is the only field
 	// resolved against the message itself, not the conversation.
 	FieldMessageContent ConditionField = "message_content"
+	// FieldInteractiveReplyID tests the id of the chosen button/list option on an
+	// interactive_reply_received event (e.g. "intent_500mb"). equal_to/not_equal_to
+	// match one id; contains/does_not_contain test membership in a comma-separated
+	// allowlist of ids.
+	FieldInteractiveReplyID ConditionField = "interactive_reply_id"
 )
 
 // ConditionOperator is how a field is compared to the condition value.
@@ -85,15 +96,16 @@ const (
 // scalar string fields → equal/not_equal; the tags list → contains/does_not_contain;
 // phone (string) → equal/contains.
 var allowedOperators = map[ConditionField][]ConditionOperator{
-	FieldStatus:          {OpEqualTo, OpNotEqualTo},
-	FieldChannel:         {OpEqualTo, OpNotEqualTo},
-	FieldAssignedAgentID: {OpEqualTo, OpNotEqualTo},
-	FieldSectorID:        {OpEqualTo, OpNotEqualTo},
-	FieldQueueID:         {OpEqualTo, OpNotEqualTo},
-	FieldPriority:        {OpEqualTo, OpNotEqualTo},
-	FieldTags:            {OpContains, OpDoesNotContain},
-	FieldContactPhone:    {OpEqualTo, OpContains},
-	FieldMessageContent:  {OpContains, OpDoesNotContain},
+	FieldStatus:             {OpEqualTo, OpNotEqualTo},
+	FieldChannel:            {OpEqualTo, OpNotEqualTo},
+	FieldAssignedAgentID:    {OpEqualTo, OpNotEqualTo},
+	FieldSectorID:           {OpEqualTo, OpNotEqualTo},
+	FieldQueueID:            {OpEqualTo, OpNotEqualTo},
+	FieldPriority:           {OpEqualTo, OpNotEqualTo},
+	FieldTags:               {OpContains, OpDoesNotContain},
+	FieldContactPhone:       {OpEqualTo, OpContains},
+	FieldMessageContent:     {OpContains, OpDoesNotContain},
+	FieldInteractiveReplyID: {OpEqualTo, OpNotEqualTo, OpContains, OpDoesNotContain},
 }
 
 // OperatorsFor returns the operators valid for a field (nil for unknown fields).
@@ -141,6 +153,13 @@ const (
 	ActionResolveConversation ActionType = "resolve_conversation"  // no params
 	ActionOpenConversation    ActionType = "open_conversation"     // no params
 	ActionMarkPending         ActionType = "mark_pending"          // no params (→ status queued)
+
+	// ActionMoveDealStage moves the deal(s) linked to the conversation into a target
+	// stage. Params: pipeline_id + stage_id. Only existing deals are moved (none is
+	// created); a deal already in the target stage, or in another pipeline, is left
+	// untouched. Pairs with the interactive_reply_received event for a customer-driven
+	// CRM funnel.
+	ActionMoveDealStage ActionType = "move_deal_stage" // params: pipeline_id, stage_id
 )
 
 // ParamKey returns the single referenced param key for an action type that

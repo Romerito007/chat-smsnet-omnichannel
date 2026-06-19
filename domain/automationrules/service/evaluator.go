@@ -84,22 +84,28 @@ func (e *Evaluator) Evaluate(ctx context.Context, task arcontracts.EvaluateTask)
 	if task.Depth > maxDepth {
 		return nil
 	}
-	ruleEvent, ok := entity.RuleEventForInternal(task.Event)
-	if !ok {
+	trigger := triggerMessageFrom(task)
+	ruleEvents := applicableRuleEvents(task, trigger)
+	if len(ruleEvents) == 0 {
 		return nil // not an event rules react to
 	}
 	ctx = shared.WithTenant(ctx, task.TenantID)
 
-	rules, err := e.rules.ListEnabledByEvent(ctx, ruleEvent)
-	if err != nil {
-		return err
+	// A rule belongs to exactly one event, so the per-event lists are disjoint; the
+	// union is the candidate set (interactive_reply_received rides message.created).
+	var rules []*entity.AutomationRule
+	for _, re := range ruleEvents {
+		rs, err := e.rules.ListEnabledByEvent(ctx, re)
+		if err != nil {
+			return err
+		}
+		rules = append(rules, rs...)
 	}
 	if len(rules) == 0 {
 		return nil // no rules for this event → nothing to do (cheap)
 	}
 
-	msgContent := messageContent(task)
-	ec, err := e.hydrate(ctx, task.ConversationID, msgContent)
+	ec, err := e.hydrate(ctx, task.ConversationID, trigger)
 	if err != nil {
 		// A missing conversation (deleted/anonymized) is not a retryable failure.
 		if apperror.From(err).Code == apperror.CodeNotFound {
@@ -138,7 +144,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, task arcontracts.EvaluateTask)
 
 	// Re-hydrate under the lock: a rule that matched when emitted may no longer
 	// match the LIVE conversation (skipped_stale).
-	live, err := e.hydrate(ctx, task.ConversationID, msgContent)
+	live, err := e.hydrate(ctx, task.ConversationID, trigger)
 	if err != nil {
 		if apperror.From(err).Code == apperror.CodeNotFound {
 			return nil
@@ -148,7 +154,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, task arcontracts.EvaluateTask)
 
 	for _, rule := range matched {
 		if !rule.Matches(live) {
-			e.log(ctx, task, rule.ID, ruleEvent, "", entity.EvalSkippedStale, "")
+			e.log(ctx, task, rule.ID, rule.Event, "", entity.EvalSkippedStale, "")
 			continue
 		}
 		// Dedup CLAIMS the (rule, event_id) firing BEFORE running actions, so an
@@ -157,29 +163,30 @@ func (e *Evaluator) Evaluate(ctx context.Context, task arcontracts.EvaluateTask)
 		if e.dedup != nil {
 			allowed, derr := e.dedup.Allow(ctx, dedupKey(task.TenantID, rule.ID, task.EventID))
 			if derr == nil && !allowed {
-				e.log(ctx, task, rule.ID, ruleEvent, "", entity.EvalSkippedDedup, "")
+				e.log(ctx, task, rule.ID, rule.Event, "", entity.EvalSkippedDedup, "")
 				continue
 			}
 		}
-		e.fire(ctx, task, rule, ruleEvent)
+		e.fire(ctx, task, rule)
 	}
 	return nil
 }
 
 // fire runs a matching rule's actions in declared order, best-effort: a failing
 // action does not abort the rest. Each action's outcome is logged on its own row.
-func (e *Evaluator) fire(ctx context.Context, task arcontracts.EvaluateTask, rule *entity.AutomationRule, ruleEvent entity.RuleEvent) {
+// The wire event is the rule's own event (a rule belongs to exactly one).
+func (e *Evaluator) fire(ctx context.Context, task arcontracts.EvaluateTask, rule *entity.AutomationRule) {
 	ac := ActionContext{
 		TenantID:       task.TenantID,
 		ConversationID: task.ConversationID,
 		RuleID:         rule.ID,
-		EventWire:      string(ruleEvent),
+		EventWire:      string(rule.Event),
 		Data:           task.Data,
 		Depth:          task.Depth,
 	}
 	for _, a := range rule.Actions {
 		status, summary := classify(e.actions.Run(ctx, a, ac))
-		e.log(ctx, task, rule.ID, ruleEvent, string(a.Type), status, summary)
+		e.log(ctx, task, rule.ID, rule.Event, string(a.Type), status, summary)
 	}
 }
 
@@ -198,36 +205,71 @@ func classify(err error) (entity.EvalStatus, string) {
 	}
 }
 
-// messageContent extracts the triggering message's text from a message_created
-// task payload (empty for other events), for the message_content condition.
-func messageContent(task arcontracts.EvaluateTask) string {
+// triggerMessage is the per-message data a message.created event carries for
+// condition matching: the text (message_content), the message_type, and the chosen
+// interactive_reply id. All empty for non-message events.
+type triggerMessage struct {
+	Text               string
+	MessageType        string
+	InteractiveReplyID string
+}
+
+// triggerMessageFrom extracts the triggering message's fields from a message.created
+// task payload (empty for other events).
+func triggerMessageFrom(task arcontracts.EvaluateTask) triggerMessage {
 	if task.Event != "message.created" || len(task.Data) == 0 {
-		return ""
+		return triggerMessage{}
 	}
 	var p struct {
-		Text string `json:"text"`
+		Text             string `json:"text"`
+		MessageType      string `json:"message_type"`
+		InteractiveReply *struct {
+			ID string `json:"id"`
+		} `json:"interactive_reply"`
 	}
 	_ = json.Unmarshal(task.Data, &p)
-	return p.Text
+	tm := triggerMessage{Text: p.Text, MessageType: p.MessageType}
+	if p.InteractiveReply != nil {
+		tm.InteractiveReplyID = p.InteractiveReply.ID
+	}
+	return tm
+}
+
+// applicableRuleEvents maps a task to the rule events it can fire. message.created
+// always maps to message_created and, when the message is an interactive reply,
+// ALSO to interactive_reply_received (a rule belongs to one event, so the union is
+// non-overlapping). Other internal events map 1:1.
+func applicableRuleEvents(task arcontracts.EvaluateTask, tm triggerMessage) []entity.RuleEvent {
+	base, ok := entity.RuleEventForInternal(task.Event)
+	if !ok {
+		return nil
+	}
+	events := []entity.RuleEvent{base}
+	if base == entity.EventMessageCreated && tm.MessageType == "interactive_reply" {
+		events = append(events, entity.EventInteractiveReplyReceived)
+	}
+	return events
 }
 
 // hydrate loads the conversation and its contact into an EvalContext. Conditions
-// resolve against the live conversation — for message_created too — except the
-// message_content condition, which uses the triggering message's text.
-func (e *Evaluator) hydrate(ctx context.Context, conversationID, msgContent string) (entity.EvalContext, error) {
+// resolve against the live conversation — for message events too — except the
+// message_content and interactive_reply_id conditions, which use the triggering
+// message's fields.
+func (e *Evaluator) hydrate(ctx context.Context, conversationID string, tm triggerMessage) (entity.EvalContext, error) {
 	conv, err := e.conversations.FindByID(ctx, conversationID)
 	if err != nil {
 		return entity.EvalContext{}, err
 	}
 	ec := entity.EvalContext{
-		Status:          string(conv.Status),
-		Channel:         conv.Channel,
-		AssignedAgentID: conv.AssignedTo,
-		SectorID:        conv.SectorID,
-		QueueID:         conv.QueueID,
-		Priority:        string(conv.Priority),
-		Tags:            conv.Tags,
-		MessageContent:  msgContent,
+		Status:             string(conv.Status),
+		Channel:            conv.Channel,
+		AssignedAgentID:    conv.AssignedTo,
+		SectorID:           conv.SectorID,
+		QueueID:            conv.QueueID,
+		Priority:           string(conv.Priority),
+		Tags:               conv.Tags,
+		MessageContent:     tm.Text,
+		InteractiveReplyID: tm.InteractiveReplyID,
 	}
 	if conv.ContactID != "" {
 		if contact, cerr := e.contacts.FindByID(ctx, conv.ContactID); cerr == nil && contact != nil {

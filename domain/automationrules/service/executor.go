@@ -34,6 +34,13 @@ type ConversationOps interface {
 	AutomationMarkPending(ctx context.Context, conversationID string) error
 }
 
+// DealOps is the deal mutation the action catalog needs. Implemented by the deals
+// service (automation-facing). Moving is idempotent and only touches existing deals
+// linked to the conversation — none is created.
+type DealOps interface {
+	AutomationMoveDealStage(ctx context.Context, conversationID, pipelineID, stageID string) error
+}
+
 // BudgetLimiter is the LAYER-2 safety fuse: it caps automation message/attachment
 // actions per conversation per window (not flow control — only a breaker for a
 // buggy integrator that echoes forever). Fail-open on backend errors.
@@ -62,12 +69,14 @@ type ActionRunner interface {
 type Executor struct {
 	webhooks WebhookEmitter
 	conv     ConversationOps
+	deals    DealOps
 	budget   BudgetLimiter
 }
 
-// NewExecutor builds the executor.
-func NewExecutor(webhooks WebhookEmitter, conv ConversationOps, budget BudgetLimiter) *Executor {
-	return &Executor{webhooks: webhooks, conv: conv, budget: budget}
+// NewExecutor builds the executor. The deal ops are optional (a nil one makes
+// move_deal_stage a no-op).
+func NewExecutor(webhooks WebhookEmitter, conv ConversationOps, deals DealOps, budget BudgetLimiter) *Executor {
+	return &Executor{webhooks: webhooks, conv: conv, deals: deals, budget: budget}
 }
 
 // Run dispatches one action by type. The context is tagged origin=automation and
@@ -118,6 +127,9 @@ func (x *Executor) Run(ctx context.Context, action entity.Action, ac ActionConte
 	case entity.ActionMarkPending:
 		return x.requireConv().AutomationMarkPending(ctx, ac.ConversationID)
 
+	case entity.ActionMoveDealStage:
+		return x.requireDeals().AutomationMoveDealStage(ctx, ac.ConversationID, action.Param("pipeline_id"), action.Param("stage_id"))
+
 	default:
 		return fmt.Errorf("unsupported action type %q", action.Type)
 	}
@@ -145,6 +157,13 @@ func (x *Executor) requireConv() ConversationOps {
 	return x.conv
 }
 
+func (x *Executor) requireDeals() DealOps {
+	if x.deals == nil {
+		return noopDealOps{}
+	}
+	return x.deals
+}
+
 var _ ActionRunner = (*Executor)(nil)
 
 // noopConvOps is a defensive fallback when no conversation ops are wired (tests).
@@ -167,3 +186,10 @@ func (noopConvOps) AutomationChangePriority(context.Context, string, string) err
 func (noopConvOps) AutomationResolve(context.Context, string) error                { return nil }
 func (noopConvOps) AutomationOpen(context.Context, string) error                   { return nil }
 func (noopConvOps) AutomationMarkPending(context.Context, string) error            { return nil }
+
+// noopDealOps is the fallback when no deal ops are wired (tests / deals disabled).
+type noopDealOps struct{}
+
+func (noopDealOps) AutomationMoveDealStage(context.Context, string, string, string) error {
+	return nil
+}

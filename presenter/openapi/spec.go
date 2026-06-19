@@ -154,7 +154,7 @@ func webhookEventEnum() M {
 // internal conversation/message events the backend already emits.
 func automationRuleEventEnum() M {
 	return enum("conversation_created", "conversation_updated", "conversation_resolved",
-		"conversation_opened", "conversation_closed", "message_created")
+		"conversation_opened", "conversation_closed", "message_created", "interactive_reply_received")
 }
 
 func object(props M, required ...string) M {

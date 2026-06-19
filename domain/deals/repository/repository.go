@@ -22,6 +22,9 @@ type DealRepository interface {
 	// CountByStage counts deals in a pipeline stage (the StageDealChecker for the
 	// pipelines domain: refuse deleting a non-empty stage).
 	CountByStage(ctx context.Context, pipelineID, stageID string) (int, error)
+	// FindByConversation returns the deals that link the conversation (tenant-scoped,
+	// no visibility filter — the automation engine acts system-wide).
+	FindByConversation(ctx context.Context, conversationID string) ([]*entity.Deal, error)
 
 	// ── sales metrics (aggregations, visibility-scoped) ──────────────────────
 	// OpenByStage groups OPEN deals by stage: count + value sum.

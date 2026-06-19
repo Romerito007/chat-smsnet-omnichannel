@@ -77,6 +77,48 @@ func TestRuleValidate_NoParamActionsAccepted(t *testing.T) {
 	}
 }
 
+type fakeStageChecker struct{ exists map[string]bool } // key: pipelineID+"/"+stageID
+
+func (f fakeStageChecker) StageExists(_ context.Context, pipelineID, stageID string) (bool, error) {
+	return f.exists[pipelineID+"/"+stageID], nil
+}
+
+func TestRuleValidate_MoveDealStageRequiresBothIDs(t *testing.T) {
+	svc, _ := newRuleSvc("wh1")
+	_, err := svc.Create(ruleCtx(), CreateRule{
+		Name: "move", Event: entity.EventInteractiveReplyReceived,
+		Actions: action(entity.ActionMoveDealStage, map[string]string{"pipeline_id": "p1"}), // stage_id missing
+	})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("missing stage_id must be a validation error, got %v", err)
+	}
+}
+
+func TestRuleValidate_MoveDealStageUnknownStageRejected(t *testing.T) {
+	svc, _ := newRuleSvc("wh1")
+	svc.SetStageChecker(fakeStageChecker{exists: map[string]bool{}}) // stage does not exist
+	_, err := svc.Create(ruleCtx(), CreateRule{
+		Name: "move", Event: entity.EventInteractiveReplyReceived,
+		Conditions: []entity.Condition{{Field: entity.FieldInteractiveReplyID, Operator: entity.OpEqualTo, Value: "intent_500mb"}},
+		Actions:    action(entity.ActionMoveDealStage, map[string]string{"pipeline_id": "p1", "stage_id": "ghost"}),
+	})
+	if apperror.From(err).Code != apperror.CodeValidation {
+		t.Fatalf("unknown stage must be a validation error, got %v", err)
+	}
+}
+
+func TestRuleValidate_MoveDealStageKnownStageAccepted(t *testing.T) {
+	svc, _ := newRuleSvc("wh1")
+	svc.SetStageChecker(fakeStageChecker{exists: map[string]bool{"p1/s2": true}})
+	if _, err := svc.Create(ruleCtx(), CreateRule{
+		Name: "move", Event: entity.EventInteractiveReplyReceived,
+		Conditions: []entity.Condition{{Field: entity.FieldInteractiveReplyID, Operator: entity.OpEqualTo, Value: "intent_500mb"}},
+		Actions:    action(entity.ActionMoveDealStage, map[string]string{"pipeline_id": "p1", "stage_id": "s2"}),
+	}); err != nil {
+		t.Fatalf("a move_deal_stage with an existing stage must be accepted: %v", err)
+	}
+}
+
 func TestRuleMissingRefs_FlagsDeletedAgent(t *testing.T) {
 	svc := ruleSvcWithRefs(fakeRefChecker{exists: map[string]bool{}}) // nothing exists
 	rule := &entity.AutomationRule{

@@ -395,9 +395,9 @@ func schemas() M {
 			"missing_refs": arr(object(M{"action_index": integer(), "kind": enum("agent", "sector", "tag", "attachment", "webhook"), "id": str()})),
 		}),
 		"AutomationRuleCondition": object(M{
-			"field":    enum("status", "channel", "assigned_agent_id", "sector_id", "queue_id", "priority", "tags", "contact_phone", "message_content"),
-			"operator": withDesc(enum("equal_to", "not_equal_to", "contains", "does_not_contain"), "Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags & message_content → contains/does_not_contain; contact_phone → equal_to/contains."),
-			"value":    describedStr("Comparison value; for tags it is a single tag id; for message_content the substring to match (case-insensitive) against the triggering message text."),
+			"field":    enum("status", "channel", "assigned_agent_id", "sector_id", "queue_id", "priority", "tags", "contact_phone", "message_content", "interactive_reply_id"),
+			"operator": withDesc(enum("equal_to", "not_equal_to", "contains", "does_not_contain"), "Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags & message_content → contains/does_not_contain; contact_phone → equal_to/contains; interactive_reply_id → equal_to/not_equal_to (one id) or contains/does_not_contain (membership in a comma-separated id list)."),
+			"value":    describedStr("Comparison value; for tags it is a single tag id; for message_content the substring to match (case-insensitive) against the triggering message text; for interactive_reply_id the chosen button/list id (e.g. \"intent_500mb\"), or a comma-separated id list with contains/does_not_contain."),
 		}, "field", "operator", "value"),
 		"AutomationRuleAction": object(M{
 			"type": withDesc(enum(
@@ -405,6 +405,7 @@ func schemas() M {
 				"assign_agent", "assign_team", "remove_assigned_agent", "remove_assigned_team",
 				"add_tag", "remove_tag", "change_priority",
 				"resolve_conversation", "open_conversation", "mark_pending",
+				"move_deal_stage",
 			), "Action kind. Each reads only its own param (below)."),
 			"webhook_id":    describedStr("send_webhook: id of a registered webhook (/v1/webhooks)."),
 			"text":          describedStr("send_message: the message text (sent as System Automation)."),
@@ -413,6 +414,8 @@ func schemas() M {
 			"sector_id":     describedStr("assign_team: the sector (team) id."),
 			"tag_id":        describedStr("add_tag/remove_tag: the tag id."),
 			"priority":      describedStr("change_priority: one of low|normal|high|urgent."),
+			"pipeline_id":   describedStr("move_deal_stage: the target pipeline id (the stage must belong to it)."),
+			"stage_id":      describedStr("move_deal_stage: the target stage id. Deals linked to the conversation (in this pipeline) move there; none is created, and a deal already in the stage is left untouched."),
 		}, "type"),
 		"CreateAutomationRuleRequest": object(M{
 			"name": str(), "description": str(),

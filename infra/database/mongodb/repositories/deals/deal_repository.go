@@ -163,6 +163,27 @@ func (r *Repository) CountByStage(ctx context.Context, pipelineID, stageID strin
 	return int(n), nil
 }
 
+func (r *Repository) FindByConversation(ctx context.Context, conversationID string) ([]*entity.Deal, error) {
+	tenantID, err := shared.RequireTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := r.coll.Find(ctx, bson.M{"tenant_id": tenantID, "conversation_ids": conversationID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = c.Close(ctx) }()
+	var out []*entity.Deal
+	for c.Next(ctx) {
+		var m models.Deal
+		if err := c.Decode(&m); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, toEntity(&m))
+	}
+	return out, mongodb.MapError(c.Err())
+}
+
 func toModel(d *entity.Deal) models.Deal {
 	m := models.Deal{
 		PipelineID: d.PipelineID, StageID: d.StageID, ContactID: d.ContactID, Title: d.Title,

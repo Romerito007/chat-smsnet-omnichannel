@@ -45,6 +45,13 @@ type RefChecker interface {
 	Exists(ctx context.Context, kind, id string) (bool, error)
 }
 
+// StageChecker reports whether a pipeline stage exists (for validating the
+// move_deal_stage action). Implemented by the pipelines service. Optional: when
+// unset, move_deal_stage is validated structurally (both ids present) only.
+type StageChecker interface {
+	StageExists(ctx context.Context, pipelineID, stageID string) (bool, error)
+}
+
 // MissingRef is one action referencing a tenant entity that no longer exists (soft
 // referential integrity surfaced as a rule health indicator).
 type MissingRef struct {
@@ -60,6 +67,7 @@ type RuleService struct {
 	webhooks whrepo.SubscriptionRepository
 	logs     repository.LogRepository
 	refs     RefChecker
+	stages   StageChecker
 	clock    shared.Clock
 }
 
@@ -77,6 +85,14 @@ func NewRuleService(repo repository.RuleRepository, webhooks whrepo.Subscription
 func (s *RuleService) SetRefChecker(r RefChecker) {
 	if r != nil {
 		s.refs = r
+	}
+}
+
+// SetStageChecker wires the pipeline-stage existence checker for the move_deal_stage
+// action. Optional.
+func (s *RuleService) SetStageChecker(c StageChecker) {
+	if c != nil {
+		s.stages = c
 	}
 }
 
@@ -315,6 +331,10 @@ func (s *RuleService) validate(ctx context.Context, r *entity.AutomationRule) er
 			if !validPriority(strings.TrimSpace(a.Param("priority"))) {
 				v[fieldKey("actions", i, "priority")] = "must be one of: low, normal, high, urgent"
 			}
+		case entity.ActionMoveDealStage:
+			if err := s.validateMoveDealStage(ctx, v, i, a); err != nil {
+				return err
+			}
 		case entity.ActionRemoveAssignedAgent, entity.ActionRemoveAssignedTeam,
 			entity.ActionResolveConversation, entity.ActionOpenConversation, entity.ActionMarkPending:
 			// no params
@@ -345,6 +365,30 @@ func validateInteractiveParam(s string) string {
 		return "must be a valid JSON object"
 	}
 	return ""
+}
+
+// validateMoveDealStage checks the move_deal_stage action: pipeline_id + stage_id are
+// required, and (when a StageChecker is wired) the stage must exist in the pipeline.
+func (s *RuleService) validateMoveDealStage(ctx context.Context, v map[string]any, i int, a entity.Action) error {
+	pipelineID := strings.TrimSpace(a.Param("pipeline_id"))
+	stageID := strings.TrimSpace(a.Param("stage_id"))
+	if pipelineID == "" {
+		v[fieldKey("actions", i, "pipeline_id")] = "is required"
+	}
+	if stageID == "" {
+		v[fieldKey("actions", i, "stage_id")] = "is required"
+	}
+	if pipelineID == "" || stageID == "" || s.stages == nil {
+		return nil
+	}
+	ok, err := s.stages.StageExists(ctx, pipelineID, stageID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		v[fieldKey("actions", i, "stage_id")] = "unknown stage for this pipeline"
+	}
+	return nil
 }
 
 // validateRef checks an action's required param is present and (when a RefChecker

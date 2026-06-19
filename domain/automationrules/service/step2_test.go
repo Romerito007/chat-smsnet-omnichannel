@@ -43,7 +43,7 @@ func evalWithExecutor(conv *conventity.Conversation, repo *fakeRuleRepo, ops Con
 		repo, logs,
 		&fakeConvRepo{conv: conv},
 		&fakeContactRepo{contact: &contactentity.Contact{ID: "c1"}},
-		NewExecutor(&fakeEmitter{}, ops, budget),
+		NewExecutor(&fakeEmitter{}, ops, nil, budget),
 		fakeDeduper{allow: true},
 		shared.NoopLocker{},
 		fixedClock{t: time.Unix(1700000000, 0).UTC()},

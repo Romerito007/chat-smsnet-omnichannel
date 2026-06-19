@@ -18,6 +18,10 @@ type EvalContext struct {
 	// MessageContent is the text of the message that triggered a message_created
 	// event (empty for non-message events). Matched by FieldMessageContent.
 	MessageContent string
+	// InteractiveReplyID is the id of the chosen button/list option on an
+	// interactive_reply_received event (empty otherwise). Matched by
+	// FieldInteractiveReplyID.
+	InteractiveReplyID string
 }
 
 // Matches reports whether every condition holds (AND). An empty condition list
@@ -51,6 +55,20 @@ func (c Condition) match(ec EvalContext) bool {
 			return !has
 		}
 		return has // OpContains (case-insensitive substring)
+	case FieldInteractiveReplyID:
+		switch c.Operator {
+		case OpContains, OpDoesNotContain:
+			// Value is a comma-separated allowlist of ids; test exact membership.
+			in := idInList(ec.InteractiveReplyID, c.Value)
+			if c.Operator == OpDoesNotContain {
+				return !in
+			}
+			return in
+		case OpNotEqualTo:
+			return ec.InteractiveReplyID != c.Value
+		default: // OpEqualTo
+			return ec.InteractiveReplyID == c.Value
+		}
 	default:
 		v := scalarField(ec, c.Field)
 		if c.Operator == OpNotEqualTo {
@@ -82,6 +100,20 @@ func scalarField(ec EvalContext, field ConditionField) string {
 func containsString(list []string, v string) bool {
 	for _, x := range list {
 		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// idInList reports whether id (non-empty) is an exact member of a comma-separated
+// list (whitespace around each item is ignored).
+func idInList(id, csv string) bool {
+	if id == "" {
+		return false
+	}
+	for _, item := range strings.Split(csv, ",") {
+		if strings.TrimSpace(item) == id {
 			return true
 		}
 	}

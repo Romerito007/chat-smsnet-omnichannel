@@ -37,6 +37,8 @@ func DealService(c *container.Container) *dealservice.Service {
 	svc.SetAuditor(AuditService(c))
 	svc.SetConversationLookup(conversationLookup{repo: convrepo.NewConversationRepository(c.Mongo.DB)})
 	svc.SetContactChecker(contactChecker{contacts: ContactService(c)})
+	// Alert a deal's seller in-app when an automation advances their card.
+	svc.SetNotifier(NotificationEnqueuer(c))
 	return svc
 }
 

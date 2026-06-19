@@ -9,6 +9,7 @@ import (
 	arservice "github.com/romerito007/chat-smsnet-omnichannel/domain/automationrules/service"
 	ctservice "github.com/romerito007/chat-smsnet-omnichannel/domain/conversationtools/service"
 	iamservice "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/service"
+	pipelineservice "github.com/romerito007/chat-smsnet-omnichannel/domain/pipelines/service"
 	sectorservice "github.com/romerito007/chat-smsnet-omnichannel/domain/sectors/service"
 	infraautomationrules "github.com/romerito007/chat-smsnet-omnichannel/infra/automationrules"
 	arrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/automationrules"
@@ -35,7 +36,22 @@ func AutomationRuleService(c *container.Container) *arservice.RuleService {
 		tags:        ConversationToolsTagService(c),
 		attachments: AttachmentService(c),
 	})
+	// Validate the move_deal_stage action's target stage against the pipelines.
+	svc.SetStageChecker(ruleStageChecker{pipelines: PipelineService(c)})
 	return svc
+}
+
+// ruleStageChecker validates a move_deal_stage action's target stage exists in the
+// target pipeline (for rule create/update validation).
+type ruleStageChecker struct{ pipelines *pipelineservice.Service }
+
+// StageExists implements arservice.StageChecker.
+func (c ruleStageChecker) StageExists(ctx context.Context, pipelineID, stageID string) (bool, error) {
+	pl, err := c.pipelines.Get(ctx, pipelineID)
+	if err != nil {
+		return existsFromErr(err)
+	}
+	return pl.StageIndex(stageID) >= 0, nil
 }
 
 // ruleRefChecker resolves an action's referenced entity existence for rule
@@ -102,6 +118,7 @@ func AutomationRuleEvaluator(c *container.Container) *arservice.Evaluator {
 	executor := arservice.NewExecutor(
 		WebhookDispatcher(c),
 		conversationServiceBase(c),
+		DealService(c),
 		infraautomationrules.NewBudget(c.Redis),
 	)
 	return arservice.NewEvaluator(

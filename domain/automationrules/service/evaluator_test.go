@@ -59,7 +59,7 @@ func newEvaluator(conv *conventity.Conversation, contact *contactentity.Contact,
 		rules, logs,
 		&fakeConvRepo{conv: conv},
 		&fakeContactRepo{contact: contact},
-		NewExecutor(emitter, nil, nil),
+		NewExecutor(emitter, nil, nil, nil),
 		fakeDeduper{allow: allow},
 		shared.NoopLocker{},
 		fixedClock{t: time.Unix(1700000000, 0).UTC()},
@@ -221,7 +221,7 @@ func TestEvaluate_SendMessageDoesNotLoop(t *testing.T) {
 		repo, logs,
 		&fakeConvRepo{conv: conv},
 		&fakeContactRepo{contact: &contactentity.Contact{ID: "c1"}},
-		NewExecutor(&fakeEmitter{}, messenger, nil),
+		NewExecutor(&fakeEmitter{}, messenger, nil, nil),
 		fakeDeduper{allow: true},
 		shared.NoopLocker{},
 		fixedClock{t: time.Unix(1700000000, 0).UTC()},
@@ -239,6 +239,94 @@ func TestEvaluate_SendMessageDoesNotLoop(t *testing.T) {
 	}
 	if messenger.sends != 1 {
 		t.Fatalf("expected exactly one automation message (no loop), got %d", messenger.sends)
+	}
+}
+
+// fakeDealOps records move_deal_stage calls from the executor.
+type fakeDealOps struct {
+	calls []struct{ conv, pipeline, stage string }
+}
+
+func (d *fakeDealOps) AutomationMoveDealStage(_ context.Context, conv, pipeline, stage string) error {
+	d.calls = append(d.calls, struct{ conv, pipeline, stage string }{conv, pipeline, stage})
+	return nil
+}
+
+func dealEvaluator(conv *conventity.Conversation, repo *fakeRuleRepo, deals DealOps) *Evaluator {
+	return NewEvaluator(
+		repo, &fakeLogRepo{},
+		&fakeConvRepo{conv: conv},
+		&fakeContactRepo{contact: &contactentity.Contact{ID: "c1"}},
+		NewExecutor(&fakeEmitter{}, nil, deals, nil),
+		fakeDeduper{allow: true},
+		shared.NoopLocker{},
+		fixedClock{t: time.Unix(1700000000, 0).UTC()},
+	)
+}
+
+func moveRule(value string) *entity.AutomationRule {
+	return &entity.AutomationRule{
+		ID: "r1", TenantID: "t1", Name: "move-card", Event: entity.EventInteractiveReplyReceived, Enabled: true,
+		Conditions: []entity.Condition{{Field: entity.FieldInteractiveReplyID, Operator: entity.OpEqualTo, Value: value}},
+		Actions:    []entity.Action{{Type: entity.ActionMoveDealStage, Params: map[string]string{"pipeline_id": "p1", "stage_id": "s2"}}},
+	}
+}
+
+// interactiveTask builds a message.created task for an interactive reply with the
+// given chosen id.
+func interactiveTask(convID, replyID string) arcontracts.EvaluateTask {
+	return task("message.created", convID, map[string]any{
+		"id": "m1", "conversation_id": convID, "message_type": "interactive_reply",
+		"interactive_reply": map[string]any{"id": replyID, "type": "button_reply"},
+	})
+}
+
+// The interactive_reply_received trigger fires on an interactive_reply message,
+// matches by the chosen id, and runs move_deal_stage with the configured target.
+func TestEvaluate_InteractiveReplyMovesDeal(t *testing.T) {
+	conv := &conventity.Conversation{ID: "cv1", TenantID: "t1", Channel: "whatsapp", ContactID: "c1"}
+	repo := newFakeRuleRepo()
+	repo.byID["r1"] = moveRule("intent_500mb")
+	deals := &fakeDealOps{}
+	ev := dealEvaluator(conv, repo, deals)
+
+	if err := ev.Evaluate(context.Background(), interactiveTask("cv1", "intent_500mb")); err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if len(deals.calls) != 1 {
+		t.Fatalf("expected one move_deal_stage call, got %d", len(deals.calls))
+	}
+	got := deals.calls[0]
+	if got.conv != "cv1" || got.pipeline != "p1" || got.stage != "s2" {
+		t.Errorf("move forwarded wrong args: %+v", got)
+	}
+}
+
+// A different chosen id must not satisfy the equal_to condition.
+func TestEvaluate_InteractiveReplyIDMismatchDoesNotMove(t *testing.T) {
+	conv := &conventity.Conversation{ID: "cv1", TenantID: "t1", ContactID: "c1"}
+	repo := newFakeRuleRepo()
+	repo.byID["r1"] = moveRule("intent_500mb")
+	deals := &fakeDealOps{}
+	ev := dealEvaluator(conv, repo, deals)
+
+	_ = ev.Evaluate(context.Background(), interactiveTask("cv1", "intent_1gb"))
+	if len(deals.calls) != 0 {
+		t.Errorf("a non-matching reply id must not move: %+v", deals.calls)
+	}
+}
+
+// A plain text message must NOT trigger an interactive_reply_received rule.
+func TestEvaluate_PlainMessageDoesNotTriggerInteractiveRule(t *testing.T) {
+	conv := &conventity.Conversation{ID: "cv1", TenantID: "t1", ContactID: "c1"}
+	repo := newFakeRuleRepo()
+	repo.byID["r1"] = moveRule("intent_500mb")
+	deals := &fakeDealOps{}
+	ev := dealEvaluator(conv, repo, deals)
+
+	_ = ev.Evaluate(context.Background(), task("message.created", "cv1", map[string]any{"id": "m1", "text": "oi", "message_type": "text"}))
+	if len(deals.calls) != 0 {
+		t.Errorf("a text message must not fire the interactive_reply rule: %+v", deals.calls)
 	}
 }
 

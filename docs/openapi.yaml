@@ -239,6 +239,7 @@ components:
                         - conversation_opened
                         - conversation_closed
                         - message_created
+                        - interactive_reply_received
                     type: string
                 health:
                     $ref: '#/components/schemas/AutomationRuleHealth'
@@ -263,11 +264,17 @@ components:
                 attachment_id:
                     description: 'send_attachment: an uploaded, ready attachment id (same tenant).'
                     type: string
+                pipeline_id:
+                    description: 'move_deal_stage: the target pipeline id (the stage must belong to it).'
+                    type: string
                 priority:
                     description: 'change_priority: one of low|normal|high|urgent.'
                     type: string
                 sector_id:
                     description: 'assign_team: the sector (team) id.'
+                    type: string
+                stage_id:
+                    description: 'move_deal_stage: the target stage id. Deals linked to the conversation (in this pipeline) move there; none is created, and a deal already in the stage is left untouched.'
                     type: string
                 tag_id:
                     description: 'add_tag/remove_tag: the tag id.'
@@ -291,6 +298,7 @@ components:
                         - resolve_conversation
                         - open_conversation
                         - mark_pending
+                        - move_deal_stage
                     type: string
                 webhook_id:
                     description: 'send_webhook: id of a registered webhook (/v1/webhooks).'
@@ -311,9 +319,10 @@ components:
                         - tags
                         - contact_phone
                         - message_content
+                        - interactive_reply_id
                     type: string
                 operator:
-                    description: 'Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags & message_content → contains/does_not_contain; contact_phone → equal_to/contains.'
+                    description: 'Allowed operators depend on the field: scalar fields → equal_to/not_equal_to; tags & message_content → contains/does_not_contain; contact_phone → equal_to/contains; interactive_reply_id → equal_to/not_equal_to (one id) or contains/does_not_contain (membership in a comma-separated id list).'
                     enum:
                         - equal_to
                         - not_equal_to
@@ -321,7 +330,7 @@ components:
                         - does_not_contain
                     type: string
                 value:
-                    description: Comparison value; for tags it is a single tag id; for message_content the substring to match (case-insensitive) against the triggering message text.
+                    description: Comparison value; for tags it is a single tag id; for message_content the substring to match (case-insensitive) against the triggering message text; for interactive_reply_id the chosen button/list id (e.g. "intent_500mb"), or a comma-separated id list with contains/does_not_contain.
                     type: string
             required:
                 - field
@@ -1148,6 +1157,7 @@ components:
                         - conversation_opened
                         - conversation_closed
                         - message_created
+                        - interactive_reply_received
                     type: string
                 name:
                     type: string
@@ -3399,6 +3409,7 @@ components:
                         - conversation_opened
                         - conversation_closed
                         - message_created
+                        - interactive_reply_received
                     type: string
                 id:
                     type: string
@@ -3882,6 +3893,7 @@ components:
                         - conversation_opened
                         - conversation_closed
                         - message_created
+                        - interactive_reply_received
                     type: string
                 name:
                     type: string

@@ -24,6 +24,7 @@ type Service struct {
 	conversations contracts.ConversationLookup
 	contacts      contracts.ContactChecker
 	auditor       shared.Auditor
+	notifier      shared.Notifier
 	clock         shared.Clock
 }
 
@@ -34,7 +35,7 @@ func New(repo repository.DealRepository, pipelines contracts.PipelineLookup, clo
 	if clock == nil {
 		clock = shared.SystemClock{}
 	}
-	return &Service{repo: repo, pipelines: pipelines, auditor: shared.NoopAuditor{}, clock: clock}
+	return &Service{repo: repo, pipelines: pipelines, auditor: shared.NoopAuditor{}, notifier: shared.NoopNotifier{}, clock: clock}
 }
 
 // SetAuditor wires the audit trail (optional).
@@ -55,6 +56,14 @@ func (s *Service) SetConversationLookup(c contracts.ConversationLookup) {
 func (s *Service) SetContactChecker(c contracts.ContactChecker) {
 	if c != nil {
 		s.contacts = c
+	}
+}
+
+// SetNotifier wires the in-app notifier used to alert a deal's seller when an
+// automation moves their card. Optional: when unset, no notification is sent.
+func (s *Service) SetNotifier(n shared.Notifier) {
+	if n != nil {
+		s.notifier = n
 	}
 }
 
@@ -231,8 +240,79 @@ func (s *Service) MoveStage(ctx context.Context, dealID, stageID string) (*entit
 	if err := s.repo.Update(ctx, d); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, "deal.stage_moved", d.ID)
+	s.auditMove(ctx, d.ID, "user")
 	return d, nil
+}
+
+// AutomationMoveDealStage moves every deal linked to the conversation into stageID of
+// pipelineID, as the automation engine (the interactive_reply_received trigger). It
+// is best-effort and idempotent: a deal already in the target stage — or belonging to
+// a different pipeline — is left untouched, and no deal is ever created. Each moved
+// deal's seller is notified in-app. The ctx is tenant-scoped (origin=automation).
+//
+// Possible extension (intentionally NOT implemented): when the conversation has no
+// linked deal and the chosen intent implies buying, auto-create a deal in the first
+// stage instead of doing nothing. Left out for now — this action only moves existing
+// deals.
+func (s *Service) AutomationMoveDealStage(ctx context.Context, conversationID, pipelineID, stageID string) error {
+	if _, err := shared.RequireTenant(ctx); err != nil {
+		return err
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	pipelineID = strings.TrimSpace(pipelineID)
+	stageID = strings.TrimSpace(stageID)
+	if conversationID == "" {
+		return apperror.Validation("conversation_id is required")
+	}
+	if stageID == "" {
+		return apperror.Validation("stage_id is required")
+	}
+	deals, err := s.repo.FindByConversation(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	for _, d := range deals {
+		// The target stage belongs to pipelineID; skip deals in another pipeline.
+		if pipelineID != "" && d.PipelineID != pipelineID {
+			continue
+		}
+		if d.StageID == stageID {
+			continue // idempotent: already there
+		}
+		pl, err := s.pipelines.Get(ctx, d.PipelineID)
+		if err != nil {
+			return err
+		}
+		stage := findStage(pl, stageID)
+		if stage == nil {
+			return apperror.Validation("the stage does not belong to the deal's pipeline")
+		}
+		now := s.clock.Now()
+		applyStage(d, stage, now)
+		d.UpdatedAt = now
+		if err := s.repo.Update(ctx, d); err != nil {
+			return err
+		}
+		s.auditMove(ctx, d.ID, "automation")
+		s.notifyMoved(ctx, d, stage.Name)
+	}
+	return nil
+}
+
+// notifyMoved alerts the deal's seller that automation advanced their card.
+// Best-effort and skipped when the deal has no assignee.
+func (s *Service) notifyMoved(ctx context.Context, d *entity.Deal, stageName string) {
+	if d.AssignedTo == "" {
+		return
+	}
+	s.notifier.Notify(ctx, shared.NotifyInput{
+		TenantID: d.TenantID,
+		UserID:   d.AssignedTo,
+		Type:     "deal.stage_moved_by_automation",
+		Title:    "Um card avançou pela resposta do cliente",
+		Body:     d.Title + " → " + stageName,
+		Link:     "/deals/" + d.ID,
+	})
 }
 
 // AssignTo sets (or clears with "") the deal's seller.
@@ -376,6 +456,15 @@ func (s *Service) visibility(ctx context.Context) (contracts.Visibility, error) 
 
 func (s *Service) audit(ctx context.Context, action, id string) {
 	_ = s.auditor.Record(ctx, shared.AuditEntry{Action: action, ResourceType: "deal", ResourceID: id})
+}
+
+// auditMove records a stage move, tagging who moved it (user|automation) so the
+// trail distinguishes a manual Kanban drag from an automation-driven advance.
+func (s *Service) auditMove(ctx context.Context, id, movedBy string) {
+	_ = s.auditor.Record(ctx, shared.AuditEntry{
+		Action: "deal.stage_moved", ResourceType: "deal", ResourceID: id,
+		Data: map[string]any{"moved_by": movedBy},
+	})
 }
 
 // applyStage moves a deal into a stage and reconciles its status + closed_at:

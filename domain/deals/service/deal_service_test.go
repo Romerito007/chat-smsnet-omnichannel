@@ -74,6 +74,16 @@ func (r *fakeRepo) List(_ context.Context, f contracts.ListFilter, vis contracts
 func (r *fakeRepo) CountByStage(context.Context, string, string) (int, error) {
 	return r.stageCount, nil
 }
+func (r *fakeRepo) FindByConversation(_ context.Context, conversationID string) ([]*entity.Deal, error) {
+	var out []*entity.Deal
+	for _, d := range r.byID {
+		if d.HasConversation(conversationID) {
+			cp := *d
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
 
 func (r *fakeRepo) OpenByStage(_ context.Context, f contracts.SalesFilter, vis contracts.Visibility) ([]contracts.FunnelStage, error) {
 	r.gotSalesVis, r.gotSalesF = vis, f
@@ -149,6 +159,42 @@ func newSvc() (*Service, *fakeRepo) {
 	repo := newRepo()
 	svc := New(repo, fakePipelines{pl: samplePipeline()}, nil)
 	return svc, repo
+}
+
+type capturingAuditor struct{ entries []shared.AuditEntry }
+
+func (a *capturingAuditor) Record(_ context.Context, e shared.AuditEntry) error {
+	a.entries = append(a.entries, e)
+	return nil
+}
+
+type capturingNotifier struct{ inputs []shared.NotifyInput }
+
+func (n *capturingNotifier) Notify(_ context.Context, in shared.NotifyInput) {
+	n.inputs = append(n.inputs, in)
+}
+
+// newAutoSvc builds a deal service with a capturing auditor + notifier for the
+// automation-move tests.
+func newAutoSvc() (*Service, *fakeRepo, *capturingAuditor, *capturingNotifier) {
+	repo := newRepo()
+	svc := New(repo, fakePipelines{pl: samplePipeline()}, nil)
+	aud, not := &capturingAuditor{}, &capturingNotifier{}
+	svc.SetAuditor(aud)
+	svc.SetNotifier(not)
+	return svc, repo, aud, not
+}
+
+func seedDeal(repo *fakeRepo, d *entity.Deal) { repo.byID[d.ID] = d }
+
+func movedBys(entries []shared.AuditEntry) []string {
+	var out []string
+	for _, e := range entries {
+		if e.Action == "deal.stage_moved" {
+			out = append(out, e.Data["moved_by"].(string))
+		}
+	}
+	return out
 }
 
 func tenantCtx() context.Context { return shared.WithTenant(context.Background(), "t1") }
@@ -285,6 +331,95 @@ func TestStageHasDeals(t *testing.T) {
 	repo.stageCount = 0
 	if has, _ := svc.StageHasDeals(tenantCtx(), "p1", "s1"); has {
 		t.Errorf("expected has-deals false for an empty stage")
+	}
+}
+
+func TestAutomationMoveDealStage_MovesLinkedDealAndNotifiesSeller(t *testing.T) {
+	svc, repo, aud, not := newAutoSvc()
+	seedDeal(repo, &entity.Deal{
+		ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen,
+		AssignedTo: "u1", Title: "Acme", ConversationIDs: []string{"cv1"},
+	})
+
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	moved := repo.byID["d1"]
+	if moved.StageID != "sw" || moved.Status != entity.StatusWon || moved.ClosedAt == nil {
+		t.Errorf("deal not moved to the won target stage: %+v", moved)
+	}
+	// Audit records the move tagged moved_by=automation.
+	if got := movedBys(aud.entries); len(got) != 1 || got[0] != "automation" {
+		t.Errorf("expected one move audited as automation, got %+v", got)
+	}
+	// The seller is notified in-app.
+	if len(not.inputs) != 1 || not.inputs[0].UserID != "u1" || not.inputs[0].Type != "deal.stage_moved_by_automation" {
+		t.Errorf("seller not notified correctly: %+v", not.inputs)
+	}
+}
+
+func TestAutomationMoveDealStage_Idempotent(t *testing.T) {
+	svc, repo, aud, not := newAutoSvc()
+	seedDeal(repo, &entity.Deal{
+		ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen,
+		AssignedTo: "u1", Title: "Acme", ConversationIDs: []string{"cv1"},
+	})
+	// Target is the deal's CURRENT stage → nothing happens.
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "s1"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if len(movedBys(aud.entries)) != 0 || len(not.inputs) != 0 {
+		t.Errorf("a no-op move must not audit or notify: audits=%+v notifs=%+v", aud.entries, not.inputs)
+	}
+}
+
+func TestAutomationMoveDealStage_NoLinkedDealDoesNothing(t *testing.T) {
+	svc, repo, aud, not := newAutoSvc()
+	seedDeal(repo, &entity.Deal{ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen, ConversationIDs: []string{"cv1"}})
+
+	// A conversation with no linked deal → no move, no create, no error.
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "other-conv", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if repo.byID["d1"].StageID != "s1" {
+		t.Errorf("an unrelated deal must not move")
+	}
+	if len(movedBys(aud.entries)) != 0 || len(not.inputs) != 0 {
+		t.Errorf("nothing should be audited/notified: audits=%+v notifs=%+v", aud.entries, not.inputs)
+	}
+}
+
+func TestAutomationMoveDealStage_SkipsDealInAnotherPipeline(t *testing.T) {
+	svc, repo, aud, _ := newAutoSvc()
+	// The linked deal belongs to a DIFFERENT pipeline than the rule's target.
+	seedDeal(repo, &entity.Deal{ID: "d1", TenantID: "t1", PipelineID: "p2", StageID: "x1", Status: entity.StatusOpen, ConversationIDs: []string{"cv1"}})
+
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if repo.byID["d1"].StageID != "x1" {
+		t.Errorf("a deal in another pipeline must be left untouched: %+v", repo.byID["d1"])
+	}
+	if len(movedBys(aud.entries)) != 0 {
+		t.Errorf("no move should be audited, got %+v", aud.entries)
+	}
+}
+
+func TestAutomationMoveDealStage_UnassignedDealMovesWithoutNotify(t *testing.T) {
+	svc, repo, aud, not := newAutoSvc()
+	seedDeal(repo, &entity.Deal{ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen, Title: "Acme", ConversationIDs: []string{"cv1"}})
+
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if repo.byID["d1"].StageID != "sw" {
+		t.Errorf("deal should still move when unassigned")
+	}
+	if len(movedBys(aud.entries)) != 1 {
+		t.Errorf("the move should still be audited")
+	}
+	if len(not.inputs) != 0 {
+		t.Errorf("no seller → no notification, got %+v", not.inputs)
 	}
 }
 
