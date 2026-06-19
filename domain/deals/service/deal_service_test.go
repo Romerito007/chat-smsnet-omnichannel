@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -186,6 +187,20 @@ func newAutoSvc() (*Service, *fakeRepo, *capturingAuditor, *capturingNotifier) {
 }
 
 func seedDeal(repo *fakeRepo, d *entity.Deal) { repo.byID[d.ID] = d }
+
+type fakeAudience struct{ bySector map[string][]string }
+
+func (a fakeAudience) SectorAgents(_ context.Context, sectorID string) ([]string, error) {
+	return a.bySector[sectorID], nil
+}
+
+func notifiedUsers(inputs []shared.NotifyInput) []string {
+	out := make([]string, 0, len(inputs))
+	for _, in := range inputs {
+		out = append(out, in.UserID)
+	}
+	return out
+}
 
 type capturedEvent struct {
 	topic string
@@ -384,9 +399,55 @@ func TestAutomationMoveDealStage_MovesLinkedDealAndNotifiesSeller(t *testing.T) 
 	if got := movedBys(aud.entries); len(got) != 1 || got[0] != "automation" {
 		t.Errorf("expected one move audited as automation, got %+v", got)
 	}
-	// The seller is notified in-app.
+	// The seller is notified in-app, with a deep-link carrying the deal id.
 	if len(not.inputs) != 1 || not.inputs[0].UserID != "u1" || not.inputs[0].Type != "deal.stage_moved_by_automation" {
 		t.Errorf("seller not notified correctly: %+v", not.inputs)
+	}
+	if link := not.inputs[0].Link; !strings.Contains(link, "deal=d1") {
+		t.Errorf("notification link must deep-link to the deal, got %q", link)
+	}
+}
+
+func TestAutomationMoveDealStage_NoOwnerNotifiesSectorTeam(t *testing.T) {
+	svc, repo, _, not := newAutoSvc()
+	svc.SetAudience(fakeAudience{bySector: map[string][]string{"sec1": {"u2", "u3"}}})
+	// Unowned deal, but it has a sector → the whole sector team is notified.
+	seedDeal(repo, &entity.Deal{
+		ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen,
+		SectorID: "sec1", Title: "Lead sem dono", ConversationIDs: []string{"cv1"},
+	})
+
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	got := notifiedUsers(not.inputs)
+	if len(got) != 2 || got[0] != "u2" || got[1] != "u3" {
+		t.Fatalf("the sector team must be notified, got %v", got)
+	}
+	for _, in := range not.inputs {
+		if in.Type != "deal.stage_moved_by_automation" || !strings.Contains(in.Link, "deal=d1") {
+			t.Errorf("sector notification shape wrong: %+v", in)
+		}
+	}
+}
+
+func TestAutomationMoveDealStage_NoOwnerNoSectorDoesNotNotify(t *testing.T) {
+	svc, repo, _, not := newAutoSvc()
+	svc.SetAudience(fakeAudience{bySector: map[string][]string{"sec1": {"u2"}}})
+	// Neither owner nor sector → conservative: move happens, nobody is notified.
+	seedDeal(repo, &entity.Deal{
+		ID: "d1", TenantID: "t1", PipelineID: "p1", StageID: "s1", Status: entity.StatusOpen,
+		Title: "Lead solto", ConversationIDs: []string{"cv1"},
+	})
+
+	if err := svc.AutomationMoveDealStage(tenantCtx(), "cv1", "p1", "sw"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if repo.byID["d1"].StageID != "sw" {
+		t.Errorf("the deal should still move")
+	}
+	if len(not.inputs) != 0 {
+		t.Errorf("an unowned, sector-less deal must not notify anyone, got %+v", not.inputs)
 	}
 }
 

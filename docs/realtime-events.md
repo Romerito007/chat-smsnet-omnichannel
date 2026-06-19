@@ -234,7 +234,16 @@ Reconciliação canônica via `GET /v1/deals` ao (re)conectar.
 
 `type` inclui, entre outros: `conversation.assigned_to_you`,
 `conversation.transferred_to_you`, `mention.internal_note`,
-`channel.connection_error`.
+`channel.connection_error`, `deal.stage_moved_by_automation`.
+
+**`deal.stage_moved_by_automation`** — emitido quando um movimentador automático
+(regra de automação ou copiloto) avança um card do CRM. Audiência: o **dono**
+(`assigned_to`) quando houver; senão os **agentes do setor** do deal; senão
+ninguém (conservador, para não spammar um lead sem dono nem setor). Cada
+destinatário recebe `notification.created` no seu tópico pessoal `user`. O `link`
+é `/crm?deal={id}&pipeline={pipelineId}&stage={toStageId}` (deep-link para o card,
+carregando os ids para o front navegar/reagir — mesmo padrão do
+`channel.templates_updated`).
 
 ### Keepalive (sistema)
 | Evento | Tópico | Payload |

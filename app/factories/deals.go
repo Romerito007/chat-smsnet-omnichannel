@@ -8,6 +8,7 @@ import (
 	contactservice "github.com/romerito007/chat-smsnet-omnichannel/domain/contacts/service"
 	dcontracts "github.com/romerito007/chat-smsnet-omnichannel/domain/deals/contracts"
 	dealservice "github.com/romerito007/chat-smsnet-omnichannel/domain/deals/service"
+	iamservice "github.com/romerito007/chat-smsnet-omnichannel/domain/iam/service"
 	convrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/conversations"
 	dealrepo "github.com/romerito007/chat-smsnet-omnichannel/infra/database/mongodb/repositories/deals"
 	dealctl "github.com/romerito007/chat-smsnet-omnichannel/presenter/controller/deals"
@@ -37,11 +38,30 @@ func DealService(c *container.Container) *dealservice.Service {
 	svc.SetAuditor(AuditService(c))
 	svc.SetConversationLookup(conversationLookup{repo: convrepo.NewConversationRepository(c.Mongo.DB)})
 	svc.SetContactChecker(contactChecker{contacts: ContactService(c)})
-	// Alert a deal's seller in-app when an automation advances their card.
+	// Alert the audience in-app when an automation advances a card: the owner, or —
+	// when unowned — the deal's sector team.
 	svc.SetNotifier(NotificationEnqueuer(c))
+	svc.SetAudience(dealAudience{users: UserService(c)})
 	// Emit realtime deal events so an open Kanban reacts live (no F5).
 	svc.SetPublisher(c.Events)
 	return svc
+}
+
+// dealAudience resolves a sector's agents (user ids) for the deal-move notification,
+// over the IAM user service (same membership source as routing assign).
+type dealAudience struct{ users *iamservice.UserService }
+
+// SectorAgents implements dcontracts.DealAudience.
+func (a dealAudience) SectorAgents(ctx context.Context, sectorID string) ([]string, error) {
+	users, err := a.users.ListBySector(ctx, sectorID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
+	return ids, nil
 }
 
 // DealController builds the deal controller, wired with the contact/agent/pipeline

@@ -18,12 +18,17 @@ const (
 	// TypeChannelTemplatesUpdated alerts agents that a channel's WhatsApp template
 	// mirror was refreshed (pushed by the gateway).
 	TypeChannelTemplatesUpdated Type = "channel.templates_updated"
+	// TypeDealStageMovedByAutomation alerts the deal's owner — or, when it has none,
+	// the deal's sector team — that an automated mover (automation rule or copilot)
+	// advanced a CRM card.
+	TypeDealStageMovedByAutomation Type = "deal.stage_moved_by_automation"
 )
 
 // AllTypes is the closed set of notification types.
 var AllTypes = []Type{
 	TypeAssignedToYou, TypeTransferredToYou, TypeMention,
 	TypeSLAAtRisk, TypeSLABreached, TypeChannelError, TypeChannelTemplatesUpdated,
+	TypeDealStageMovedByAutomation,
 }
 
 // IsValidType reports whether t is a known type.

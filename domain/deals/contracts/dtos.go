@@ -90,3 +90,10 @@ type ConversationLookup interface {
 type ContactChecker interface {
 	ContactExists(ctx context.Context, contactID string) (bool, error)
 }
+
+// DealAudience resolves the user ids of a sector's agents, so an automated deal move
+// with no owner still reaches the team that can see the sector. Implemented over the
+// IAM user service (ListBySector). Optional.
+type DealAudience interface {
+	SectorAgents(ctx context.Context, sectorID string) ([]string, error)
+}

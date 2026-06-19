@@ -25,6 +25,7 @@ type Service struct {
 	contacts      contracts.ContactChecker
 	auditor       shared.Auditor
 	notifier      shared.Notifier
+	audience      contracts.DealAudience
 	publisher     shared.EventPublisher
 	clock         shared.Clock
 }
@@ -73,6 +74,15 @@ func (s *Service) SetNotifier(n shared.Notifier) {
 func (s *Service) SetPublisher(p shared.EventPublisher) {
 	if p != nil {
 		s.publisher = p
+	}
+}
+
+// SetAudience wires the sector-agents resolver, so an automated move on an unowned
+// deal still notifies the sector's team. Optional: without it, an unowned (but
+// sectored) deal's move is not notified.
+func (s *Service) SetAudience(a contracts.DealAudience) {
+	if a != nil {
+		s.audience = a
 	}
 }
 
@@ -314,20 +324,48 @@ func (s *Service) AutomationMoveDealStage(ctx context.Context, conversationID, p
 	return nil
 }
 
-// notifyMoved alerts the deal's seller that automation advanced their card.
-// Best-effort and skipped when the deal has no assignee.
+// notifyMoved alerts the audience that an automated mover (automation rule or
+// copilot) advanced a card: the seller when the deal has one; otherwise the deal's
+// sector team; otherwise nobody (conservative — an unowned, sector-less deal does not
+// spam the whole tenant). Each recipient gets an in-app notification on their own
+// personal topic (TopicUser), via the existing notifier. Best-effort.
+//
+// The link deep-links to the card on the Kanban and carries the deal/pipeline/stage
+// ids (same pattern as the channel-templates notification), so the front navigates
+// and reloads the right board/column without a full refresh.
 func (s *Service) notifyMoved(ctx context.Context, d *entity.Deal, stageName string) {
-	if d.AssignedTo == "" {
+	recipients := s.moveAudience(ctx, d)
+	if len(recipients) == 0 {
 		return
 	}
-	s.notifier.Notify(ctx, shared.NotifyInput{
-		TenantID: d.TenantID,
-		UserID:   d.AssignedTo,
-		Type:     "deal.stage_moved_by_automation",
-		Title:    "Um card avançou pela resposta do cliente",
-		Body:     d.Title + " → " + stageName,
-		Link:     "/deals/" + d.ID,
-	})
+	link := "/crm?deal=" + d.ID + "&pipeline=" + d.PipelineID + "&stage=" + d.StageID
+	body := d.Title + " → " + stageName
+	for _, uid := range recipients {
+		s.notifier.Notify(ctx, shared.NotifyInput{
+			TenantID: d.TenantID,
+			UserID:   uid,
+			Type:     "deal.stage_moved_by_automation",
+			Title:    "Um card do CRM foi movido automaticamente",
+			Body:     body,
+			Link:     link,
+		})
+	}
+}
+
+// moveAudience picks who hears about an automated move: the owner when assigned,
+// else the deal's sector team, else nobody.
+func (s *Service) moveAudience(ctx context.Context, d *entity.Deal) []string {
+	if d.AssignedTo != "" {
+		return []string{d.AssignedTo}
+	}
+	if d.SectorID != "" && s.audience != nil {
+		ids, err := s.audience.SectorAgents(ctx, d.SectorID)
+		if err != nil {
+			return nil
+		}
+		return ids
+	}
+	return nil
 }
 
 // AssignTo sets (or clears with "") the deal's seller.
