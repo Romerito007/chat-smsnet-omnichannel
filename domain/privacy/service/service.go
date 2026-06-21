@@ -1,7 +1,7 @@
 // Package service implements the privacy (LGPD) domain: contact data export,
-// anonymization and per-tenant retention. Every action is audited
-// ("toda ação auditada") and anonymization refuses contacts under an active
-// legal hold ("não anonimizar dados sob obrigação legal antes do prazo").
+// erasure (right to be forgotten) and per-tenant retention. Every action is
+// audited ("toda ação auditada") and erasure refuses contacts under an active
+// legal hold ("não apagar dados sob obrigação legal antes do prazo").
 package service
 
 import (
@@ -26,6 +26,7 @@ const defaultURLTTL = 24 * time.Hour
 type Service struct {
 	store    repository.Store
 	files    contracts.FileStore
+	blobs    contracts.BlobStore
 	enqueuer contracts.ExportEnqueuer
 	auditor  shared.Auditor
 	clock    shared.Clock
@@ -33,8 +34,9 @@ type Service struct {
 }
 
 // NewService builds the service. A nil auditor/clock falls back to safe
-// defaults; urlTTL <= 0 uses the 24h default.
-func NewService(store repository.Store, files contracts.FileStore, enqueuer contracts.ExportEnqueuer, auditor shared.Auditor, clock shared.Clock, urlTTL time.Duration) *Service {
+// defaults; urlTTL <= 0 uses the 24h default. blobs may be nil (export-only
+// deployments) — erasure then skips attachment-blob purging.
+func NewService(store repository.Store, files contracts.FileStore, blobs contracts.BlobStore, enqueuer contracts.ExportEnqueuer, auditor shared.Auditor, clock shared.Clock, urlTTL time.Duration) *Service {
 	if auditor == nil {
 		auditor = shared.NoopAuditor{}
 	}
@@ -44,7 +46,7 @@ func NewService(store repository.Store, files contracts.FileStore, enqueuer cont
 	if urlTTL <= 0 {
 		urlTTL = defaultURLTTL
 	}
-	return &Service{store: store, files: files, enqueuer: enqueuer, auditor: auditor, clock: clock, urlTTL: urlTTL}
+	return &Service{store: store, files: files, blobs: blobs, enqueuer: enqueuer, auditor: auditor, clock: clock, urlTTL: urlTTL}
 }
 
 // RequestExport records a pending export request and enqueues the privacy.export
@@ -148,11 +150,16 @@ func (s *Service) GetExport(ctx context.Context, id string) (*entity.ExportReque
 	return s.store.FindExport(ctx, id)
 }
 
-// Anonymize replaces the contact's PII with anonymized values and masks PII in
-// the contact's messages, keeping referential integrity and aggregate metrics
-// (the contact row and id are retained). It refuses contacts under an active
-// legal hold.
-func (s *Service) Anonymize(ctx context.Context, contactID string) error {
+// EraseContact hard-deletes a contact and all of its personal data /
+// communications (right to be forgotten), unlinking — but never deleting — any
+// CRM deal so the company keeps its commercial record. It refuses contacts under
+// an active legal hold.
+//
+// Deal warning flow: when the contact still has linked deals and force is false,
+// it returns a 409 conflict carrying the deal list and erases nothing — the
+// company is expected to review the link first. Calling again with force=true
+// severs the deals and proceeds.
+func (s *Service) EraseContact(ctx context.Context, contactID string, force bool) error {
 	if _, err := shared.RequireTenant(ctx); err != nil {
 		return err
 	}
@@ -160,64 +167,72 @@ func (s *Service) Anonymize(ctx context.Context, contactID string) error {
 	if contactID == "" {
 		return apperror.Validation("contact id is required")
 	}
+
 	now := s.clock.Now()
 	held, err := s.store.HasActiveLegalHold(ctx, contactID, now)
 	if err != nil {
 		return err
 	}
 	if held {
-		_ = s.audit(ctx, "privacy.contact.anonymize_refused", "contact", contactID, map[string]any{"reason": "legal_hold"})
-		return apperror.Forbidden("contact is under a legal hold and cannot be anonymized before the deadline")
+		_ = s.audit(ctx, "privacy.contact.erase_refused", "contact", contactID, map[string]any{"reason": "legal_hold"})
+		return apperror.Forbidden("contact is under a legal hold and cannot be erased before the deadline")
 	}
 
-	// Collect the bundle first: it 404s a missing contact and gives us the
-	// original PII (needed to scrub literals from message text) plus the message
-	// ids to mask.
-	bundle, err := s.store.CollectBundle(ctx, contactID)
+	// Warn before destroying: a contact with linked deals is blocked until the
+	// caller confirms with force=true. The deal ids/titles are returned so the
+	// company can treat the link in the CRM first.
+	deals, err := s.store.LinkedDeals(ctx, contactID)
+	if err != nil {
+		return err
+	}
+	if len(deals) > 0 && !force {
+		_ = s.audit(ctx, "privacy.contact.erase_blocked", "contact", contactID, map[string]any{
+			"reason": "linked_deals", "deals": len(deals),
+		})
+		return apperror.Conflict("contact has linked deals; review the link and retry with force=true to unlink and erase").
+			WithDetails(map[string]any{"linked_deals": deals})
+	}
+
+	// Destructive cascade. The repo collects the physical storage keys before
+	// removing the rows and returns them so we can purge the blobs/export files
+	// afterwards. With force, it also severs (not deletes) the linked deals.
+	res, err := s.store.EraseContact(ctx, contactID, force)
 	if err != nil {
 		return err
 	}
 
-	// Idempotent: a contact already anonymized is a no-op success. Re-processing
-	// after the commit point has nothing to scrub (the original PII is gone) and
-	// must never 500.
-	if bundle.Contact.Anonymized {
-		return s.audit(ctx, "privacy.contact.anonymize_noop", "contact", contactID, map[string]any{"reason": "already_anonymized"})
-	}
-
-	pii := piiOf(bundle.Contact)
-
-	// Order matters for crash-safety WITHOUT a transaction: mask the messages
-	// FIRST (using the original PII), then flip the contact's anonymized flag LAST
-	// as the commit point. Each step is idempotent (re-masking already-masked text
-	// is a no-op; the $set writes the same values), so a partial failure is
-	// recovered by a retry — the contact is still un-flagged, the bundle still
-	// carries the original PII, and re-masking is harmless. Conversations and
-	// messages are never deleted; only the contact PII literals are scrubbed.
-	masked := 0
-	for _, conv := range bundle.Conversations {
-		for _, m := range conv.Messages {
-			nt := maskPII(m.Text, pii)
-			if nt != m.Text {
-				if err := s.store.UpdateMessageText(ctx, m.ID, nt); err != nil {
-					return err
-				}
-				masked++
+	// Best-effort physical purge of media blobs and export bundles. These are not
+	// transactional with the DB; a failure here leaves an orphan file but never a
+	// dangling DB row. We log-and-continue rather than fail the erasure, which has
+	// already removed every personal-data row.
+	//
+	// TODO(privacy): because this purge is best-effort, a failed Delete leaves an
+	// owner-less blob behind. Add a periodic garbage-collection job that reconciles
+	// the attachments/export storage against the DB and removes orphaned objects so
+	// they do not accumulate over time.
+	blobsDeleted := 0
+	if s.blobs != nil {
+		for _, key := range res.BlobKeys {
+			if derr := s.blobs.Delete(key); derr == nil {
+				blobsDeleted++
 			}
 		}
 	}
-
-	if err := s.store.AnonymizeContact(ctx, contactID, repository.Anonymized{
-		Name:     anonymizedName,
-		Phone:    "",
-		Document: "",
-	}); err != nil {
-		return err
+	exportsDeleted := 0
+	for _, key := range res.ExportKeys {
+		if derr := s.files.Delete(key); derr == nil {
+			exportsDeleted++
+		}
 	}
 
-	return s.audit(ctx, "privacy.contact.anonymized", "contact", contactID, map[string]any{
-		"messages_masked": masked,
-		"conversations":   len(bundle.Conversations),
+	return s.audit(ctx, "privacy.contact.erased", "contact", contactID, map[string]any{
+		"conversations":   res.Conversations,
+		"messages":        res.Messages,
+		"documents":       res.Documents(),
+		"deals_unlinked":  res.DealsUnlinked,
+		"blobs_deleted":   blobsDeleted,
+		"exports_deleted": exportsDeleted,
+		"forced":          force,
 	})
 }
 
@@ -298,13 +313,25 @@ func (s *Service) ApplyRetention(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// Best-effort purge of the media blobs whose attachments were cascade-deleted
+	// alongside retired conversations — closing the orphan-blob leak.
+	blobsDeleted := 0
+	if s.blobs != nil {
+		for _, key := range res.BlobKeys {
+			if derr := s.blobs.Delete(key); derr == nil {
+				blobsDeleted++
+			}
+		}
+	}
 	if res.Total() > 0 {
 		if err := s.audit(ctx, "privacy.retention.applied", "retention_policy", p.TenantID, map[string]any{
 			"messages":             res.Messages,
 			"closed_conversations": res.ClosedConversations,
+			"satellite_docs":       res.SatelliteDocs,
 			"technical_logs":       res.TechnicalLogs,
 			"audit_logs":           res.AuditLogs,
 			"notifications":        res.Notifications,
+			"blobs_deleted":        blobsDeleted,
 		}); err != nil {
 			return res.Total(), err
 		}

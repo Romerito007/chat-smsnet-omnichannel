@@ -1,8 +1,8 @@
 // Package privacy is the Mongo implementation of the privacy domain Store. It
 // reads across the contacts/conversations/messages/csat collections to assemble
-// exports, overwrites PII for anonymization, and applies the per-tenant
-// RetentionPolicy — always tenant-scoped from context and always skipping data
-// under an active legal hold.
+// exports, hard-deletes a contact and all its satellite data for erasure (right
+// to be forgotten), and applies the per-tenant RetentionPolicy — always
+// tenant-scoped from context and always skipping data under an active legal hold.
 package privacy
 
 import (
@@ -30,7 +30,16 @@ type Repository struct {
 	conversations *mongo.Collection
 	messages      *mongo.Collection
 	events        *mongo.Collection
+	attachments   *mongo.Collection
 	csat          *mongo.Collection
+	sla           *mongo.Collection
+	mcpApprovals  *mongo.Collection
+	mcpCallLogs   *mongo.Collection
+	copilotLogs   *mongo.Collection
+	ruleEvalLogs  *mongo.Collection
+	inbound       *mongo.Collection
+	providerLogs  *mongo.Collection
+	deals         *mongo.Collection
 	notifications *mongo.Collection
 	auditLogs     *mongo.Collection
 	retention     *mongo.Collection
@@ -45,7 +54,16 @@ func New(db *mongo.Database) *Repository {
 		conversations: db.Collection("conversations"),
 		messages:      db.Collection("messages"),
 		events:        db.Collection("conversation_events"),
+		attachments:   db.Collection("attachments"),
 		csat:          db.Collection("csat_responses"),
+		sla:           db.Collection("sla_trackings"),
+		mcpApprovals:  db.Collection("mcp_approvals"),
+		mcpCallLogs:   db.Collection("mcp_call_logs"),
+		copilotLogs:   db.Collection("copilot_logs"),
+		ruleEvalLogs:  db.Collection("rule_evaluation_logs"),
+		inbound:       db.Collection("inbound_messages"),
+		providerLogs:  db.Collection("provider_query_logs"),
+		deals:         db.Collection("deals"),
 		notifications: db.Collection("notifications"),
 		auditLogs:     db.Collection("audit_logs"),
 		retention:     db.Collection("retention_policies"),
@@ -281,55 +299,305 @@ func (r *Repository) messagesFor(ctx context.Context, tenantID, convID string) (
 	return out, mongodb.MapError(cur.Err())
 }
 
-// --- Anonymization ---
+// --- Erasure (right to be forgotten) ---
 
-func (r *Repository) AnonymizeContact(ctx context.Context, contactID string, a privrepo.Anonymized) error {
+// LinkedDeals lists deals tied to the contact directly (contact_id) or through
+// any of the contact's conversations (conversation_ids).
+func (r *Repository) LinkedDeals(ctx context.Context, contactID string) ([]privrepo.DealLink, error) {
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	now := time.Now().UTC()
-	res, err := r.contacts.UpdateOne(ctx,
-		bson.M{"_id": contactID, "tenant_id": tenantID},
-		bson.M{
-			"$set": bson.M{
-				"name":     a.Name,
-				"phone":    a.Phone,
-				"document": a.Document,
-				// Scrub the remaining PII. email + phones were previously left
-				// intact (LGPD gap). identities (the channel handles) are cleared
-				// by REPLACING the whole array — never with the all-positional
-				// `identities.$[]`, which errors on a contact that has no
-				// identities array (the root cause of the 500 "database error").
-				// The row + id are kept so conversations/metrics stay linked.
-				"email":         "",
-				"phones":        bson.A{},
-				"identities":    bson.A{},
-				"anonymized":    true,
-				"anonymized_at": now,
-				"updated_at":    now,
-			},
-		},
-	)
+	convIDs, err := r.contactConversationIDs(ctx, tenantID, contactID)
 	if err != nil {
-		return mongodb.MapError(err)
+		return nil, err
 	}
-	if res.MatchedCount == 0 {
-		return mongodb.MapError(mongo.ErrNoDocuments)
+	cur, err := r.deals.Find(ctx, dealLinkFilter(tenantID, contactID, convIDs))
+	if err != nil {
+		return nil, mongodb.MapError(err)
 	}
-	return nil
+	defer func() { _ = cur.Close(ctx) }()
+	var out []privrepo.DealLink
+	for cur.Next(ctx) {
+		var d models.Deal
+		if err := cur.Decode(&d); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		out = append(out, privrepo.DealLink{ID: d.ID, Title: d.Title})
+	}
+	return out, mongodb.MapError(cur.Err())
 }
 
-func (r *Repository) UpdateMessageText(ctx context.Context, id, text string) error {
+// EraseContact removes the contact and every document carrying its personal data
+// or communications, returning the storage keys to purge. It is NOT transactional
+// (Mongo cross-collection): keys are collected before the rows are deleted, and
+// the order ends with the contact row as the commit point, so a retry after a
+// partial failure re-derives the same targets and is idempotent.
+func (r *Repository) EraseContact(ctx context.Context, contactID string, unlinkDeals bool) (privrepo.EraseResult, error) {
+	var res privrepo.EraseResult
 	tenantID, err := shared.RequireTenant(ctx)
 	if err != nil {
-		return err
+		return res, err
 	}
-	_, err = r.messages.UpdateOne(ctx,
-		bson.M{"_id": id, "tenant_id": tenantID},
-		bson.M{"$set": bson.M{"text": text}},
-	)
-	return mongodb.MapError(err)
+
+	// 404 a missing contact up front (and grab the avatar blob to purge).
+	var c models.Contact
+	if err := r.contacts.FindOne(ctx, bson.M{"_id": contactID, "tenant_id": tenantID}).Decode(&c); err != nil {
+		return res, mongodb.MapError(err)
+	}
+
+	convIDs, err := r.contactConversationIDs(ctx, tenantID, contactID)
+	if err != nil {
+		return res, err
+	}
+
+	// Sever (never delete) the linked deals so the company keeps its CRM record.
+	dealsUnlinked := 0
+	if unlinkDeals {
+		n, err := r.unlinkDeals(ctx, tenantID, contactID, convIDs)
+		if err != nil {
+			return res, err
+		}
+		dealsUnlinked = n
+	}
+
+	// Cascade the conversation-scoped satellites + media blobs (shared with
+	// retention so neither path strands a deleted conversation's data/media).
+	res, err = r.cascadeConversationData(ctx, tenantID, convIDs)
+	if err != nil {
+		return res, err
+	}
+	res.DealsUnlinked = dealsUnlinked
+
+	// The avatar attachment is not conversation-scoped, so purge it separately.
+	if c.AvatarAttachmentID != "" {
+		avatarKeys, err := r.attachmentBlobKeys(ctx, tenantID, nil, c.AvatarAttachmentID)
+		if err != nil {
+			return res, err
+		}
+		res.BlobKeys = append(res.BlobKeys, avatarKeys...)
+	}
+	res.ExportKeys, err = r.exportStorageKeys(ctx, tenantID, contactID)
+	if err != nil {
+		return res, err
+	}
+
+	// Contact-scoped catch-alls (cover docs not tied to a conversation).
+	byContact := bson.M{"tenant_id": tenantID, "contact_id": contactID}
+	if n, err := r.deleteCount(ctx, r.csat, byContact); err != nil {
+		return res, err
+	} else {
+		res.CSAT = n
+	}
+	if n, err := r.deleteCount(ctx, r.providerLogs, byContact); err != nil {
+		return res, err
+	} else {
+		res.ProviderQueryLogs += n
+	}
+	if n, err := r.deleteCount(ctx, r.exports, byContact); err != nil {
+		return res, err
+	} else {
+		res.Exports = n
+	}
+
+	// Conversations, then the contact row (commit point).
+	if n, err := r.deleteCount(ctx, r.conversations, bson.M{"tenant_id": tenantID, "contact_id": contactID}); err != nil {
+		return res, err
+	} else {
+		res.Conversations = n
+	}
+	if _, err := r.contacts.DeleteOne(ctx, bson.M{"_id": contactID, "tenant_id": tenantID}); err != nil {
+		return res, mongodb.MapError(err)
+	}
+	return res, nil
+}
+
+// cascadeConversationData deletes every conversation-scoped satellite document
+// for convIDs and returns the per-collection delete counts plus the attachment
+// media keys to purge (the attachment ROWS are deleted here; their physical
+// blobs are purged by the caller). Shared by EraseContact and ApplyRetention so
+// retention never strands a deleted conversation's satellites or media.
+func (r *Repository) cascadeConversationData(ctx context.Context, tenantID string, convIDs []string) (privrepo.EraseResult, error) {
+	var res privrepo.EraseResult
+	if len(convIDs) == 0 {
+		return res, nil
+	}
+	// Collect blob keys BEFORE deleting the attachment rows that reference them.
+	keys, err := r.attachmentBlobKeys(ctx, tenantID, convIDs, "")
+	if err != nil {
+		return res, err
+	}
+	res.BlobKeys = keys
+	byConv := bson.M{"tenant_id": tenantID, "conversation_id": bson.M{"$in": convIDs}}
+	for _, d := range []struct {
+		coll *mongo.Collection
+		n    *int
+	}{
+		{r.messages, &res.Messages},
+		{r.events, &res.Events},
+		{r.attachments, &res.Attachments},
+		{r.sla, &res.SLATrackings},
+		{r.mcpApprovals, &res.MCPApprovals},
+		{r.mcpCallLogs, &res.MCPCallLogs},
+		{r.copilotLogs, &res.CopilotLogs},
+		{r.ruleEvalLogs, &res.RuleEvalLogs},
+		{r.inbound, &res.InboundMessages},
+		{r.providerLogs, &res.ProviderQueryLogs},
+	} {
+		n, err := r.deleteCount(ctx, d.coll, byConv)
+		if err != nil {
+			return res, err
+		}
+		*d.n = n
+	}
+	return res, nil
+}
+
+// contactConversationIDs returns the ids of the contact's conversations.
+func (r *Repository) contactConversationIDs(ctx context.Context, tenantID, contactID string) ([]string, error) {
+	vals, err := r.conversations.Distinct(ctx, "_id", bson.M{"tenant_id": tenantID, "contact_id": contactID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// attachmentBlobKeys gathers the storage keys of the conversations' attachments
+// plus the contact's avatar attachment. The avatar attachment row (not tied to a
+// conversation) is deleted here, since the conversation-scoped sweep won't catch
+// it.
+func (r *Repository) attachmentBlobKeys(ctx context.Context, tenantID string, convIDs []string, avatarID string) ([]string, error) {
+	or := bson.A{}
+	if len(convIDs) > 0 {
+		or = append(or, bson.M{"conversation_id": bson.M{"$in": convIDs}})
+	}
+	if avatarID != "" {
+		or = append(or, bson.M{"_id": avatarID})
+	}
+	if len(or) == 0 {
+		return nil, nil
+	}
+	out, err := r.attachmentKeysFor(ctx, bson.M{"tenant_id": tenantID, "$or": or})
+	if err != nil {
+		return nil, err
+	}
+	if avatarID != "" {
+		if _, err := r.attachments.DeleteOne(ctx, bson.M{"_id": avatarID, "tenant_id": tenantID}); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+	}
+	return out, nil
+}
+
+// attachmentKeysFor returns the storage keys of the attachments matching filter
+// (read-only; the rows are deleted separately by the caller).
+func (r *Repository) attachmentKeysFor(ctx context.Context, filter bson.M) ([]string, error) {
+	cur, err := r.attachments.Find(ctx, filter, options.Find().SetProjection(bson.M{"storage_key": 1}))
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []string
+	for cur.Next(ctx) {
+		var a models.AttachmentRecord
+		if err := cur.Decode(&a); err != nil {
+			return nil, mongodb.MapError(err)
+		}
+		if a.StorageKey != "" {
+			out = append(out, a.StorageKey)
+		}
+	}
+	return out, mongodb.MapError(cur.Err())
+}
+
+// exportStorageKeys gathers the object keys of the contact's export bundles.
+func (r *Repository) exportStorageKeys(ctx context.Context, tenantID, contactID string) ([]string, error) {
+	vals, err := r.exports.Distinct(ctx, "storage_key", bson.M{"tenant_id": tenantID, "contact_id": contactID})
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// unlinkDeals severs the contact from its deals without deleting them: it clears
+// contact_id on deals owned by the contact and pulls the contact's conversation
+// ids from every deal's conversation_ids. The title and the rest of the deal are
+// kept for the company to review.
+func (r *Repository) unlinkDeals(ctx context.Context, tenantID, contactID string, convIDs []string) (int, error) {
+	matched := map[string]struct{}{}
+	ids, err := r.deals.Distinct(ctx, "_id", dealLinkFilter(tenantID, contactID, convIDs))
+	if err != nil {
+		return 0, mongodb.MapError(err)
+	}
+	for _, v := range ids {
+		if s, ok := v.(string); ok {
+			matched[s] = struct{}{}
+		}
+	}
+	if _, err := r.deals.UpdateMany(ctx,
+		bson.M{"tenant_id": tenantID, "contact_id": contactID},
+		bson.M{"$set": bson.M{"contact_id": "", "updated_at": time.Now().UTC()}},
+	); err != nil {
+		return 0, mongodb.MapError(err)
+	}
+	if len(convIDs) > 0 {
+		if _, err := r.deals.UpdateMany(ctx,
+			bson.M{"tenant_id": tenantID, "conversation_ids": bson.M{"$in": convIDs}},
+			bson.M{
+				"$pull": bson.M{"conversation_ids": bson.M{"$in": convIDs}},
+				"$set":  bson.M{"updated_at": time.Now().UTC()},
+			},
+		); err != nil {
+			return 0, mongodb.MapError(err)
+		}
+	}
+	return len(matched), nil
+}
+
+// dealLinkFilter matches deals linked to the contact directly or via any of the
+// contact's conversations.
+func dealLinkFilter(tenantID, contactID string, convIDs []string) bson.M {
+	or := bson.A{bson.M{"contact_id": contactID}}
+	if len(convIDs) > 0 {
+		or = append(or, bson.M{"conversation_ids": bson.M{"$in": convIDs}})
+	}
+	return bson.M{"tenant_id": tenantID, "$or": or}
+}
+
+// distinctIDs returns the distinct string values of field in coll matching filter.
+func (r *Repository) distinctIDs(ctx context.Context, coll *mongo.Collection, field string, filter bson.M) ([]string, error) {
+	vals, err := coll.Distinct(ctx, field, filter)
+	if err != nil {
+		return nil, mongodb.MapError(err)
+	}
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// deleteCount deletes matching docs and returns the count removed.
+func (r *Repository) deleteCount(ctx context.Context, coll *mongo.Collection, filter bson.M) (int, error) {
+	res, err := coll.DeleteMany(ctx, filter)
+	if err != nil {
+		return 0, mongodb.MapError(err)
+	}
+	return int(res.DeletedCount), nil
 }
 
 // --- Legal hold ---
@@ -382,9 +650,29 @@ func (r *Repository) ApplyRetention(ctx context.Context, p entity.RetentionPolic
 	var res privrepo.RetentionResult
 
 	if p.MessagesDays > 0 {
+		msgCutoff := cutoff(now, p.MessagesDays)
+		// Purge the attachments (rows + media blobs) of the messages being retired:
+		// an attachment is created with its message, so the same age cutoff applies.
+		// This keeps message retention from stranding orphan media. Held
+		// conversations are exempt.
+		attFilter := bson.M{"tenant_id": tenantID, "created_at": bson.M{"$lte": msgCutoff}}
+		if len(heldConvIDs) > 0 {
+			attFilter["conversation_id"] = bson.M{"$nin": heldConvIDs}
+		}
+		keys, err := r.attachmentKeysFor(ctx, attFilter)
+		if err != nil {
+			return res, err
+		}
+		res.BlobKeys = append(res.BlobKeys, keys...)
+		if na, err := r.deleteCount(ctx, r.attachments, attFilter); err != nil {
+			return res, err
+		} else {
+			res.SatelliteDocs += na
+		}
+
 		n, err := r.deleteMany(ctx, r.messages, bson.M{
 			"tenant_id":  tenantID,
-			"created_at": bson.M{"$lte": cutoff(now, p.MessagesDays)},
+			"created_at": bson.M{"$lte": msgCutoff},
 		}, "conversation_id", heldConvIDs)
 		if err != nil {
 			return res, err
@@ -393,11 +681,28 @@ func (r *Repository) ApplyRetention(ctx context.Context, p entity.RetentionPolic
 	}
 
 	if p.ClosedConversationsDays > 0 {
-		n, err := r.deleteMany(ctx, r.conversations, bson.M{
+		// Resolve the exact conversation ids being retired so we can cascade their
+		// satellites + media — deleting the conversation row alone would strand
+		// messages, attachments (and their blobs), CSAT, SLA, MCP, etc.
+		convFilter := bson.M{
 			"tenant_id": tenantID,
 			"status":    bson.M{"$in": closedStatuses},
 			"closed_at": bson.M{"$lte": cutoff(now, p.ClosedConversationsDays)},
-		}, "_id", heldConvIDs)
+		}
+		if len(heldConvIDs) > 0 {
+			convFilter["_id"] = bson.M{"$nin": heldConvIDs}
+		}
+		convIDs, err := r.distinctIDs(ctx, r.conversations, "_id", convFilter)
+		if err != nil {
+			return res, err
+		}
+		casc, err := r.cascadeConversationData(ctx, tenantID, convIDs)
+		if err != nil {
+			return res, err
+		}
+		res.SatelliteDocs += casc.Documents()
+		res.BlobKeys = append(res.BlobKeys, casc.BlobKeys...)
+		n, err := r.deleteCount(ctx, r.conversations, convFilter)
 		if err != nil {
 			return res, err
 		}

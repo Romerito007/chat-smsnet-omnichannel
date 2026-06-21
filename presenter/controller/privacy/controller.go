@@ -5,6 +5,7 @@ package privacy
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -47,13 +48,27 @@ func (c *Controller) GetExport(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, dto.NewExportResponse(req))
 }
 
-// Anonymize handles POST /v1/privacy/contacts/{id}/anonymize.
-func (c *Controller) Anonymize(w http.ResponseWriter, r *http.Request) {
-	if err := c.svc.Anonymize(r.Context(), chi.URLParam(r, "id")); err != nil {
+// Erase handles DELETE /v1/privacy/contacts/{id} (right to be forgotten). It
+// hard-deletes the contact and all of its personal data, unlinking any CRM deal.
+// A contact with linked deals returns 409 with the deal list unless ?force=true
+// is set, in which case the deals are severed and the erasure proceeds.
+func (c *Controller) Erase(w http.ResponseWriter, r *http.Request) {
+	force := isTrue(r.URL.Query().Get("force"))
+	if err := c.svc.EraseContact(r.Context(), chi.URLParam(r, "id"), force); err != nil {
 		middleware.WriteError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isTrue parses a permissive truthy query flag ("true"/"1"/"yes").
+func isTrue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // GetRetention handles GET /v1/privacy/retention.

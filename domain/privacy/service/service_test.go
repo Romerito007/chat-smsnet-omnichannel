@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -31,15 +30,17 @@ type fakeStore struct {
 	exports     map[string]*entity.ExportRequest
 	bundle      *repository.ExportBundle
 	bundleErr   error
-	anonymized  *repository.Anonymized
-	updatedMsgs map[string]string
 	held        bool
 	retResult   repository.RetentionResult
 	retArg      *entity.RetentionPolicy
+	linkedDeals []repository.DealLink
+	eraseResult repository.EraseResult
+	erasedID    string
+	eraseForced *bool
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{exports: map[string]*entity.ExportRequest{}, updatedMsgs: map[string]string{}}
+	return &fakeStore{exports: map[string]*entity.ExportRequest{}}
 }
 
 func (f *fakeStore) GetRetention(context.Context) (*entity.RetentionPolicy, error) {
@@ -67,13 +68,13 @@ func (f *fakeStore) FindExport(_ context.Context, id string) (*entity.ExportRequ
 func (f *fakeStore) CollectBundle(context.Context, string) (*repository.ExportBundle, error) {
 	return f.bundle, f.bundleErr
 }
-func (f *fakeStore) AnonymizeContact(_ context.Context, _ string, a repository.Anonymized) error {
-	f.anonymized = &a
-	return nil
+func (f *fakeStore) LinkedDeals(context.Context, string) ([]repository.DealLink, error) {
+	return f.linkedDeals, nil
 }
-func (f *fakeStore) UpdateMessageText(_ context.Context, id, text string) error {
-	f.updatedMsgs[id] = text
-	return nil
+func (f *fakeStore) EraseContact(_ context.Context, contactID string, unlinkDeals bool) (repository.EraseResult, error) {
+	f.erasedID = contactID
+	f.eraseForced = &unlinkDeals
+	return f.eraseResult, nil
 }
 func (f *fakeStore) HasActiveLegalHold(context.Context, string, time.Time) (bool, error) {
 	return f.held, nil
@@ -98,6 +99,12 @@ func (f *fakeFiles) Resolve(token string) (string, error) { return token, nil }
 func (f *fakeFiles) Open(key string) ([]byte, string, error) {
 	return f.saved[key], "export.json", nil
 }
+func (f *fakeFiles) Delete(key string) error { delete(f.saved, key); return nil }
+
+// fakeBlobs is an in-memory contracts.BlobStore recording deleted keys.
+type fakeBlobs struct{ deleted []string }
+
+func (b *fakeBlobs) Delete(key string) error { b.deleted = append(b.deleted, key); return nil }
 
 // fakeEnqueuer records the export task.
 type fakeEnqueuer struct{ task *contracts.ExportTask }
@@ -122,7 +129,7 @@ func (a *fakeAuditor) has(action string) bool {
 }
 
 func newSvc(store *fakeStore, files *fakeFiles, enq *fakeEnqueuer, aud *fakeAuditor) *Service {
-	return NewService(store, files, enq, aud, clk(), time.Hour)
+	return NewService(store, files, &fakeBlobs{}, enq, aud, clk(), time.Hour)
 }
 
 func TestRequestExport_CreatesEnqueuesAndAudits(t *testing.T) {
@@ -169,82 +176,84 @@ func TestRunExport_AssemblesFileSignsURLAndAudits(t *testing.T) {
 	}
 }
 
-func TestAnonymize_RemovesPIIMasksMessagesAndAudits(t *testing.T) {
+func TestEraseContact_DeletesUnlinksPurgesAndAudits(t *testing.T) {
 	store, files, enq, aud := newFakeStore(), newFakeFiles(), &fakeEnqueuer{}, &fakeAuditor{}
-	store.bundle = &repository.ExportBundle{
-		Contact: repository.ContactData{ID: "c1", Name: "João Silva", Phone: "+5511999998888", Document: "123.456.789-00"},
-		Conversations: []repository.ConversationData{{
-			ID: "cv1",
-			Messages: []repository.MessageData{
-				{ID: "m1", Text: "Oi, meu nome é João Silva e meu telefone é +5511999998888"},
-				{ID: "m2", Text: "sem pii aqui"},
-			},
-		}},
+	blobs := &fakeBlobs{}
+	store.eraseResult = repository.EraseResult{
+		Conversations: 2, Messages: 9, DealsUnlinked: 1,
+		BlobKeys:   []string{"att/a1", "att/a2"},
+		ExportKeys: []string{"exports/t1/c1/r1.json"},
 	}
-	svc := newSvc(store, files, enq, aud)
-	if err := svc.Anonymize(ctxT(), "c1"); err != nil {
-		t.Fatalf("anonymize: %v", err)
+	files.saved["exports/t1/c1/r1.json"] = []byte("{}")
+	svc := NewService(store, files, blobs, enq, aud, clk(), time.Hour)
+
+	if err := svc.EraseContact(ctxT(), "c1", false); err != nil {
+		t.Fatalf("erase: %v", err)
 	}
-	if store.anonymized == nil || store.anonymized.Phone != "" || store.anonymized.Document != "" {
-		t.Errorf("contact PII not cleared: %+v", store.anonymized)
+	if store.erasedID != "c1" || store.eraseForced == nil {
+		t.Fatalf("EraseContact not called for the contact")
 	}
-	if store.anonymized.Name != anonymizedName {
-		t.Errorf("name not anonymized: %q", store.anonymized.Name)
+	if len(blobs.deleted) != 2 {
+		t.Errorf("attachment blobs not purged: %v", blobs.deleted)
 	}
-	masked, ok := store.updatedMsgs["m1"]
-	if !ok {
-		t.Fatalf("message with PII not masked")
+	if _, still := files.saved["exports/t1/c1/r1.json"]; still {
+		t.Errorf("export bundle not purged")
 	}
-	if strings.Contains(masked, "João Silva") || strings.Contains(masked, "5511999998888") {
-		t.Errorf("PII still present after masking: %q", masked)
-	}
-	if _, touched := store.updatedMsgs["m2"]; touched {
-		t.Errorf("clean message should not be rewritten")
-	}
-	if !aud.has("privacy.contact.anonymized") {
-		t.Errorf("anonymization not audited")
+	if !aud.has("privacy.contact.erased") {
+		t.Errorf("erasure not audited")
 	}
 }
 
-func TestAnonymize_RefusesUnderLegalHold(t *testing.T) {
+func TestEraseContact_RefusesUnderLegalHold(t *testing.T) {
 	store, files, enq, aud := newFakeStore(), newFakeFiles(), &fakeEnqueuer{}, &fakeAuditor{}
 	store.held = true
 	svc := newSvc(store, files, enq, aud)
-	err := svc.Anonymize(ctxT(), "c1")
+	err := svc.EraseContact(ctxT(), "c1", true)
 	if apperror.From(err).Code != apperror.CodeForbidden {
 		t.Fatalf("expected forbidden under legal hold, got %v", err)
 	}
-	if store.anonymized != nil {
-		t.Errorf("must not anonymize a contact under legal hold")
+	if store.erasedID != "" {
+		t.Errorf("must not erase a contact under legal hold")
 	}
-	if !aud.has("privacy.contact.anonymize_refused") {
+	if !aud.has("privacy.contact.erase_refused") {
 		t.Errorf("refusal not audited")
 	}
 }
 
-func TestAnonymize_IdempotentWhenAlreadyAnonymized(t *testing.T) {
+func TestEraseContact_BlocksOnLinkedDealsWithoutForce(t *testing.T) {
 	store, files, enq, aud := newFakeStore(), newFakeFiles(), &fakeEnqueuer{}, &fakeAuditor{}
-	// Contact already anonymized → re-anonymize must be a clean no-op (never 500).
-	store.bundle = &repository.ExportBundle{
-		Contact: repository.ContactData{ID: "c1", Name: anonymizedName, Anonymized: true},
-		Conversations: []repository.ConversationData{{
-			ID:       "cv1",
-			Messages: []repository.MessageData{{ID: "m1", Text: "already [REDACTED]"}},
-		}},
-	}
+	store.linkedDeals = []repository.DealLink{{ID: "d1", Title: "Big deal"}}
 	svc := newSvc(store, files, enq, aud)
 
-	if err := svc.Anonymize(ctxT(), "c1"); err != nil {
-		t.Fatalf("re-anonymize must be a no-op success, got: %v", err)
+	err := svc.EraseContact(ctxT(), "c1", false)
+	appErr := apperror.From(err)
+	if appErr.Code != apperror.CodeConflict {
+		t.Fatalf("expected conflict on linked deals, got %v", err)
 	}
-	if store.anonymized != nil {
-		t.Errorf("an already-anonymized contact must not be re-written")
+	if appErr.Details["linked_deals"] == nil {
+		t.Errorf("409 must surface the linked deals: %+v", appErr.Details)
 	}
-	if len(store.updatedMsgs) != 0 {
-		t.Errorf("no messages should be re-masked, got %v", store.updatedMsgs)
+	if store.erasedID != "" {
+		t.Errorf("a blocked erase must delete nothing")
 	}
-	if !aud.has("privacy.contact.anonymize_noop") {
-		t.Errorf("expected a no-op audit entry")
+	if !aud.has("privacy.contact.erase_blocked") {
+		t.Errorf("block not audited")
+	}
+}
+
+func TestEraseContact_ForceUnlinksLinkedDealsAndProceeds(t *testing.T) {
+	store, files, enq, aud := newFakeStore(), newFakeFiles(), &fakeEnqueuer{}, &fakeAuditor{}
+	store.linkedDeals = []repository.DealLink{{ID: "d1", Title: "Big deal"}}
+	svc := newSvc(store, files, enq, aud)
+
+	if err := svc.EraseContact(ctxT(), "c1", true); err != nil {
+		t.Fatalf("forced erase: %v", err)
+	}
+	if store.erasedID != "c1" || store.eraseForced == nil || !*store.eraseForced {
+		t.Errorf("forced erase must pass unlinkDeals=true to the store")
+	}
+	if !aud.has("privacy.contact.erased") {
+		t.Errorf("erasure not audited")
 	}
 }
 

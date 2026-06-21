@@ -11281,9 +11281,9 @@ paths:
             summary: Provision a tenant + owner (platform key; returns a ready owner token)
             tags:
                 - platform
-    /v1/privacy/contacts/{id}/anonymize:
-        post:
-            operationId: postPrivacyContactsByIdAnonymize
+    /v1/privacy/contacts/{id}:
+        delete:
+            operationId: deletePrivacyContactsById
             parameters:
                 - description: contact id
                   in: path
@@ -11291,25 +11291,33 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Unlink any CRM deals and proceed (required when the contact has linked deals)
+                  in: query
+                  name: force
+                  required: false
+                  schema:
+                    type: string
             responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                additionalProperties: true
-                                type: object
-                    description: Result
+                "204":
+                    description: Contact erased
                 "400":
                     $ref: '#/components/responses/Error400'
                 "401":
                     $ref: '#/components/responses/Error401'
                 "403":
                     $ref: '#/components/responses/Error403'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: true
+                                type: object
+                    description: Contact has linked deals; review and retry with force=true
                 "429":
                     $ref: '#/components/responses/Error429'
                 "500":
                     $ref: '#/components/responses/Error500'
-            summary: Anonymize a contact (LGPD)
+            summary: Erase a contact and all its personal data (LGPD right to be forgotten)
             tags:
                 - privacy
     /v1/privacy/contacts/{id}/export:

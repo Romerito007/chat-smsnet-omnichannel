@@ -613,8 +613,12 @@ func registerInsights(p *paths) {
 func registerPrivacyAttachments(p *paths) {
 	p.add("POST", "/v1/privacy/contacts/{id}/export", op(opConfig{tag: "privacy", summary: "Request a contact data export (LGPD)",
 		params: []M{pathParam("id", "contact id")}, responses: M{"202": jsonResp("Pending export", ref("PrivacyExport"))}}))
-	p.add("POST", "/v1/privacy/contacts/{id}/anonymize", op(opConfig{tag: "privacy", summary: "Anonymize a contact (LGPD)",
-		params: []M{pathParam("id", "contact id")}, responses: M{"200": jsonResp("Result", freeObject())}}))
+	p.add("DELETE", "/v1/privacy/contacts/{id}", op(opConfig{tag: "privacy", summary: "Erase a contact and all its personal data (LGPD right to be forgotten)",
+		params: []M{pathParam("id", "contact id"), queryParam("force", "Unlink any CRM deals and proceed (required when the contact has linked deals)")},
+		responses: M{
+			"204": M{"description": "Contact erased"},
+			"409": jsonResp("Contact has linked deals; review and retry with force=true", freeObject()),
+		}}))
 	p.add("GET", "/v1/privacy/exports/{id}", op(opConfig{tag: "privacy", summary: "Get an export request",
 		params: []M{pathParam("id", "export id")}, responses: M{"200": jsonResp("Export", ref("PrivacyExport"))}}))
 	p.add("GET", "/v1/privacy/retention", op(opConfig{tag: "privacy", summary: "Get retention settings",

@@ -14,7 +14,7 @@ import (
 
 // Store is the privacy domain's persistence port. The Mongo implementation reads
 // across the contacts/conversations/messages/csat collections (all tenant-scoped
-// via context) to assemble exports, anonymize PII and apply retention.
+// via context) to assemble exports, erase contacts and apply retention.
 type Store interface {
 	// --- Retention policy ---
 	GetRetention(ctx context.Context) (*entity.RetentionPolicy, error)
@@ -30,18 +30,25 @@ type Store interface {
 	// exist in the tenant. It never includes external provider data.
 	CollectBundle(ctx context.Context, contactID string) (*ExportBundle, error)
 
-	// --- Anonymization ---
-	// AnonymizeContact overwrites the contact's PII fields and clears channel
-	// identity handles, keeping the row and its id (integrity). Not found when the
-	// contact is missing.
-	AnonymizeContact(ctx context.Context, contactID string, a Anonymized) error
-	// UpdateMessageText overwrites one message's text (used to mask PII in place,
-	// iterating the bundle's messages).
-	UpdateMessageText(ctx context.Context, id, text string) error
+	// --- Erasure (right to be forgotten) ---
+	// LinkedDeals lists the CRM deals tied to the contact (directly by contact_id
+	// or through any of the contact's conversations). The erasure use case surfaces
+	// these so the company can review the link before the contact is destroyed
+	// ("sistema avisa → empresa trata o vínculo → exclusão prossegue").
+	LinkedDeals(ctx context.Context, contactID string) ([]DealLink, error)
+	// EraseContact hard-deletes the contact and every satellite document carrying
+	// its personal data / communications (conversations, messages, events,
+	// attachments, CSAT, SLA, MCP, copilot, rule-eval and provider-query logs,
+	// inbound messages, export requests), returning the blob/export storage keys it
+	// detached so the caller can purge the physical files. When unlinkDeals is true
+	// it first severs the contact from its deals (clearing contact_id and pulling
+	// the conversation ids) WITHOUT deleting the deals — the CRM record is kept for
+	// the company. It returns a not_found error when the contact is missing.
+	EraseContact(ctx context.Context, contactID string, unlinkDeals bool) (EraseResult, error)
 
 	// --- Legal hold ---
 	// HasActiveLegalHold reports whether the contact has a legal hold in force at
-	// `at` ("não anonimizar dados sob obrigação legal antes do prazo").
+	// `at` ("não apagar dados sob obrigação legal antes do prazo").
 	HasActiveLegalHold(ctx context.Context, contactID string, at time.Time) (bool, error)
 
 	// --- Retention application ---
@@ -50,11 +57,44 @@ type Store interface {
 	ApplyRetention(ctx context.Context, p entity.RetentionPolicy, now time.Time) (RetentionResult, error)
 }
 
-// Anonymized carries the replacement PII values written to a contact.
-type Anonymized struct {
-	Name     string
-	Phone    string
-	Document string
+// DealLink identifies a CRM deal tied to a contact being erased, surfaced in the
+// 409 warning so the company can review the link first. Only the id and title
+// are exposed — never the deal's own data.
+type DealLink struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// EraseResult reports what a contact erasure removed (for the audit trail) and
+// the physical storage keys the caller must still purge.
+type EraseResult struct {
+	Conversations     int
+	Messages          int
+	Events            int
+	Attachments       int
+	CSAT              int
+	SLATrackings      int
+	MCPApprovals      int
+	MCPCallLogs       int
+	CopilotLogs       int
+	RuleEvalLogs      int
+	InboundMessages   int
+	ProviderQueryLogs int
+	Exports           int
+	DealsUnlinked     int
+	// BlobKeys are attachment media object keys (incl. the contact avatar) to
+	// delete from the attachments BlobStore.
+	BlobKeys []string
+	// ExportKeys are export-bundle object keys to delete from the FileStore.
+	ExportKeys []string
+}
+
+// Documents is the count of database rows removed (excludes blobs/exports files
+// and deal unlinks, which are not deletions).
+func (r EraseResult) Documents() int {
+	return r.Conversations + r.Messages + r.Events + r.Attachments + r.CSAT +
+		r.SLATrackings + r.MCPApprovals + r.MCPCallLogs + r.CopilotLogs +
+		r.RuleEvalLogs + r.InboundMessages + r.ProviderQueryLogs + r.Exports
 }
 
 // ExportBundle is the serialized contact data set.
@@ -121,9 +161,18 @@ type RetentionResult struct {
 	TechnicalLogs       int
 	AuditLogs           int
 	Notifications       int
+	// SatelliteDocs counts the conversation-scoped documents (messages, events,
+	// attachments, CSAT, SLA, MCP, copilot, rule-eval, provider and inbound logs)
+	// cascade-deleted alongside closed conversations, so retention never strands
+	// them.
+	SatelliteDocs int
+	// BlobKeys are attachment media object keys to purge from the BlobStore for
+	// the conversations retention deleted.
+	BlobKeys []string
 }
 
 // Total is the sum across categories.
 func (r RetentionResult) Total() int {
-	return r.Messages + r.ClosedConversations + r.TechnicalLogs + r.AuditLogs + r.Notifications
+	return r.Messages + r.ClosedConversations + r.TechnicalLogs + r.AuditLogs +
+		r.Notifications + r.SatelliteDocs
 }

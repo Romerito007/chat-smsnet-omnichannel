@@ -22,7 +22,7 @@ func registerPrivacyRoutes(r chi.Router, c *container.Container) {
 
 		p.With(middleware.RequirePermission(authz.PrivacyManage)).Group(func(m chi.Router) {
 			m.Post("/privacy/contacts/{id}/export", ctl.Export)
-			m.Post("/privacy/contacts/{id}/anonymize", ctl.Anonymize)
+			m.Delete("/privacy/contacts/{id}", ctl.Erase)
 			m.Get("/privacy/exports/{id}", ctl.GetExport)
 			m.Get("/privacy/retention", ctl.GetRetention)
 			m.Patch("/privacy/retention", ctl.UpdateRetention)

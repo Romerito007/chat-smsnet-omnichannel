@@ -40,11 +40,15 @@ func PrivacyEnqueuer(c *container.Container) *infraprivacy.Enqueuer {
 	return infraprivacy.NewEnqueuer(c.AsynqClient)
 }
 
-// PrivacyService builds the privacy (LGPD) service.
+// PrivacyService builds the privacy (LGPD) service. The configured attachments
+// storage backend is passed as the BlobStore so contact erasure can purge media
+// blobs alongside the database rows.
 func PrivacyService(c *container.Container) *privservice.Service {
+	blobs, _ := attachmentStorage(c)
 	return privservice.NewService(
 		privrepo.New(c.Mongo.DB),
 		PrivacyFileStore(c),
+		blobs,
 		PrivacyEnqueuer(c),
 		AuditService(c),
 		clock,
