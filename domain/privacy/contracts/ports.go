@@ -16,6 +16,19 @@ type FileStore interface {
 	Resolve(token string) (key string, err error)
 	// Open returns the stored bytes and a suggested download filename for key.
 	Open(key string) (data []byte, filename string, err error)
+	// Delete removes the object under key. A missing object is not an error
+	// (best-effort cleanup), so a contact erasure can purge export bundles
+	// idempotently.
+	Delete(key string) error
+}
+
+// BlobStore deletes attachment media blobs by their storage key. It is the
+// narrow slice of the attachments storage backend the privacy domain needs to
+// purge media on contact erasure (LGPD). Implemented by the configured
+// attachments storage (local filesystem or S3).
+type BlobStore interface {
+	// Delete removes the blob under key; a missing blob is not an error.
+	Delete(key string) error
 }
 
 // ExportEnqueuer schedules the privacy.export job. Implemented by the infra

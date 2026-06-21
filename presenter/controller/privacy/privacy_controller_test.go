@@ -35,8 +35,10 @@ func (fakeStore) FindExport(context.Context, string) (*pentity.ExportRequest, er
 func (fakeStore) CollectBundle(context.Context, string) (*prepo.ExportBundle, error) {
 	return &prepo.ExportBundle{}, nil
 }
-func (fakeStore) AnonymizeContact(context.Context, string, prepo.Anonymized) error { return nil }
-func (fakeStore) UpdateMessageText(context.Context, string, string) error          { return nil }
+func (fakeStore) LinkedDeals(context.Context, string) ([]prepo.DealLink, error) { return nil, nil }
+func (fakeStore) EraseContact(context.Context, string, bool) (prepo.EraseResult, error) {
+	return prepo.EraseResult{}, nil
+}
 func (fakeStore) HasActiveLegalHold(context.Context, string, time.Time) (bool, error) {
 	return false, nil
 }
@@ -61,11 +63,12 @@ func (fakeFiles) SignedURL(string, time.Duration) (string, time.Time, error) {
 }
 func (fakeFiles) Resolve(string) (string, error)      { return "", apperror.Forbidden("no") }
 func (fakeFiles) Open(string) ([]byte, string, error) { return nil, "", apperror.NotFound("no") }
+func (fakeFiles) Delete(string) error                 { return nil }
 
 var _ pcontracts.FileStore = fakeFiles{}
 
 func buildRouter() http.Handler {
-	svc := pservice.NewService(fakeStore{}, fakeFiles{}, fakeEnqueuer{}, nil, nil, time.Hour)
+	svc := pservice.NewService(fakeStore{}, fakeFiles{}, nil, fakeEnqueuer{}, nil, nil, time.Hour)
 	ctl := privacy.NewController(svc, fakeFiles{})
 	r := chi.NewRouter()
 	r.Group(func(p chi.Router) {

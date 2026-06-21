@@ -77,6 +77,20 @@ func (s *LocalFileStore) Open(key string) ([]byte, string, error) {
 	return data, filepath.Base(key), nil
 }
 
+// Delete removes the object under key. A missing file is not an error
+// (best-effort cleanup), so a contact erasure can purge export bundles
+// idempotently.
+func (s *LocalFileStore) Delete(key string) error {
+	path, err := s.pathFor(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // SignedURL builds a temporary download URL for key valid for ttl.
 func (s *LocalFileStore) SignedURL(key string, ttl time.Duration) (string, time.Time, error) {
 	expiresAt := time.Now().Add(ttl).UTC()

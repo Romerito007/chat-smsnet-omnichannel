@@ -46,61 +46,106 @@ func adminCtx(tenantID, userID string) context.Context {
 	return authz.WithAuthContext(ctx, authz.NewAuthContext(tenantID, userID, authz.AllPermissions(), nil, authz.ScopeAll))
 }
 
-// TestPrivacyAnonymize_NoIdentitiesAndIdempotent reproduces the 500 "database
-// error" bug: anonymizing a contact that has NO identities array used to fail on
-// the all-positional `identities.$[]` update. It also covers a SECOND such
-// contact (no unique-index collision on the cleared PII) and a re-anonymize
-// (idempotent no-op). Requires a live Mongo (-tags e2e).
-func TestPrivacyAnonymize_NoIdentitiesAndIdempotent(t *testing.T) {
+// TestPrivacyEraseContact_CascadeUnlinkAndBlob covers the right-to-be-forgotten
+// erasure: a contact with a linked deal is blocked (409) until force=true, then
+// the contact + every satellite document and its media blob are hard-deleted
+// while the deal is kept but unlinked. Requires a live Mongo (-tags e2e).
+func TestPrivacyEraseContact_CascadeUnlinkAndBlob(t *testing.T) {
 	db := connect(t)
 	_ = db.Drop(context.Background())
 	bg := context.Background()
-	const tenant = "t-anon"
+	const tenant = "t-erase"
 	ctx := adminCtx(tenant, "owner-1")
 	now := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 
-	// Two contacts WITHOUT any identities array (the root-cause shape), with PII.
 	mustInsert(t, db, "contacts", bson.M{
-		"_id": "ca", "tenant_id": tenant, "name": "Ana Lima", "phone": "11999990000",
-		"phones": bson.A{"11999990000"}, "document": "111.444.777-35", "email": "ana@x.com",
-		"created_at": now,
+		"_id": "ce", "tenant_id": tenant, "name": "Erase Me", "phone": "11999990000",
+		"document": "111.444.777-35", "email": "erase@x.com", "created_at": now,
 	})
-	mustInsert(t, db, "contacts", bson.M{
-		"_id": "cb", "tenant_id": tenant, "name": "Bruno Costa", "phone": "11888880000",
-		"phones": bson.A{"11888880000"}, "document": "529.982.247-25", "email": "bruno@x.com",
-		"created_at": now,
+	mustInsert(t, db, "conversations", bson.M{
+		"_id": "cve", "tenant_id": tenant, "contact_id": "ce", "channel": "whatsapp",
+		"status": "open", "created_at": now,
+	})
+	mustInsert(t, db, "messages", bson.M{
+		"_id": "me1", "tenant_id": tenant, "conversation_id": "cve", "sender_type": "customer",
+		"direction": "inbound", "message_type": "text", "text": "oi", "created_at": now,
+	})
+	score := 5
+	mustInsert(t, db, "csat_responses", bson.M{
+		"_id": "cse", "tenant_id": tenant, "conversation_id": "cve", "contact_id": "ce",
+		"survey_id": "s1", "token": "tk", "score": &score, "status": "responded", "created_at": now,
+	})
+	// A deal linked to the contact (directly + via conversation) — kept, not deleted.
+	mustInsert(t, db, "deals", bson.M{
+		"_id": "de1", "tenant_id": tenant, "contact_id": "ce", "conversation_ids": bson.A{"cve"},
+		"pipeline_id": "p1", "stage_id": "s1", "title": "Won deal", "status": "open",
+		"stage_changed_at": now, "created_at": now,
+	})
+
+	blobs := storage.NewLocalAttachmentStorage(t.TempDir(), "s", "http://x")
+	const blobKey = "blobs/ce/att.bin"
+	if err := blobs.Put(blobKey, "application/octet-stream", []byte("media")); err != nil {
+		t.Fatalf("seed blob: %v", err)
+	}
+	mustInsert(t, db, "attachments", bson.M{
+		"_id": "at1", "tenant_id": tenant, "conversation_id": "cve", "message_id": "me1",
+		"filename": "att.bin", "content_type": "application/octet-stream", "size": int64(5),
+		"storage_provider": "local", "storage_key": blobKey, "status": "ready", "created_at": now,
 	})
 
 	store := New(db)
 	auditor := auditservice.NewService(auditrepo.New(db), fixedClock{now})
-	svc := privservice.NewService(store, storage.NewLocalFileStore(t.TempDir(), "s", "http://x"), &captureEnqueuer{}, auditor, fixedClock{now}, time.Hour)
+	files := storage.NewLocalFileStore(t.TempDir(), "s", "http://x")
+	svc := privservice.NewService(store, files, blobs, &captureEnqueuer{}, auditor, fixedClock{now}, time.Hour)
 
-	// 1) First contact (no identities) anonymizes — no 500.
-	if err := svc.Anonymize(ctx, "ca"); err != nil {
-		t.Fatalf("anonymize ca (no identities) must succeed, got: %v", err)
+	// 1) Without force → blocked (conflict), nothing deleted.
+	if err := svc.EraseContact(ctx, "ce", false); err == nil {
+		t.Fatalf("erase must be blocked while a deal is linked")
 	}
-	// 2) Second contact anonymizes — both end with email/document="" but there is
-	// no unique index on contacts PII, so no E11000 collision.
-	if err := svc.Anonymize(ctx, "cb"); err != nil {
-		t.Fatalf("anonymize a SECOND contact must succeed (no unique collision), got: %v", err)
-	}
-	// 3) Re-anonymize the first — idempotent, no error.
-	if err := svc.Anonymize(ctx, "ca"); err != nil {
-		t.Fatalf("re-anonymize must be idempotent, got: %v", err)
+	if count(t, db, "contacts", bson.M{"_id": "ce"}) != 1 {
+		t.Fatalf("blocked erase must delete nothing")
 	}
 
-	for _, id := range []string{"ca", "cb"} {
-		var c bson.M
-		_ = db.Collection("contacts").FindOne(bg, bson.M{"_id": id}).Decode(&c)
-		if c["name"] != "Contato Anonimizado" || c["phone"] != "" || c["document"] != "" || c["email"] != "" {
-			t.Errorf("%s PII not fully cleared: %v", id, c)
+	// 2) With force → cascade erase + deal unlink + blob purge.
+	if err := svc.EraseContact(ctx, "ce", true); err != nil {
+		t.Fatalf("forced erase: %v", err)
+	}
+	for _, c := range []struct {
+		coll   string
+		filter bson.M
+	}{
+		{"contacts", bson.M{"_id": "ce"}},
+		{"conversations", bson.M{"_id": "cve"}},
+		{"messages", bson.M{"_id": "me1"}},
+		{"csat_responses", bson.M{"_id": "cse"}},
+		{"attachments", bson.M{"_id": "at1"}},
+	} {
+		if count(t, db, c.coll, c.filter) != 0 {
+			t.Errorf("%s row must be erased", c.coll)
 		}
-		if phones, ok := c["phones"].(bson.A); !ok || len(phones) != 0 {
-			t.Errorf("%s phones must be cleared, got %v", id, c["phones"])
-		}
-		if c["anonymized"] != true {
-			t.Errorf("%s must be flagged anonymized", id)
-		}
+	}
+	if ok, _ := blobs.Exists(blobKey); ok {
+		t.Errorf("attachment media blob must be purged")
+	}
+	// The deal survives, unlinked from the erased contact.
+	var deal bson.M
+	if err := db.Collection("deals").FindOne(bg, bson.M{"_id": "de1"}).Decode(&deal); err != nil {
+		t.Fatalf("deal must be kept: %v", err)
+	}
+	if deal["contact_id"] != "" {
+		t.Errorf("deal contact_id must be cleared, got %v", deal["contact_id"])
+	}
+	if convs, ok := deal["conversation_ids"].(bson.A); ok && len(convs) != 0 {
+		t.Errorf("deal conversation_ids must be pulled, got %v", convs)
+	}
+	if deal["title"] != "Won deal" {
+		t.Errorf("deal title must be preserved, got %v", deal["title"])
+	}
+	if count(t, db, "audit_logs", bson.M{"tenant_id": tenant, "action": "privacy.contact.erased"}) == 0 {
+		t.Errorf("erasure must be audited")
+	}
+	if count(t, db, "audit_logs", bson.M{"tenant_id": tenant, "action": "privacy.contact.erase_blocked"}) == 0 {
+		t.Errorf("the blocked attempt must be audited")
 	}
 }
 
@@ -172,9 +217,10 @@ func TestPrivacyLiveEndToEnd(t *testing.T) {
 
 	store := New(db)
 	files := storage.NewLocalFileStore(t.TempDir(), "e2e-secret", "http://localhost:8080")
+	blobs := storage.NewLocalAttachmentStorage(t.TempDir(), "e2e-secret", "http://localhost:8080")
 	auditor := auditservice.NewService(auditrepo.New(db), clock)
 	enq := &captureEnqueuer{}
-	svc := privservice.NewService(store, files, enq, auditor, clock, time.Hour)
+	svc := privservice.NewService(store, files, blobs, enq, auditor, clock, time.Hour)
 
 	// === 1. EXPORT: request → run → file via signed URL contains chat data, no provider data ===
 	req, err := svc.RequestExport(ctx, "c1")
@@ -214,46 +260,17 @@ func TestPrivacyLiveEndToEnd(t *testing.T) {
 	}
 	t.Logf("export bundle bytes=%d", len(data))
 
-	// === 2. ANONYMIZE c1: PII removed, messages masked, integrity kept ===
-	if err := svc.Anonymize(ctx, "c1"); err != nil {
-		t.Fatalf("anonymize: %v", err)
-	}
-	var c1 bson.M
-	_ = db.Collection("contacts").FindOne(bg, bson.M{"_id": "c1"}).Decode(&c1)
-	if c1["name"] != "Contato Anonimizado" || c1["phone"] != "" || c1["document"] != "" || c1["email"] != "" {
-		t.Errorf("PII not cleared: %v", c1)
-	}
-	if ids, ok := c1["identities"].(bson.A); !ok || len(ids) != 0 {
-		t.Errorf("channel-identity handles (PII) must be cleared, got %v", c1["identities"])
-	}
-	if c1["anonymized"] != true {
-		t.Errorf("contact must be flagged anonymized: %v", c1["anonymized"])
-	}
-	if c1["_id"] != "c1" {
-		t.Errorf("contact id/integrity lost")
-	}
-	// Re-anonymizing the same contact is idempotent (no 500, no-op).
-	if err := svc.Anonymize(ctx, "c1"); err != nil {
-		t.Fatalf("re-anonymize must be idempotent, got: %v", err)
-	}
-	var m1 bson.M
-	_ = db.Collection("messages").FindOne(bg, bson.M{"_id": "m1"}).Decode(&m1)
-	mt, _ := m1["text"].(string)
-	if strings.Contains(mt, "João Silva") || strings.Contains(mt, "11999998888") || strings.Contains(mt, "joao@x.com") {
-		t.Errorf("message PII not masked: %q", mt)
-	}
-	t.Logf("masked message: %q", mt)
-
-	// === 3. LEGAL HOLD: anonymizing c2 is refused ===
-	err = svc.Anonymize(ctx, "c2")
-	if err == nil {
+	// === 2. LEGAL HOLD: erasing c2 is refused and deletes nothing ===
+	if err := svc.EraseContact(ctx, "c2", true); err == nil {
 		t.Fatalf("expected legal-hold refusal for c2")
 	}
-	t.Logf("legal-hold refusal: %v", err)
 	var c2 bson.M
 	_ = db.Collection("contacts").FindOne(bg, bson.M{"_id": "c2"}).Decode(&c2)
 	if c2["name"] != "Maria Held" {
-		t.Errorf("held contact must not be anonymized: %v", c2)
+		t.Errorf("held contact must not be erased: %v", c2)
+	}
+	if count(t, db, "messages", bson.M{"_id": "m3"}) != 1 {
+		t.Errorf("held contact's message must survive a refused erase")
 	}
 
 	// === 4. RETENTION: configure + apply; old data gone, held + recent preserved ===
@@ -287,7 +304,7 @@ func TestPrivacyLiveEndToEnd(t *testing.T) {
 	// === 5. AUDIT: every action left a trail ===
 	for _, action := range []string{
 		"privacy.export.requested", "privacy.export.generated",
-		"privacy.contact.anonymized", "privacy.contact.anonymize_refused",
+		"privacy.contact.erase_refused",
 		"privacy.retention.updated", "privacy.retention.applied",
 	} {
 		if count(t, db, "audit_logs", bson.M{"tenant_id": tenant, "action": action}) == 0 {
