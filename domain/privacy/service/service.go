@@ -205,6 +205,11 @@ func (s *Service) EraseContact(ctx context.Context, contactID string, force bool
 	// transactional with the DB; a failure here leaves an orphan file but never a
 	// dangling DB row. We log-and-continue rather than fail the erasure, which has
 	// already removed every personal-data row.
+	//
+	// TODO(privacy): because this purge is best-effort, a failed Delete leaves an
+	// owner-less blob behind. Add a periodic garbage-collection job that reconciles
+	// the attachments/export storage against the DB and removes orphaned objects so
+	// they do not accumulate over time.
 	blobsDeleted := 0
 	if s.blobs != nil {
 		for _, key := range res.BlobKeys {
